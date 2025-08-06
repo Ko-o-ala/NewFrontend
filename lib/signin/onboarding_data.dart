@@ -1,0 +1,33 @@
+// lib/onboarding/onboarding_data.dart
+class OnboardingData {
+  static final Map<String, dynamic> answers = {
+    'name': '',
+    'lightUsage': null,
+    'lightTone': null,
+    'noisePreference': null,
+    'youtubeContentType': null,
+    'sleepTime': null,
+    'wakeTime': null,
+    'activityType': null,
+    'sunlightExposure': null,
+    'napFrequency': null,
+    'napDuration': null,
+    'sleepyTime': null,
+    'avgSleep': null,
+    'sleepProblem': null,
+    'emotionalFactor': null,
+    'soundPreference': null,
+    'calmingSound': null,
+    'deviceUsage': null,
+    'autoStopPreference': null,
+    'sleepLatency': null,
+    'caffeineIntake': null,
+    'exerciseFrequency': null,
+    'screenTimeBeforeBed': null,
+    'stressLevel': null,
+    'sleepGoal': null,
+    'feedbackPreference': null,
+    'userID': '',
+    'password': '',
+  };
+}
