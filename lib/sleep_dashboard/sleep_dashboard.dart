@@ -23,6 +23,8 @@ class SleepDashboard extends StatefulWidget {
 class _SleepDashboardState extends State<SleepDashboard> {
   String formattedDuration = '불러오는 중...';
   String username = '사용자';
+  String fm(DateTime t) => t.toIso8601String().substring(11, 16);
+
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
   bool _isLoggedIn = false;
@@ -63,21 +65,22 @@ class _SleepDashboardState extends State<SleepDashboard> {
     required String token,
     required DateTime sleepStart,
     required DateTime sleepEnd,
+    required int totalSleep,
     required int deepSleep,
     required int remSleep,
     required int lightSleep,
     required int awakeDuration,
+    required List<Map<String, String>> segments,
     required int sleepScore,
   }) async {
     final url = Uri.parse('https://kooala.tassoo.uk/sleep-data');
+
     final realStart = sleepStartReal ?? sleepStart;
     final sleepDate = realStart.subtract(Duration(hours: 6));
-
     final date = DateFormat('yyyy-MM-dd').format(sleepDate);
 
-    String fm(DateTime t) => t.toIso8601String().substring(11, 16);
-
-    final totalSleep = deepSleep + remSleep + lightSleep; // 총 수면 시간 계산
+    print('🕒 sleepStartReal: $realStart');
+    print('📅 최종 전송 날짜: $date');
 
     final body = {
       "userID": userId,
@@ -90,6 +93,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
         "lightSleepDuration": lightSleep,
         "awakeDuration": awakeDuration,
       },
+      "segments": segments, // 👈 segment 추가는 선택적으로
       "sleepScore": sleepScore,
     };
 
@@ -411,17 +415,56 @@ class _SleepDashboardState extends State<SleepDashboard> {
                   }
                   print('📤 sleepScore 전송 전 확인: $sleepScore');
                   print('🕒 sleepStartReal: $sleepStartReal');
+                  final segments =
+                      healthData
+                          .where(
+                            (d) =>
+                                _isSleepType(d.type) ||
+                                d.type == HealthDataType.SLEEP_AWAKE,
+                          )
+                          .map((d) {
+                            String stage;
+                            switch (d.type) {
+                              case HealthDataType.SLEEP_DEEP:
+                                stage = "deep";
+                                break;
+                              case HealthDataType.SLEEP_REM:
+                                stage = "rem";
+                                break;
+                              case HealthDataType.SLEEP_LIGHT:
+                              case HealthDataType.SLEEP_ASLEEP:
+                                stage = "light";
+                                break;
+                              case HealthDataType.SLEEP_AWAKE:
+                                stage = "awake";
+                                break;
+                              default:
+                                stage = "unknown";
+                            }
 
+                            return {
+                              "startTime": d.dateFrom
+                                  .toIso8601String()
+                                  .substring(11, 16),
+                              "endTime": d.dateTo.toIso8601String().substring(
+                                11,
+                                16,
+                              ),
+                              "stage": stage,
+                            };
+                          })
+                          .toList();
                   await sendSleepData(
                     userId: userId,
                     token: token,
                     sleepStart: sleepStartReal ?? sleepStart!,
                     sleepEnd: sleepEndReal ?? sleepEnd!,
-
+                    totalSleep: deepMin + remMin + lightMin,
                     deepSleep: deepMin,
                     remSleep: remMin,
                     lightSleep: lightMin,
                     awakeDuration: awakeMin,
+                    segments: segments, // 이건 위에서 따로 생성해 둔 리스트
                     sleepScore: sleepScore,
                   );
                 },
