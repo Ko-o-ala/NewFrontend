@@ -23,6 +23,8 @@ class SleepDashboard extends StatefulWidget {
 class _SleepDashboardState extends State<SleepDashboard> {
   String formattedDuration = '불러오는 중...';
   String username = '사용자';
+  DateTime? sleepStartReal;
+  DateTime? sleepEndReal;
   bool _isLoggedIn = false;
   Duration? todaySleep;
   DateTime? sleepStart;
@@ -68,22 +70,26 @@ class _SleepDashboardState extends State<SleepDashboard> {
     required int sleepScore,
   }) async {
     final url = Uri.parse('https://kooala.tassoo.uk/sleep-data');
-    final date = DateFormat('yyyy-MM-dd').format(sleepStart);
+    final realStart = sleepStartReal ?? sleepStart;
+    final sleepDate = realStart.subtract(Duration(hours: 6));
+
+    final date = DateFormat('yyyy-MM-dd').format(sleepDate);
+
     String fm(DateTime t) => t.toIso8601String().substring(11, 16);
+
+    final totalSleep = deepSleep + remSleep + lightSleep; // 총 수면 시간 계산
 
     final body = {
       "userID": userId,
       "date": date,
-      "startTime": fm(sleepStart),
-      "endTime": fm(sleepEnd),
-      "segments": [
-        {"start": fm(sleepStart), "end": fm(sleepEnd)},
-      ],
-      "totalSleepDuration": todaySleep?.inMinutes ?? 0,
-      "deepSleepDuration": deepSleep,
-      "remSleepDuration": remSleep,
-      "lightSleepDuration": lightSleep,
-      "awakeDuration": awakeDuration,
+      "sleepTime": {"startTime": fm(sleepStart), "endTime": fm(sleepEnd)},
+      "Duration": {
+        "totalSleepDuration": totalSleep,
+        "deepSleepDuration": deepSleep,
+        "remSleepDuration": remSleep,
+        "lightSleepDuration": lightSleep,
+        "awakeDuration": awakeDuration,
+      },
       "sleepScore": sleepScore,
     };
 
@@ -95,6 +101,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
       },
       body: jsonEncode(body),
     );
+
     if (resp.statusCode == 200 || resp.statusCode == 201) {
       print('✅ 수면 데이터 전송 성공');
     } else {
@@ -201,6 +208,13 @@ class _SleepDashboardState extends State<SleepDashboard> {
     return finalScore;
   }
 
+  bool _isSleepType(HealthDataType type) {
+    return type == HealthDataType.SLEEP_ASLEEP ||
+        type == HealthDataType.SLEEP_LIGHT ||
+        type == HealthDataType.SLEEP_DEEP ||
+        type == HealthDataType.SLEEP_REM;
+  }
+
   Future<void> _fetchTodaySleep() async {
     final health = Health();
     final types = [
@@ -212,6 +226,9 @@ class _SleepDashboardState extends State<SleepDashboard> {
     ];
 
     final now = DateTime.now();
+    final yesterday = now.subtract(Duration(days: 1));
+    final formattedDate = DateFormat('yyyy-MM-dd').format(yesterday);
+
     sleepStart = DateTime(now.year, now.month, now.day - 1, 18);
     sleepEnd = DateTime(now.year, now.month, now.day, 12);
 
@@ -228,6 +245,22 @@ class _SleepDashboardState extends State<SleepDashboard> {
         endTime: sleepEnd!,
       );
       healthData = data;
+
+      sleepStartReal = healthData
+          .where((d) => _isSleepType(d.type))
+          .map((d) => d.dateFrom)
+          .fold<DateTime?>(
+            null,
+            (prev, curr) => prev == null || curr.isBefore(prev) ? curr : prev,
+          );
+
+      sleepEndReal = healthData
+          .where((d) => _isSleepType(d.type))
+          .map((d) => d.dateTo)
+          .fold<DateTime?>(
+            null,
+            (prev, curr) => prev == null || curr.isAfter(prev) ? curr : prev,
+          );
 
       deepMin = remMin = lightMin = awakeMin = 0;
       Duration total = Duration.zero;
@@ -377,11 +410,14 @@ class _SleepDashboardState extends State<SleepDashboard> {
                     return;
                   }
                   print('📤 sleepScore 전송 전 확인: $sleepScore');
+                  print('🕒 sleepStartReal: $sleepStartReal');
+
                   await sendSleepData(
                     userId: userId,
                     token: token,
-                    sleepStart: sleepStart!,
-                    sleepEnd: sleepEnd!,
+                    sleepStart: sleepStartReal ?? sleepStart!,
+                    sleepEnd: sleepEndReal ?? sleepEnd!,
+
                     deepSleep: deepMin,
                     remSleep: remMin,
                     lightSleep: lightMin,
