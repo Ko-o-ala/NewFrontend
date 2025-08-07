@@ -13,6 +13,8 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController idController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController birthdateController = TextEditingController();
+  int? selectedGender; // 1: 남자, 2: 여자
 
   bool isPasswordVisible = false;
   bool agreedToPrivacy = false;
@@ -24,12 +26,15 @@ class _SignInScreenState extends State<SignInScreen> {
   void dispose() {
     idController.dispose();
     passwordController.dispose();
+    birthdateController.dispose(); // 추가
     super.dispose();
   }
 
   bool get isFormValid {
     return idController.text.isNotEmpty &&
         passwordController.text.length >= 6 &&
+        birthdateController.text.isNotEmpty &&
+        selectedGender != null &&
         agreedToPrivacy;
   }
 
@@ -46,8 +51,8 @@ class _SignInScreenState extends State<SignInScreen> {
           'userID': idController.text.trim(),
           'name': savedName,
           'password': passwordController.text,
-          'age': 25,
-          'gender': 'female',
+          'birthdate': birthdateController.text.trim(), // 문자열
+          'gender': selectedGender, // 숫자 (1 or 2)
         }),
       );
 
@@ -119,6 +124,33 @@ class _SignInScreenState extends State<SignInScreen> {
                 isValid: idController.text.isNotEmpty,
               ),
               SizedBox(height: 12),
+              // 생년월일 입력
+              _buildInputField(
+                controller: birthdateController,
+                hint: '생년월일 (예: 1995-08-07)',
+                isValid: birthdateController.text.isNotEmpty,
+              ),
+              SizedBox(height: 12),
+
+              // 성별 선택 드롭다운
+              DropdownButtonFormField<int>(
+                value: selectedGender,
+                items: [
+                  DropdownMenuItem(value: 1, child: Text('남자')),
+                  DropdownMenuItem(value: 2, child: Text('여자')),
+                ],
+                onChanged: (value) => setState(() => selectedGender = value),
+                decoration: InputDecoration(
+                  hintText: '성별 선택',
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
 
               TextField(
                 controller: passwordController,
