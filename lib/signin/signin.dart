@@ -51,8 +51,8 @@ class _SignInScreenState extends State<SignInScreen> {
           'userID': idController.text.trim(),
           'name': savedName,
           'password': passwordController.text,
-          'birthdate': birthdateController.text.trim(), // 문자열
-          'gender': selectedGender, // 숫자 (1 or 2)
+          'birthdate': birthdateController.text.trim(),
+          'gender': selectedGender,
         }),
       );
 

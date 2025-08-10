@@ -1,5 +1,44 @@
+// lib/onboarding/problem_page.dart
 import 'package:flutter/material.dart';
 import '../onboarding_data.dart';
+
+/// 서버 스펙에 맞춘 매핑 (라벨 -> enum)
+const Map<String, String> sleepIssuesMap = {
+  '잠들기 어려움': 'fallAsleepHard',
+  '자주 깨요': 'wakeOften',
+  '일찍 깨요': 'wakeEarly',
+  '낮 졸림': 'daySleepy',
+  '악몽/불안': 'nightmares',
+  '움직임 많음': 'movesALot',
+  '없음': 'none', // none은 보통 단독 선택(배타) 처리
+};
+
+const Map<String, String> emotionalSleepMap = {
+  '스트레스': 'stress',
+  '불안감': 'anxiety',
+  '외로움': 'loneliness',
+  '긴장': 'tension',
+  '기타': 'other',
+};
+
+/// 화면에 표시할 옵션 리스트 (라벨)
+const List<String> sleepIssueLabels = [
+  '잠들기 어려움',
+  '자주 깨요',
+  '일찍 깨요',
+  '낮 졸림',
+  '악몽/불안',
+  '움직임 많음',
+  '없음',
+];
+
+const List<String> emotionalInterferenceLabels = [
+  '스트레스',
+  '불안감',
+  '외로움',
+  '긴장',
+  '기타',
+];
 
 class ProblemPage extends StatefulWidget {
   final VoidCallback onNext;
@@ -10,12 +49,14 @@ class ProblemPage extends StatefulWidget {
 }
 
 class _ProblemPageState extends State<ProblemPage> {
-  Set<String> sleepIssues = {};
-  Set<String> emotionalSleepInterference = {};
+  /// 화면에서 선택된 "라벨"들을 저장합니다.
+  final Set<String> sleepIssues = {};
+  final Set<String> emotionalSleepInterference = {};
 
   bool get isValid =>
       sleepIssues.isNotEmpty && emotionalSleepInterference.isNotEmpty;
 
+  /// 공용 멀티 셀렉트 위젯
   Widget _multiSelectQuestion(
     String title,
     List<String> options,
@@ -37,16 +78,12 @@ class _ProblemPageState extends State<ProblemPage> {
             leading: CircleCheckbox(
               value: isChecked,
               onChanged: (checked) {
-                setState(() {
-                  onChanged(option, checked ?? false);
-                });
+                setState(() => onChanged(option, checked ?? false));
               },
             ),
             title: Text(option),
             onTap: () {
-              setState(() {
-                onChanged(option, !isChecked);
-              });
+              setState(() => onChanged(option, !isChecked));
             },
           );
         }),
@@ -55,12 +92,56 @@ class _ProblemPageState extends State<ProblemPage> {
     );
   }
 
+  /// 선택 토글 핸들러
+  /// - sleepIssues의 '없음'은 배타적으로 처리
   void _toggleSelection(Set<String> targetSet, String value, bool checked) {
+    final bool isSleepIssuesSet = identical(targetSet, sleepIssues);
+
+    if (isSleepIssuesSet && value == '없음') {
+      if (checked) {
+        targetSet
+          ..clear()
+          ..add('없음');
+      } else {
+        targetSet.remove('없음');
+      }
+      return;
+    }
+
+    if (isSleepIssuesSet && checked) {
+      targetSet.remove('없음'); // 다른 항목 선택 시 '없음' 해제
+    }
+
     if (checked) {
       targetSet.add(value);
     } else {
       targetSet.remove(value);
     }
+  }
+
+  /// 전송용(저장용) 배열로 변환: 한글 라벨 -> 서버 enum 값
+  List<String> _mapLabelsToEnums(
+    Set<String> labels,
+    Map<String, String> mapper,
+  ) {
+    return labels.map((l) => mapper[l]).whereType<String>().toList();
+  }
+
+  void _onNext() {
+    final m = OnboardingData.answers;
+
+    // 서버 스펙에 맞는 영문 enum 배열로 저장
+    m['sleepIssues'] = _mapLabelsToEnums(sleepIssues, sleepIssuesMap);
+    m['emotionalSleepInterference'] = _mapLabelsToEnums(
+      emotionalSleepInterference,
+      emotionalSleepMap,
+    );
+
+    // NOTE:
+    // 다른 페이지에서 preferredSleepSound, calmingSoundType, exerciseWhen, sleepGoal, preferenceBalance 등도
+    // 서버 스펙에 맞게 채워줘야 최종 요청이 200으로 통과됩니다.
+
+    widget.onNext();
   }
 
   @override
@@ -76,14 +157,14 @@ class _ProblemPageState extends State<ProblemPage> {
               const SizedBox(height: 16),
               _multiSelectQuestion(
                 'Q13. 수면 문제는?',
-                ['잠들기 어려움', '자주 깨요', '일찍 깨요', '낮 졸림', '악몽/불안', '움직임 많음', '없음'],
+                sleepIssueLabels,
                 sleepIssues,
                 (value, checked) =>
                     _toggleSelection(sleepIssues, value, checked),
               ),
               _multiSelectQuestion(
                 'Q14. 감정으로 인한 방해는?',
-                ['스트레스', '불안감', '외로움', '긴장', '기타'],
+                emotionalInterferenceLabels,
                 emotionalSleepInterference,
                 (value, checked) => _toggleSelection(
                   emotionalSleepInterference,
@@ -93,16 +174,7 @@ class _ProblemPageState extends State<ProblemPage> {
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed:
-                    isValid
-                        ? () {
-                          final m = OnboardingData.answers;
-                          m['sleepIssues'] = sleepIssues.toList();
-                          m['emotionalSleepInterference'] =
-                              emotionalSleepInterference.toList();
-                          widget.onNext();
-                        }
-                        : null,
+                onPressed: isValid ? _onNext : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8183D9),
                   minimumSize: const Size(double.infinity, 50),
@@ -120,7 +192,7 @@ class _ProblemPageState extends State<ProblemPage> {
   }
 }
 
-// CircleCheckbox 위젯은 기존에 만든 거 그대로 사용하세요!
+/// 기존 CircleCheckbox 위젯
 class CircleCheckbox extends StatelessWidget {
   final bool value;
   final ValueChanged<bool?> onChanged;

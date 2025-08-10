@@ -65,6 +65,7 @@ class _WelcomePageState extends State<WelcomePage> {
                         ? () async {
                           final name = _nameCtrl.text.trim();
                           OnboardingData.answers['name'] = name;
+                          await storage.write(key: 'name', value: name);
                           await storage.write(key: 'username', value: name);
                           widget.onNext();
                         }

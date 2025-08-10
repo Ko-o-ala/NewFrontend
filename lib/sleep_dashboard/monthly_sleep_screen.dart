@@ -34,6 +34,14 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
 
   Future<Map<DateTime, Map<String, dynamic>>> fetchSleepData() async {
     final userId = await storage.read(key: 'userID');
+    if (userId == null) throw Exception('로그인이 필요합니다.');
+
+    final token = await storage.read(key: 'authToken');
+    final headers = {
+      if (token != null) 'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+    };
+
     final now = DateTime.now();
     final year = now.year;
     final month = now.month;
@@ -41,31 +49,82 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
 
     final futures = List.generate(daysInMonth, (i) async {
       final date = DateTime(year, month, i + 1);
-      final formattedDate =
-          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      final uri = Uri.parse(
-        'https://kooala.tassoo.uk/sleep-data/$userId/$formattedDate',
-      );
+      final ymd = DateFormat('yyyy-MM-dd').format(date);
+      final uri = Uri.parse('https://kooala.tassoo.uk/sleep-data/$userId/$ymd');
 
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final records = data['data'];
-        if (records != null && records is List && records.isNotEmpty) {
-          final record = records[0];
-          return MapEntry(date, {
-            'duration': record['totalSleepDuration'],
-            'score': record['sleepScore'],
-          });
+      try {
+        final res = await http.get(uri, headers: headers);
+        if (res.statusCode != 200) {
+          debugPrint('[sleep-month] $ymd -> ${res.statusCode}');
+          return null;
         }
+
+        final body = json.decode(res.body);
+
+        Map<String, dynamic>? record;
+        if (body is Map &&
+            body['data'] is List &&
+            (body['data'] as List).isNotEmpty) {
+          record = (body['data'] as List).first as Map<String, dynamic>;
+        } else if (body is Map &&
+            (body['userID'] != null || body['date'] != null)) {
+          record = body.cast<String, dynamic>();
+        } else {
+          debugPrint('[sleep-month] $ymd -> empty schema');
+          return null;
+        }
+
+        final durationBlock =
+            (record['Duration'] ?? record['duration']) as Map<String, dynamic>?;
+        if (durationBlock == null) return null;
+
+        // 숫자/문자 모두 수용
+        int? asInt(dynamic v) {
+          if (v == null) return null;
+          if (v is num) return v.round();
+          if (v is String) return int.tryParse(v);
+          return null;
+        }
+
+        final total = asInt(durationBlock['totalSleepDuration']);
+        final score = asInt(record['sleepScore']);
+
+        if (total == null || score == null) {
+          debugPrint('[sleep-month] $ymd -> missing total/score');
+          return null;
+        }
+
+        // 서버가 다른 날짜로 저장했는지(앵커 불일치) 확인용
+        final serverDateStr =
+            (record['date'] ?? record['anchorDate'])?.toString();
+        if (serverDateStr != null) {
+          try {
+            final sd = DateTime.parse(serverDateStr);
+            final clientKey = DateTime(year, month, i + 1);
+            final serverKey = DateTime(sd.year, sd.month, sd.day);
+            if (clientKey != serverKey) {
+              debugPrint(
+                '[sleep-month] anchor mismatch: query=$ymd, server=${DateFormat('yyyy-MM-dd').format(serverKey)}',
+              );
+            }
+          } catch (_) {}
+        }
+
+        // 캘린더 키는 ‘조회일’로 고정(앵커가 다르면 위 로그로 파악)
+        return MapEntry(date, {'duration': total, 'score': score});
+      } catch (e) {
+        debugPrint('[sleep-month] $ymd -> error $e');
+        return null;
       }
-      return null;
     });
 
     final results = await Future.wait(futures);
-    return Map.fromEntries(
+    final map = Map.fromEntries(
       results.whereType<MapEntry<DateTime, Map<String, dynamic>>>(),
     );
+
+    debugPrint('[sleep-month] collected ${map.length}/$daysInMonth days');
+    return map;
   }
 
   Future<void> _handleLogout() async {
