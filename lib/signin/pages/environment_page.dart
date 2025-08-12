@@ -17,9 +17,9 @@ const Map<String, String> lightColorTemperatureMap = {
 };
 
 const Map<String, String> noisePreferenceMap = {
-  '완전 무음': 'silence',
+  '완전한 무음': 'silence',
   '백색소음': 'whiteNoise',
-  '유튜브 틀어요': 'youtube',
+  '유튜브': 'youtube',
   '기타': 'other',
 };
 
@@ -46,6 +46,27 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
       youtubeContentType;
   String? userInputNoise;
   String? userInputYoutube;
+  String _hex(Color c) =>
+      '#${c.value.toRadixString(16).padLeft(8, '0')}'; // AARRGGBB
+
+  void _logRadioColors(BuildContext context) {
+    final theme = Theme.of(context);
+    final fill = theme.radioTheme.fillColor; // Theme에서 지정된 경우
+
+    // 선택/미선택 상태에 대해 Theme 값을 해석
+    final selectedColor =
+        fill?.resolve({MaterialState.selected}) ?? theme.colorScheme.primary;
+
+    final unselectedColor =
+        fill?.resolve({}) ??
+        theme.unselectedWidgetColor ?? // (M2) 있을 수 있음
+        theme.colorScheme.onSurface.withOpacity(0.6); // 기본 링 색 추정
+
+    debugPrint('▶ Radio selected  = $selectedColor (${_hex(selectedColor)})');
+    debugPrint(
+      '▶ Radio unselect = $unselectedColor (${_hex(unselectedColor)})',
+    );
+  }
 
   bool get isValid =>
       sleepLightUsage != null &&
@@ -81,6 +102,10 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _logRadioColors(context);
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFFDF9),
       body: SafeArea(
@@ -98,14 +123,14 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                 (v) => setState(() => sleepLightUsage = v),
               ),
               _buildQuestion(
-                'Q2. 조명의 색온도는?',
+                'Q2. 조명의 색온도는 어떤 것을 선호하시나요?',
                 ['차가운 (6500K)', '중간 (4000K)', '따뜻한 (2700K)', '모르겠어요'],
                 lightColorTemperature,
                 (v) => setState(() => lightColorTemperature = v),
               ),
               _buildQuestion(
-                'Q3. 조용한 소음을 좋아하나요?',
-                ['완전 무음', '백색소음', '유튜브 틀어요', '기타'],
+                'Q3. 수면시에 어떤 소리를 좋아하시나요?',
+                ['완전한 무음', '백색소음', '유튜브', '기타'],
                 noisePreference,
                 (v) => setState(() => noisePreference = v),
               ),

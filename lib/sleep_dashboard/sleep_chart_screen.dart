@@ -1,7 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:health/health.dart';
 import 'sleep_entry.dart';
+import 'package:health/health.dart';
+
+// 수면 단계에 숫자 매핑 함수
+double stageToValue(HealthDataType type) {
+  switch (type) {
+    case HealthDataType.SLEEP_AWAKE:
+      return 0;
+    case HealthDataType.SLEEP_LIGHT:
+      return 1;
+    case HealthDataType.SLEEP_REM:
+      return 2;
+    case HealthDataType.SLEEP_DEEP:
+      return 3;
+    default:
+      return -1;
+  }
+}
 
 class SleepChartScreen extends StatelessWidget {
   final List<SleepEntry> entries;
@@ -15,7 +32,6 @@ class SleepChartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('🛠️ SleepChartScreen build 실행됨');
     final totalSleep = entries.fold<Duration>(
       Duration.zero,
       (prev, e) => prev + e.duration,
@@ -28,8 +44,20 @@ class SleepChartScreen extends StatelessWidget {
       now.day,
     ).subtract(const Duration(hours: 6));
 
+    final spots = <FlSpot>[];
+
+    for (var entry in entries) {
+      final startMin = entry.start.difference(baseTime).inMinutes.toDouble();
+      final endMin = entry.end.difference(baseTime).inMinutes.toDouble();
+      final y = stageToValue(entry.type).toDouble();
+
+      // ✅ 같은 y 값을 가진 시작, 종료 두 점 추가
+      spots.add(FlSpot(startMin, y));
+      spots.add(FlSpot(endMin, y));
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('수면 단계')),
+      appBar: AppBar(title: const Text('수면 단계 (Line Chart)')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -45,16 +73,72 @@ class SleepChartScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             SizedBox(
-              height: 120,
+              height: 200,
               width: double.infinity,
               child:
-                  entries.isEmpty
+                  spots.isEmpty
                       ? const Center(child: Text('수면 데이터가 없습니다.'))
-                      : CustomPaint(
-                        painter: SleepGraphPainter(entries, baseTime),
+                      : LineChart(
+                        LineChartData(
+                          minX: 0,
+                          maxX: 18 * 60.0, // 18시간 기준
+                          minY: 0,
+                          maxY: 3,
+                          gridData: FlGridData(show: true),
+                          borderData: FlBorderData(show: false),
+                          titlesData: FlTitlesData(
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                getTitlesWidget: (val, _) {
+                                  const labels = [
+                                    'Awake',
+                                    'Light',
+                                    'REM',
+                                    'Deep',
+                                  ];
+                                  return Text(
+                                    labels[val.toInt()],
+                                    style: const TextStyle(fontSize: 10),
+                                  );
+                                },
+                                interval: 1,
+                              ),
+                            ),
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                interval: 180,
+                                getTitlesWidget: (val, _) {
+                                  final h = (val / 60).floor();
+                                  final m = (val % 60).toInt();
+                                  return Text(
+                                    '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(fontSize: 10),
+                                  );
+                                },
+                              ),
+                            ),
+                            topTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            rightTitles: AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                          ),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: spots,
+                              isCurved: true, // ✅ 곡선으로 변경!
+                              barWidth: 4,
+                              color: Colors.indigo,
+                              dotData: FlDotData(show: false),
+                              belowBarData: BarAreaData(show: false),
+                            ),
+                          ],
+                        ),
                       ),
             ),
-
             const Divider(),
             _buildSummary(entries),
           ],
@@ -65,12 +149,10 @@ class SleepChartScreen extends StatelessWidget {
 
   Widget _buildSummary(List<SleepEntry> entries) {
     final Map<String, Duration> summary = {};
-
     for (var e in entries) {
       final key = e.readableType;
       summary[key] = (summary[key] ?? Duration.zero) + e.duration;
     }
-
     return Column(
       children:
           summary.entries.map((e) {
@@ -99,76 +181,4 @@ class SleepChartScreen extends StatelessWidget {
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
-}
-
-class SleepGraphPainter extends CustomPainter {
-  final List<SleepEntry> entries;
-  final DateTime baseTime;
-
-  SleepGraphPainter(this.entries, this.baseTime);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..strokeCap = StrokeCap.round;
-    final totalMinutes = 18 * 60;
-    print('🖼️ 그래프 그리는 중, entry 개수: ${entries.length}');
-
-    for (var entry in entries) {
-      print('${entry.readableType}: ${entry.start} ~ ${entry.end}');
-      final startMin = entry.start
-          .difference(baseTime)
-          .inMinutes
-          .clamp(0, totalMinutes);
-      final endMin = entry.end
-          .difference(baseTime)
-          .inMinutes
-          .clamp(0, totalMinutes);
-      var xStart = size.width * (startMin / totalMinutes);
-      var xEnd = size.width * (endMin / totalMinutes);
-
-      // 너무 좁은 바는 일정 너비로 보정
-      if ((xEnd - xStart).abs() < 2.0) {
-        xEnd = xStart + 2.0;
-      }
-      final y = _getY(entry.type, size.height);
-
-      paint.color = _getColor(entry.type);
-
-      canvas.drawRect(Rect.fromLTRB(xStart, y - 10, xEnd, y + 10), paint);
-      print('▶️ ${entry.readableType}: xStart=$xStart, xEnd=$xEnd');
-    }
-  }
-
-  double _getY(HealthDataType type, double height) {
-    switch (type) {
-      case HealthDataType.SLEEP_AWAKE:
-        return height * 0.2;
-      case HealthDataType.SLEEP_REM:
-        return height * 0.4;
-      case HealthDataType.SLEEP_LIGHT:
-        return height * 0.6;
-      case HealthDataType.SLEEP_DEEP:
-        return height * 0.8;
-      default:
-        return height * 0.5;
-    }
-  }
-
-  Color _getColor(HealthDataType type) {
-    switch (type) {
-      case HealthDataType.SLEEP_AWAKE:
-        return Colors.redAccent;
-      case HealthDataType.SLEEP_REM:
-        return Colors.lightBlue;
-      case HealthDataType.SLEEP_LIGHT:
-        return Colors.blue;
-      case HealthDataType.SLEEP_DEEP:
-        return Colors.indigo;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

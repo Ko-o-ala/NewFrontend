@@ -13,48 +13,47 @@ const Map<String, String> deviceMap = {
   '없음': 'none',
 };
 
-const Map<String, String> soundAutoOffTypeMap = {
-  '고정 시간': 'fixedTime',
-  '수면 감지': 'autoDetect',
-  '수동': 'manual',
-  '사용 없음': 'notUsed',
-};
-
 class CircleCheckbox extends StatelessWidget {
   final bool value;
   final ValueChanged<bool?> onChanged;
+  final Color selectedColor;
+  final Color unselectedBorderColor;
 
   const CircleCheckbox({
     super.key,
     required this.value,
     required this.onChanged,
+    this.selectedColor = const Color(0xFF6750A4),
+    this.unselectedBorderColor = Colors.black87,
   });
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = value ? selectedColor : unselectedBorderColor;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => onChanged(!value),
         borderRadius: BorderRadius.circular(20),
-        splashColor: Colors.transparent,
+        splashColor: selectedColor.withOpacity(0.12),
         highlightColor: Colors.transparent,
         child: Container(
-          width: 17, // ⬅️ 기존 24 → 20
-          height: 17,
+          width: 18,
+          height: 18,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.black87, width: 2),
+            border: Border.all(color: borderColor, width: 2),
           ),
           child:
               value
                   ? Center(
                     child: Container(
-                      width: 10, // ⬅️ 기존 12 → 10
-                      height: 10,
-                      decoration: const BoxDecoration(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black87,
+                        color: selectedColor,
                       ),
                     ),
                   )
@@ -74,9 +73,7 @@ class DevicePage extends StatefulWidget {
 }
 
 class _DevicePageState extends State<DevicePage> {
-  String? soundAutoOffType;
-
-  bool get isValid => selectedDevices.isNotEmpty && soundAutoOffType != null;
+  bool get isValid => selectedDevices.isNotEmpty != null;
 
   final deviceOptions = ['스마트워치', '스마트폰 앱', '스마트 조명', '사운드 기기', '없음'];
 
@@ -94,7 +91,7 @@ class _DevicePageState extends State<DevicePage> {
               const SizedBox(height: 16),
 
               const Text(
-                'Q18. 어떤 기기를 사용하나요?',
+                'Q18. 평소에 어떤 기기를 사용하시나요?(모두 골라주세요)',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
@@ -123,23 +120,6 @@ class _DevicePageState extends State<DevicePage> {
                 ),
               ),
 
-              const SizedBox(height: 24),
-              const Text(
-                'Q19. 원하는 사운드 자동 종료 방식은?',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              ...['고정 시간', '수면 감지', '수동', '사용 없음'].map(
-                (option) => RadioListTile(
-                  title: Text(option),
-                  value: option,
-                  groupValue: soundAutoOffType,
-                  onChanged: (value) {
-                    setState(() => soundAutoOffType = value);
-                  },
-                ),
-              ),
-
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed:
@@ -147,7 +127,6 @@ class _DevicePageState extends State<DevicePage> {
                         ? () async {
                           final m = OnboardingData.answers;
                           m['sleepDevicesUsed'] = selectedDevices.toList();
-                          m['soundAutoOffType'] = soundAutoOffType;
 
                           await storage.write(
                             key: 'sleepDevicesUsed',
@@ -156,10 +135,6 @@ class _DevicePageState extends State<DevicePage> {
                                   .map((e) => deviceMap[e]!)
                                   .toList(),
                             ),
-                          );
-                          await storage.write(
-                            key: 'soundAutoOffType',
-                            value: soundAutoOffTypeMap[soundAutoOffType]!,
                           );
 
                           widget.onNext();

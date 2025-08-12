@@ -4,9 +4,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 final storage = FlutterSecureStorage();
 const Map<String, String> sleepGoalMap = {
-  '깊은 수면': 'deepSleep',
-  '빠른 수면': 'fallAsleepFast',
-  '숙면 지속': 'stayAsleep',
+  '깊은 수면을 자고 싶어요': 'deepSleep',
+  '빨리 잠들고 싶어요': 'fallAsleepFast',
+  '깨지 않고 계속 자고 싶어요': 'stayAsleep',
 };
 
 const Map<String, String> feedbackFormatMap = {
@@ -24,10 +24,9 @@ class GoalPage extends StatefulWidget {
 }
 
 class _GoalPageState extends State<GoalPage> {
-  String? improveSleepQuality, preferredFeedbackFormat;
+  String? improveSleepQuality;
 
-  bool get isValid =>
-      improveSleepQuality != null && preferredFeedbackFormat != null;
+  bool get isValid => improveSleepQuality != null;
 
   @override
   Widget build(BuildContext context) {
@@ -41,13 +40,13 @@ class _GoalPageState extends State<GoalPage> {
               Image.asset('lib/assets/koala.png', width: 120),
               const SizedBox(height: 16),
               Text(
-                'Q25. 수면 목표는?',
+                'Q25. 가장 이루고 싶은 수면 목표가 무엇인가요?',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              ...['깊은 수면', '빠른 수면', '숙면 지속'].map(
+              ...['깊은 수면을 자고 싶어요', '빨리 잠들고 싶어요', '깨지 않고 계속 자고 싶어요'].map(
                 (o) => RadioListTile(
                   title: Text(o),
                   value: o,
@@ -55,22 +54,7 @@ class _GoalPageState extends State<GoalPage> {
                   onChanged: (v) => setState(() => improveSleepQuality = v),
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Q26. 피드백 형태는?',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              ...['텍스트 요약', '그래프', '음성 안내'].map(
-                (o) => RadioListTile(
-                  title: Text(o),
-                  value: o,
-                  groupValue: preferredFeedbackFormat,
-                  onChanged: (v) => setState(() => preferredFeedbackFormat = v),
-                ),
-              ),
+
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed:
@@ -78,18 +62,10 @@ class _GoalPageState extends State<GoalPage> {
                         ? () async {
                           final m = OnboardingData.answers;
                           m['sleepGoal'] = improveSleepQuality;
-                          m['preferredFeedbackFormat'] =
-                              preferredFeedbackFormat;
 
                           await storage.write(
                             key: 'sleepGoal',
                             value: sleepGoalMap[improveSleepQuality] ?? '',
-                          );
-                          await storage.write(
-                            key: 'preferredFeedbackFormat',
-                            value:
-                                feedbackFormatMap[preferredFeedbackFormat] ??
-                                '',
                           );
 
                           widget.onNext();
