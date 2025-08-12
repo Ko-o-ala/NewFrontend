@@ -4,9 +4,6 @@ import '../onboarding_data.dart';
 
 final storage = FlutterSecureStorage();
 // 파일 상단 아무 데나(클래스 밖) 추가
-List<String> _normalizeNone(List<String> arr) {
-  return arr.contains('none') ? <String>['none'] : arr;
-}
 
 const Map<String, String> preferredSleepSoundMap = {
   '자연 소리': 'nature',
@@ -54,7 +51,7 @@ class _SoundPageState extends State<SoundPage> {
 
               // Q15
               const Text(
-                'Q15. 수면 시 듣고 싶은 소리는?',
+                'Q15. 수면 시 듣고 싶은 소리는 어떤 것인가요?',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               ...preferredSleepSoundMap.keys.map(
@@ -71,7 +68,7 @@ class _SoundPageState extends State<SoundPage> {
 
               // Q16
               const Text(
-                'Q16. 마음을 안정시키는 사운드?',
+                'Q16. 마음을 안정시키는 사운드는 어떤 것인가요?',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               ...calmingSoundTypeMap.keys.map(
@@ -87,7 +84,7 @@ class _SoundPageState extends State<SoundPage> {
 
               // Q17
               const Text(
-                'Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드 ?',
+                'Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?(동그라미를 이동시켜주세요)',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),

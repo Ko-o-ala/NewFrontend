@@ -173,14 +173,14 @@ class _ProblemPageState extends State<ProblemPage> {
               Image.asset('lib/assets/koala.png', width: 120),
               const SizedBox(height: 16),
               _multiSelectQuestion(
-                'Q13. 수면 문제는?',
+                'Q13. 최근에 수면과 관련해서 어려움을 느끼시나요?(모두 골라주세요)',
                 sleepIssueLabels,
                 sleepIssues,
                 (value, checked) =>
                     _toggleSelection(sleepIssues, value, checked),
               ),
               _multiSelectQuestion(
-                'Q14. 감정으로 인한 방해는?',
+                'Q14. 수면에 가장 방해되는 감정은 어떤 것인가요?(모두 골라주세요)',
                 emotionalInterferenceLabels,
                 emotionalSleepInterference,
                 (value, checked) => _toggleSelection(
@@ -213,38 +213,44 @@ class _ProblemPageState extends State<ProblemPage> {
 class CircleCheckbox extends StatelessWidget {
   final bool value;
   final ValueChanged<bool?> onChanged;
+  final Color selectedColor;
+  final Color unselectedBorderColor;
 
   const CircleCheckbox({
     super.key,
     required this.value,
     required this.onChanged,
+    this.selectedColor = const Color(0xFF6750A4),
+    this.unselectedBorderColor = Colors.black87,
   });
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = value ? selectedColor : unselectedBorderColor;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => onChanged(!value),
         borderRadius: BorderRadius.circular(20),
-        splashColor: Colors.transparent,
+        splashColor: selectedColor.withOpacity(0.12),
         highlightColor: Colors.transparent,
         child: Container(
-          width: 17,
-          height: 17,
+          width: 18,
+          height: 18,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.black87, width: 2),
+            border: Border.all(color: borderColor, width: 2),
           ),
           child:
               value
                   ? Center(
                     child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black87,
+                        color: selectedColor,
                       ),
                     ),
                   )
