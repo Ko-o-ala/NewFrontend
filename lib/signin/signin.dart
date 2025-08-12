@@ -14,13 +14,25 @@ class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController idController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController birthdateController = TextEditingController();
-  int? selectedGender; // 1: 남자, 2: 여자
-
+  int? selectedGender = 0;
   bool isPasswordVisible = false;
   bool agreedToPrivacy = false;
   bool isLoading = false;
 
   final storage = FlutterSecureStorage();
+  // "YYYY-MM-DD" 형식 + 실제로 존재하는 날짜인지 검사
+  final _birthdateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  bool _isBirthdateValid(String s) {
+    final t = s.trim();
+    if (!_birthdateRegex.hasMatch(t)) return false;
+    final parts = t.split('-');
+    final y = int.parse(parts[0]),
+        m = int.parse(parts[1]),
+        d = int.parse(parts[2]);
+    final dt = DateTime(y, m, d);
+    // 2025-02-30 같은 잘못된 날짜 걸러내기
+    return dt.year == y && dt.month == m && dt.day == d;
+  }
 
   @override
   void dispose() {
@@ -33,8 +45,7 @@ class _SignInScreenState extends State<SignInScreen> {
   bool get isFormValid {
     return idController.text.isNotEmpty &&
         passwordController.text.length >= 6 &&
-        birthdateController.text.isNotEmpty &&
-        selectedGender != null &&
+        _isBirthdateValid(birthdateController.text) &&
         agreedToPrivacy;
   }
 
@@ -128,18 +139,20 @@ class _SignInScreenState extends State<SignInScreen> {
               _buildInputField(
                 controller: birthdateController,
                 hint: '생년월일 (예: 1995-08-07)',
-                isValid: birthdateController.text.isNotEmpty,
+                isValid: _isBirthdateValid(birthdateController.text),
               ),
               SizedBox(height: 12),
 
               // 성별 선택 드롭다운
               DropdownButtonFormField<int>(
                 value: selectedGender,
-                items: [
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('선택 안함')),
                   DropdownMenuItem(value: 1, child: Text('남자')),
                   DropdownMenuItem(value: 2, child: Text('여자')),
                 ],
-                onChanged: (value) => setState(() => selectedGender = value),
+                onChanged:
+                    (value) => setState(() => selectedGender = value ?? 0),
                 decoration: InputDecoration(
                   hintText: '성별 선택',
                   filled: true,
