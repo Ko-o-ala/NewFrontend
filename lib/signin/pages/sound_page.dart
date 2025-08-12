@@ -3,6 +3,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../onboarding_data.dart';
 
 final storage = FlutterSecureStorage();
+// 파일 상단 아무 데나(클래스 밖) 추가
+List<String> _normalizeNone(List<String> arr) {
+  return arr.contains('none') ? <String>['none'] : arr;
+}
 
 const Map<String, String> preferredSleepSoundMap = {
   '자연 소리': 'nature',

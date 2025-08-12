@@ -19,7 +19,7 @@ const Map<String, String> caffeineIntakeLevelMap = {
 const Map<String, String> exerciseFrequencyMap = {
   '하지 않음': 'none',
   '주2~3회': '2to3week',
-  '매일 아침': 'dailyMorning',
+  '매일': 'daily',
 };
 
 const Map<String, String> screenTimeBeforeSleepMap = {
@@ -32,6 +32,12 @@ const Map<String, String> stressLevelMap = {
   '높음': 'high',
   '보통': 'medium',
   '낮음': 'low',
+};
+const Map<String, String> exerciseWhenMap = {
+  '오전': 'morning',
+  '낮': 'day',
+  '저녁': 'night',
+  '운동을 하지 않음': 'none',
 };
 
 class HealthPage extends StatefulWidget {
@@ -47,7 +53,8 @@ class _HealthPageState extends State<HealthPage> {
       caffeineIntakeLevel,
       exerciseFrequency,
       screenTimeBeforeSleep,
-      stressLevel;
+      stressLevel,
+      exerciseWhen;
 
   bool get isValid =>
       timeToFallAsleep != null &&
@@ -101,10 +108,16 @@ class _HealthPageState extends State<HealthPage> {
                 (v) => setState(() => caffeineIntakeLevel = v),
               ),
               _q(
-                'Q22. 운동 빈도는?',
-                ['하지 않음', '주2~3회', '매일 아침'],
+                'Q22. 운동을 얼마나 자주 하시나요??',
+                ['하지 않음', '주2~3회', '매일'],
                 exerciseFrequency,
                 (v) => setState(() => exerciseFrequency = v),
+              ),
+              _q(
+                'Q23. 운동을 언제 하시나요??',
+                ['오전', '낮', '저녁', '운동을 하지 않음'],
+                exerciseWhen,
+                (v) => setState(() => exerciseWhen = v),
               ),
               _q(
                 'Q23. 수면 전 화면 사용 시간은?',
@@ -131,6 +144,7 @@ class _HealthPageState extends State<HealthPage> {
                               caffeineIntakeLevelMap[caffeineIntakeLevel];
                           m['exerciseFrequency'] =
                               exerciseFrequencyMap[exerciseFrequency];
+                          m['exerciseWhen'] = exerciseWhenMap[exerciseWhen];
                           m['screenTimeBeforeSleep'] =
                               screenTimeBeforeSleepMap[screenTimeBeforeSleep];
                           m['stressLevel'] = stressLevelMap[stressLevel];
@@ -149,6 +163,10 @@ class _HealthPageState extends State<HealthPage> {
                             key: 'exerciseFrequency',
                             value:
                                 exerciseFrequencyMap[exerciseFrequency] ?? '',
+                          );
+                          await storage.write(
+                            key: 'exerciseWhen',
+                            value: exerciseWhenMap[exerciseWhen] ?? '',
                           );
                           await storage.write(
                             key: 'screenTimeBeforeSleep',

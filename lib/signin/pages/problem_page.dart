@@ -2,6 +2,10 @@
 import 'package:flutter/material.dart';
 import '../onboarding_data.dart';
 
+List<String> _normalizeNone(List<String> arr) {
+  return arr.contains('none') ? <String>['none'] : arr;
+}
+
 /// 서버 스펙에 맞춘 매핑 (라벨 -> enum)
 const Map<String, String> sleepIssuesMap = {
   '잠들기 어려움': 'fallAsleepHard',
@@ -130,16 +134,29 @@ class _ProblemPageState extends State<ProblemPage> {
   void _onNext() {
     final m = OnboardingData.answers;
 
-    // 서버 스펙에 맞는 영문 enum 배열로 저장
-    m['sleepIssues'] = _mapLabelsToEnums(sleepIssues, sleepIssuesMap);
-    m['emotionalSleepInterference'] = _mapLabelsToEnums(
+    // 1) 라벨 → enum
+    final sleepIssuesEnums = _mapLabelsToEnums(sleepIssues, sleepIssuesMap);
+    final emotionalEnums = _mapLabelsToEnums(
       emotionalSleepInterference,
       emotionalSleepMap,
     );
 
-    // NOTE:
-    // 다른 페이지에서 preferredSleepSound, calmingSoundType, exerciseWhen, sleepGoal, preferenceBalance 등도
-    // 서버 스펙에 맞게 채워줘야 최종 요청이 200으로 통과됩니다.
+    // 2) 'none' 단독 전송 보장
+    m['sleepIssues'] = _normalizeNone(sleepIssuesEnums);
+    m['emotionalSleepInterference'] = emotionalEnums;
+
+    // 3) (선택) 디버그로 타입 확인 — 진짜 List<String>인지 확인
+    debugPrint(
+      'sleepIssues => ${m['sleepIssues'].runtimeType} : ${m['sleepIssues']}',
+    );
+    debugPrint(
+      'emotionalSleepInterference => ${m['emotionalSleepInterference'].runtimeType} : ${m['emotionalSleepInterference']}',
+    );
+
+    // NOTE: 나머지 페이지에서 아래 필드들도 꼭 채워야 서버 통과
+    // m['exerciseWhen']          // 'morning'|'day'|'night'|'none' (String)
+    // m['sleepGoal']             // List<String>
+    // m['preferenceBalance']     // double/int
 
     widget.onNext();
   }
