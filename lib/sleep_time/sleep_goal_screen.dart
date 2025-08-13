@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'weekday_selector.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SleepGoalScreen extends StatefulWidget {
   @override
@@ -14,6 +15,18 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
 
   String formatTime(TimeOfDay time) {
     return '${time.hour}시 ${time.minute}분';
+  }
+
+  Future<void> _saveSleepGoal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final duration = calculateSleepDuration();
+
+    if (duration != null) {
+      for (final day in selectedDays) {
+        // day: 0(Sunday) ~ 6(Saturday)
+        prefs.setInt('sleepGoal_$day', duration.inMinutes);
+      }
+    }
   }
 
   Duration? calculateSleepDuration() {
@@ -206,7 +219,8 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
               ElevatedButton(
                 onPressed:
                     (bedTime != null && wakeTime != null)
-                        ? () {
+                        ? () async {
+                          await _saveSleepGoal();
                           final sleepDuration = calculateSleepDuration();
                           Navigator.pop(context, sleepDuration);
                         }
