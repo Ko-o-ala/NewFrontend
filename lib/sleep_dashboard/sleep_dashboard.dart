@@ -26,7 +26,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
   String username = '사용자';
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
   String goalText = '미설정';
-
+  Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
   bool _isLoggedIn = false;
@@ -48,12 +48,13 @@ class _SleepDashboardState extends State<SleepDashboard> {
   Future<void> _loadGoalText() async {
     final goal = await _loadTodayGoalSleepDuration();
     print('[goal] 불러온 수면 목표: ${goal?.inMinutes}분');
+
     setState(() {
-      if (goal != null) {
-        goalText = '${goal.inHours}시간 ${goal.inMinutes % 60}분';
-      } else {
-        goalText = '목표수면시간 없음';
-      }
+      goalSleepDuration = goal ?? Duration(hours: 8);
+      goalText =
+          goal != null
+              ? '${goal.inHours}시간 ${goal.inMinutes % 60}분'
+              : '목표수면시간 없음';
     });
   }
 
@@ -411,8 +412,18 @@ class _SleepDashboardState extends State<SleepDashboard> {
                       icon: Icons.access_time,
                       time: goalText,
                       label: '목표 수면 시간',
-                      onTap: () {
-                        Navigator.pushNamed(context, '/time-set');
+                      onTap: () async {
+                        final updatedDuration = await Navigator.pushNamed(
+                          context,
+                          '/time-set',
+                        );
+                        if (updatedDuration is Duration) {
+                          setState(() {
+                            goalSleepDuration = updatedDuration;
+                            goalText =
+                                '${updatedDuration.inHours}시간 ${updatedDuration.inMinutes % 60}분';
+                          });
+                        }
                       },
                     ),
                   ),

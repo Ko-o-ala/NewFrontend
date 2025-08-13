@@ -17,6 +17,36 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
     return '${time.hour}시 ${time.minute}분';
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadPreviousSettings(); // ✅ 이전 설정 불러오기
+  }
+
+  Future<void> _loadPreviousSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 🔁 취침/기상 시간 불러오기
+    final bedHour = prefs.getInt('bedHour');
+    final bedMin = prefs.getInt('bedMin');
+    final wakeHour = prefs.getInt('wakeHour');
+    final wakeMin = prefs.getInt('wakeMin');
+
+    // 🔁 선택한 요일들 불러오기
+    final selectedList = prefs.getStringList('selectedDays');
+    final daySet = selectedList?.map(int.parse).toSet() ?? {};
+
+    setState(() {
+      if (bedHour != null && bedMin != null) {
+        bedTime = TimeOfDay(hour: bedHour, minute: bedMin);
+      }
+      if (wakeHour != null && wakeMin != null) {
+        wakeTime = TimeOfDay(hour: wakeHour, minute: wakeMin);
+      }
+      selectedDays = daySet;
+    });
+  }
+
   Future<void> _saveSleepGoal() async {
     final prefs = await SharedPreferences.getInstance();
     final duration = calculateSleepDuration();
@@ -27,6 +57,19 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
         prefs.setInt('sleepGoal_$day', duration.inMinutes);
       }
     }
+
+    // ✅ 저장 시 bedTime, wakeTime 저장
+    if (bedTime != null && wakeTime != null) {
+      prefs.setInt('bedHour', bedTime!.hour);
+      prefs.setInt('bedMin', bedTime!.minute);
+      prefs.setInt('wakeHour', wakeTime!.hour);
+      prefs.setInt('wakeMin', wakeTime!.minute);
+    }
+    // ✅ 선택한 요일들 저장
+    prefs.setStringList(
+      'selectedDays',
+      selectedDays.map((e) => e.toString()).toList(),
+    );
   }
 
   Duration? calculateSleepDuration() {
