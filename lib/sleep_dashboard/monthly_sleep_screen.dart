@@ -24,6 +24,38 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     _loadUsername();
   }
 
+  Future<int?> fetchMonthlyAverageSleep() async {
+    final userId = await storage.read(key: 'userID');
+    if (userId == null) throw Exception('로그인이 필요합니다.');
+
+    final token = await storage.read(key: 'authToken');
+    final headers = {
+      if (token != null) 'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+    };
+
+    final uri = Uri.parse(
+      'https://kooala.tassoo.uk/sleep-data/$userId/month-avg',
+    );
+    try {
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode != 200) {
+        debugPrint('[month-avg] status ${res.statusCode}');
+        return null;
+      }
+      final body = json.decode(res.body);
+      if (body is Map && body['average'] != null) {
+        final avg = body['average'];
+        if (avg is num) return avg.round();
+        if (avg is String) return int.tryParse(avg);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[month-avg] error: $e');
+      return null;
+    }
+  }
+
   Future<void> _loadUsername() async {
     final name = await storage.read(key: 'username');
     setState(() {
@@ -196,9 +228,26 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text(
-                '평균 6시간 12분을 주무셨어요.\n목표보다 아쉽지만, 점점 안정적인 패턴을 찾아가고 있어요!',
-                textAlign: TextAlign.center,
+              FutureBuilder<int?>(
+                future: fetchMonthlyAverageSleep(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError || snapshot.data == null) {
+                    return const Text(
+                      '평균 수면 데이터를 불러오는 데 실패했어요.',
+                      textAlign: TextAlign.center,
+                    );
+                  } else {
+                    final totalMinutes = snapshot.data!;
+                    final hrs = totalMinutes ~/ 60;
+                    final mins = totalMinutes % 60;
+                    return Text(
+                      '평균 ${hrs}시간 ${mins}분을 주무셨어요.\n목표보다 아쉽지만, 점점 안정적인 패턴을 찾아가고 있어요!',
+                      textAlign: TextAlign.center,
+                    );
+                  }
+                },
               ),
             ],
           ),

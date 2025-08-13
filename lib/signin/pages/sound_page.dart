@@ -30,12 +30,18 @@ class SoundPage extends StatefulWidget {
 }
 
 class _SoundPageState extends State<SoundPage> {
+  String? calmingSoundOtherInput;
+
   String? preferredSleepSoundLabel; // 라벨(한국어) 보관
   String? calmingSoundTypeLabel; // 라벨(한국어) 보관
   double preferenceBalance = 0.5; // 0.0 ~ 1.0
 
   bool get isValid =>
-      preferredSleepSoundLabel != null && calmingSoundTypeLabel != null;
+      preferredSleepSoundLabel != null &&
+      calmingSoundTypeLabel != null &&
+      (calmingSoundTypeLabel != '기타' ||
+          (calmingSoundOtherInput != null &&
+              calmingSoundOtherInput!.isNotEmpty));
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +85,16 @@ class _SoundPageState extends State<SoundPage> {
                   onChanged: (v) => setState(() => calmingSoundTypeLabel = v),
                 ),
               ),
+              if (calmingSoundTypeLabel == '기타')
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: '기타 사운드를 입력해주세요',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged:
+                      (value) =>
+                          setState(() => calmingSoundOtherInput = value.trim()),
+                ),
 
               const SizedBox(height: 16),
 
@@ -129,6 +145,11 @@ class _SoundPageState extends State<SoundPage> {
                               preferredSleepSoundMap[preferredSleepSoundLabel]!;
                           final calmingEnum =
                               calmingSoundTypeMap[calmingSoundTypeLabel]!;
+                          if (calmingSoundTypeLabel == '기타' &&
+                              calmingSoundOtherInput != null &&
+                              calmingSoundOtherInput!.isNotEmpty) {
+                            m['calmingSoundTypeOther'] = calmingSoundOtherInput;
+                          }
 
                           // 서버 스펙에 맞게 저장
                           m['preferredSleepSound'] =
