@@ -390,6 +390,9 @@ class _SleepDashboardState extends State<SleepDashboard> {
                       icon: Icons.access_time,
                       time: goalText,
                       label: '목표 수면 시간',
+                      onTap: () {
+                        Navigator.pushNamed(context, '/time-set');
+                      },
                     ),
                   ),
                 ],
@@ -576,34 +579,46 @@ class _InfoItem extends StatelessWidget {
   final IconData icon;
   final String time;
   final String label;
+  final VoidCallback? onTap;
+
   const _InfoItem({
     required this.icon,
     required this.time,
     required this.label,
+    this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Icon(icon, size: 32, color: Colors.blueAccent),
-      const SizedBox(width: 8),
-      Flexible(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              time,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final content = Row(
+      children: [
+        Icon(icon, size: 32, color: Colors.blueAccent),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                time,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+
+    return onTap != null
+        ? GestureDetector(onTap: onTap, child: content)
+        : content;
+  }
 }
