@@ -157,6 +157,8 @@ class _SleepDashboardState extends State<SleepDashboard> {
     }
 
     final totalSleepMin = deepMin + remMin + lightMin;
+    if (totalSleepMin == 0) return 0;
+
     final totalMinutes = sleepEnd.difference(sleepStart).inMinutes;
     final goalMinutes = goalSleepDuration.inMinutes;
 
