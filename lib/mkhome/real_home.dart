@@ -2,20 +2,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-
+import 'dart:typed_data';
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/mkhome/ChatDetailScreen.dart';
-
+import 'package:flutter_sound/public/flutter_sound_player.dart';
+import 'dart:convert';
 // ✅ 분리한 소켓 서비스 사용
 import 'package:my_app/services/voice_socket_service.dart';
 
 // ✅ Hive에 채팅 누적
 import 'package:hive/hive.dart';
 import 'package:my_app/models/message.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 
 final storage = FlutterSecureStorage();
+final _player = FlutterSoundPlayer();
 
 class RealHomeScreen extends StatefulWidget {
   const RealHomeScreen({super.key});
@@ -33,6 +36,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   String _username = '';
   bool _isLoggedIn = false;
   double _soundLevel = 0.0;
+  bool _isPlaying = false;
+  StreamSubscription<Uint8List>? _audioSub;
 
   late AnimationController _animationController;
   late Animation<double> _animation;
@@ -50,24 +55,27 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     super.initState();
     _loadUsername();
 
-    // 🔌 소켓 연결 (앱 생애주기에서 1회면 충분)
-    // 보통 https:// 로 시도 (서버 설정에 따라 조정)
-    voiceService.connect(url: 'https://llm.tassoo.uk');
+    _initPlayer(); // 🎧 오디오 플레이어 초기화
 
-    // 💾 Hive 박스 핸들
     _chatBox = Hive.box<Message>('chatBox');
+    if (!voiceService.isConnected) {
+      voiceService.connect(url: 'https://llm.tassoo.uk');
+    }
 
-    // 🤖 서버 응답 → 대화 누적
-    _assistantSub = voiceService.assistantStream.listen((reply) {
-      _addMessage('bot', reply);
-    });
-
-    // 🎙️ (서버가 STT 해줄 때만) 사용자 음성 텍스트도 누적하고 싶다면
     _transcriptSub = voiceService.transcriptionStream.listen((userText) {
       if (userText.trim().isNotEmpty) {
         _addMessage('user', userText);
         setState(() => _text = userText);
       }
+    });
+
+    _assistantSub = voiceService.assistantStream.listen((reply) {
+      print("🤖 LLM 응답 수신: $reply");
+
+      if (reply.trim().isEmpty) return;
+
+      _chatBox.add(Message(sender: 'bot', text: reply.trim()));
+      setState(() {});
     });
 
     _speech = stt.SpeechToText();
@@ -80,13 +88,29 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       begin: 0.8,
       end: 1.2,
     ).chain(CurveTween(curve: Curves.easeInOut)).animate(_animationController);
-
     _animationController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _animationController.reverse();
       } else if (status == AnimationStatus.dismissed && _isListening) {
         _animationController.forward();
       }
+    });
+  }
+
+  Future<void> _initPlayer() async {
+    await _player.openPlayer();
+
+    await _player.startPlayerFromStream(
+      codec: Codec.pcm16,
+      sampleRate: 16000,
+      numChannels: 1,
+      interleaved: true,
+      bufferSize: 2048, // 또는 4096, 8192 등으로 조정 가능
+    );
+
+    _audioSub = voiceService.audioStream.listen((pcmData) {
+      _player.uint8ListSink?.add(pcmData);
+      setState(() => _isPlaying = true);
     });
   }
 
@@ -106,6 +130,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _assistantSub?.cancel();
     _transcriptSub?.cancel();
     super.dispose();
+    _audioSub?.cancel();
+    _player.closePlayer();
   }
 
   // ✅ 메시지 저장 + 상단 텍스트 갱신
@@ -126,7 +152,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           if (status == "done") {
             final finalText = _text.trim();
             if (finalText.isNotEmpty) {
-              _addMessage('user', finalText);
               voiceService.sendText(finalText); // ← LLM 서버로 텍스트 전송
             }
             _stopListening();
@@ -144,7 +169,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _animationController.forward();
         _speech.listen(
           localeId: 'ko_KR',
-          onResult: (val) => setState(() => _text = val.recognizedWords),
+          onResult: (val) {
+            if (val.finalResult) {
+              setState(() => _text = val.recognizedWords);
+            }
+          },
           pauseFor: const Duration(seconds: 3),
           listenFor: const Duration(minutes: 1),
           cancelOnError: true,
@@ -282,6 +311,19 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         );
                       },
                     ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      _isPlaying ? Icons.volume_up : Icons.volume_mute,
+                      color: Colors.black87,
+                      size: 28,
+                    ),
+                    onPressed: () {
+                      // 옵션: 눌렀을 때 무언가 트리거하고 싶으면 여기에
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("📢 음성 응답을 듣고 있어요")),
+                      );
+                    },
                   ),
                 ],
               ),

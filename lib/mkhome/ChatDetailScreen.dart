@@ -43,7 +43,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _fetchLLMResponse(String input) async {
     try {
       final response = await http.post(
-        Uri.parse('https://your-llm-server.com/api/chat'),
+        Uri.parse('https://llm.tassoo.uk/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'message': input}),
       );
@@ -102,43 +102,49 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ],
       ),
       backgroundColor: const Color(0xFFF7F7F7),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                return _buildMessageBubble(messages[index]);
-              },
-            ),
-          ),
-          const Divider(height: 1),
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: '메시지를 입력하세요...',
-                      border: InputBorder.none,
+      body:
+          messages.isEmpty
+              ? const Center(child: Text('메시지가 없습니다'))
+              : Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        return _buildMessageBubble(messages[index]);
+                      },
                     ),
-                    onSubmitted: (_) => _handleSendMessage(),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _handleSendMessage,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+                  const Divider(height: 1),
+                  Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            decoration: const InputDecoration(
+                              hintText: '메시지를 입력하세요...',
+                              border: InputBorder.none,
+                            ),
+                            onSubmitted: (_) => _handleSendMessage(),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.send),
+                          onPressed: _handleSendMessage,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
     );
   }
 }

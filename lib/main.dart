@@ -24,23 +24,17 @@ import 'package:my_app/device/alarm/alarm_model.dart';
 import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
-import 'models/message.dart';
+import 'package:my_app/models/message.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  //Hive 초기화
   await Hive.initFlutter();
 
-  Hive.registerAdapter(AlarmModelAdapter()); // ✅ 먼저 등록
+  Hive.registerAdapter(MessageAdapter());
 
-  await Hive.openBox('chatBox');
-  await Hive.openBox<AlarmModel>('alarms');
-
-  try {
-    await Hive.openBox<AlarmModel>('alarms');
-    print('✅ Hive box "alarms" opened successfully');
-  } catch (e) {
-    print('❌ Hive box "alarms" open failed: $e');
-  }
+  await Hive.openBox<Message>('chatBox'); // ✅ 여기서 1회만 오픈
 
   runApp(
     MultiProvider(
