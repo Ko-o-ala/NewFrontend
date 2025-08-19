@@ -137,6 +137,33 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     );
   }
 
+  Future<void> _connectWithJwt() async {
+    final jwt = await storage.read(key: 'jwt'); // flutter_secure_storage에서 읽기
+
+    // 서버가 읽는 파라미터 이름을 맞추세요: 'jwt' 또는 'token'
+    const paramName = 'jwt';
+
+    // 기본 URL
+    const base = 'https://llm.tassoo.uk/';
+
+    // 기존 쿼리에 안전하게 병합해서 붙이기
+    String _appendQuery(String baseUrl, Map<String, String> extra) {
+      final uri = Uri.parse(baseUrl);
+      final merged = <String, String>{...uri.queryParameters, ...extra};
+      return uri.replace(queryParameters: merged).toString();
+    }
+
+    final urlWithJwt =
+        (jwt != null && jwt.isNotEmpty)
+            ? _appendQuery(base, {paramName: jwt})
+            : base;
+
+    if (!voiceService.isConnected) {
+      // connect가 void면 await 쓰지 마세요. (스크린샷 에러 원인)
+      voiceService.connect(url: urlWithJwt);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -144,9 +171,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _initAudioPlayer();
 
     _chatBox = Hive.box<Message>('chatBox');
-    if (!voiceService.isConnected) {
-      voiceService.connect(url: 'https://llm.tassoo.uk/');
-    }
+
+    _connectWithJwt();
 
     Uint8List _toMp3Bytes(dynamic evt) {
       try {
