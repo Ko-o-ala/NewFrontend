@@ -1,28 +1,22 @@
 // lib/mkhome/real_home.dart
 import 'dart:async';
+import 'dart:io'; // ← 임시파일 폴백용
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'dart:typed_data';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/mkhome/ChatDetailScreen.dart';
-import 'package:flutter_sound/public/flutter_sound_player.dart';
-import 'dart:convert';
-// ✅ 분리한 소켓 서비스 사용
 import 'package:my_app/services/voice_socket_service.dart';
-import 'package:audio_session/audio_session.dart';
+import 'dart:convert'; // base64Decode
 
-// ✅ Hive에 채팅 누적
 import 'package:hive/hive.dart';
 import 'package:my_app/models/message.dart';
-import 'package:flutter_sound/flutter_sound.dart';
-import 'dart:io' show Platform;
-import 'package:flutter_sound/flutter_sound.dart';
+
+import 'package:audioplayers/audioplayers.dart';
 
 final storage = FlutterSecureStorage();
-final _player = FlutterSoundPlayer();
 
 class RealHomeScreen extends StatefulWidget {
   const RealHomeScreen({super.key});
@@ -33,70 +27,112 @@ class RealHomeScreen extends StatefulWidget {
 
 class _RealHomeScreenState extends State<RealHomeScreen>
     with SingleTickerProviderStateMixin {
+  // ===== Speech & UI =====
   late stt.SpeechToText _speech;
-
   bool _isListening = false;
   String _text = '';
   String _username = '';
   bool _isLoggedIn = false;
   double _soundLevel = 0.0;
-  bool _isPlaying = false;
-  StreamSubscription<Uint8List>? _audioSub;
 
+  // ===== Audio (audioplayers) =====
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+
+  // ===== Socket & DB =====
+  final voiceService = VoiceSocketService.instance;
+  late Box<Message> _chatBox;
+  StreamSubscription<String>? _assistantSub;
+  StreamSubscription<String>? _transcriptSub;
+  StreamSubscription<dynamic>? _pcmSub; // MP3 청크 구독
+
+  // MP3 버퍼 (WebSocket에서 받은 8KB 청크를 모았다가 한 번에 재생)
+  final List<Uint8List> _audioBuffer = [];
+  bool _audioAvailable = false;
+
+  // ===== Animation =====
   late AnimationController _animationController;
   late Animation<double> _animation;
-
-  // ✅ 싱글턴 서비스
-  final voiceService = VoiceSocketService.instance;
-
-  // ✅ Hive 박스 & 소켓 구독
-  late Box<Message> _chatBox;
-  StreamSubscription<String>? _assistantSub; // assistant_response
-  StreamSubscription<String>? _transcriptSub; // (옵션) transcription
-  StreamSubscription<Uint8List>? _pcmSub; // ← 오디오 스트림 구독 1개만
-  // List<Uint8List> _audioBuffer = [];      // ← 버퍼링 제거
 
   @override
   void initState() {
     super.initState();
     _loadUsername();
-
-    _initPlayer(); // 🎧 오디오 플레이어 초기화
+    _initAudioPlayer();
 
     _chatBox = Hive.box<Message>('chatBox');
     if (!voiceService.isConnected) {
       voiceService.connect(url: 'https://llm.tassoo.uk/');
     }
 
-    /*
-    _transcriptSub = voiceService.transcriptionStream.listen((userText) {
-      if (userText.trim().isNotEmpty) {
-        _addMessage('user', userText);
-        setState(() => _text = userText);
+    Uint8List _toMp3Bytes(dynamic evt) {
+      try {
+        // 1) 이미 바이트
+        if (evt is Uint8List) return evt;
+        if (evt is List<int>) return Uint8List.fromList(evt);
+
+        // 2) data URL 또는 순수 base64 문자열
+        if (evt is String) {
+          final s = evt.startsWith('data:') ? evt.split(',').last : evt;
+          return base64Decode(s);
+        }
+
+        // 3) JSON/Map 형태: 흔한 키들 대응
+        if (evt is Map) {
+          final a = evt['audio'] ?? evt['chunk'] ?? evt['data'] ?? evt['bytes'];
+          if (a == null) return Uint8List(0);
+          if (a is Uint8List) return a;
+          if (a is List<int>) return Uint8List.fromList(a);
+          if (a is String) {
+            final s = a.startsWith('data:') ? a.split(',').last : a;
+            return base64Decode(s);
+          }
+        }
+      } catch (e) {
+        debugPrint('toMp3Bytes error: $e (${evt.runtimeType})');
       }
-    });
-    */
-    _audioSub = voiceService.audioStream.listen((pcmData) {
-      debugPrint('Received PCM chunk, length: ${pcmData.length}');
-      _audioBuffer.add(pcmData);
-      setState(() {
+      return Uint8List(0);
+    }
+
+    // 서버 오디오(MP3 청크) 수신 → 버퍼에 저장
+    _pcmSub = voiceService.audioStream.listen(
+      (event) {
+        final bytes = _toMp3Bytes(event);
+        if (bytes.isEmpty) {
+          debugPrint('⏩ skip non-audio or empty: ${event.runtimeType}');
+          return;
+        }
+
+        _audioBuffer.add(bytes);
         _audioAvailable = true;
-      });
-    });
+
+        // 디버깅: 처음 몇 바이트 찍기 (ID3/프레임 싱크 확인)
+        final preview = bytes
+            .take(8)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join(' ');
+        debugPrint(
+          '🎵 chunk in: ${bytes.length} bytes [${preview}]  total=${_audioBuffer.length}',
+        );
+
+        if (mounted) setState(() {});
+      },
+      onError: (e, st) {
+        debugPrint('audioStream error: $e');
+      },
+    );
+
+    // 어시스턴트 텍스트 수신 → 채팅에 기록
     _assistantSub = voiceService.assistantStream.listen((reply) {
-      print("🤖 LLM 응답 수신: $reply");
-
       if (reply.trim().isEmpty) return;
-
       _chatBox.add(Message(sender: 'bot', text: reply.trim()));
-
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     });
 
+    // STT
     _speech = stt.SpeechToText();
 
+    // 마이크 애니메이션
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -114,58 +150,110 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
   }
 
-  final List<Uint8List> _audioBuffer = []; // PCM 청크들 저장
+  Future<void> _initAudioPlayer() async {
+    // iOS 무음 스위치/스피커 라우팅, Android 스피커포스
+    await AudioPlayer.global.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {
+            // AVAudioSessionOptions.defaultToSpeaker, // OK
+            // AVAudioSessionOptions.allowBluetoothA2DP, // OK (헤드폰/스피커 재생용)
+          },
+        ),
 
-  bool _audioAvailable = false;
-
-  Future<void> _initPlayer() async {
-    if (!voiceService.isConnected) {
-      voiceService.connect(url: 'https://llm.tassoo.uk/');
-    }
-    await _player.openPlayer();
-    // (버전마다 다를 수 있음) iOS 스피커로 강제 라우팅
-    /* try {
-      if (Platform.isIOS) {
-        await _player.setAudioCategory(
-          SessionCategory.playAndRecord,
-          options: [
-            SessionCategoryOptions.defaultToSpeaker,
-            SessionCategoryOptions.allowBluetooth,
-          ],
-        );
-      }
-    } catch (_) {
-      // 구버전: 카테고리 API 다르면 무시
-    } */
-
-    await _player.startPlayerFromStream(
-      codec: Codec.pcm16,
-      sampleRate: 16000,
-      numChannels: 1,
-      interleaved: true,
-      bufferSize: 2048,
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+      ),
     );
 
-    // 들어오는 PCM을 즉시 먹이기
-    _pcmSub = voiceService.audioStream.listen((Uint8List pcm) {
-      // 중요: 서버 PCM이 16kHz, 16-bit LE, mono인지 반드시 맞춰야 함
-      if (_player.foodSink != null) {
-        _player.foodSink!.add(FoodData(pcm));
-        if (!_isPlaying) setState(() => _isPlaying = true);
-      }
+    await _player.setReleaseMode(ReleaseMode.stop);
+
+    _player.onPlayerStateChanged.listen((s) {
+      setState(() => _isPlaying = s == PlayerState.playing);
+    });
+    _player.onPlayerComplete.listen((event) {
+      setState(() => _isPlaying = false);
     });
   }
 
-  void _playBufferedAudio() async {
-    if (!_audioAvailable || _audioBuffer.isEmpty) return;
+  // ===== 버퍼에 쌓인 MP3를 하나로 합쳐 재생 =====
+  Future<void> _playBufferedAudio() async {
+    if (_isListening) {
+      _speech.stop();
+      _stopListening();
+    } // 마이크 중지
+    // (선택) 필요하면 재생 세션 재적용:
+    await _enterPlaybackMode();
 
-    for (final chunk in _audioBuffer) {
-      _player.uint8ListSink?.add(chunk);
-      await Future.delayed(const Duration(milliseconds: 100));
+    if (!_audioAvailable || _audioBuffer.isEmpty) {
+      debugPrint('⚠️ 재생할 오디오가 없음');
+      return;
     }
 
-    setState(() => _audioAvailable = false);
-    _audioBuffer.clear();
+    try {
+      // 1) 청크들을 하나로 합치기
+      final chunks = _audioBuffer.length;
+      final all = Uint8List.fromList(_audioBuffer.expand((c) => c).toList());
+      debugPrint('▶️ 합친 MP3 크기: ${all.length} bytes');
+
+      // 2) 재생 시작을 프레임 경계로 맞추기 (첫 청크가 프레임 중간일 수 있음)
+      final start = _findFirstMpegSync(all);
+
+      final trimmed = _stripToFirstMp3Frame(all);
+      if (trimmed.isEmpty) {
+        debugPrint('⚠️ MP3 프레임 동기를 찾지 못했습니다.');
+        return;
+      }
+
+      // 3) 버퍼는 비우고 플래그 초기화
+      _audioBuffer.clear();
+      setState(() => _audioAvailable = false);
+
+      // 4) 항상 임시파일로 저장 후 파일 소스로 재생 (iOS에서 가장 안정적)
+      final path = await _writeTemp(trimmed, ext: 'mp3');
+      debugPrint('🎧 play file: $path');
+      await _player.stop();
+      await _player.play(DeviceFileSource(path));
+    } catch (e) {
+      debugPrint('오디오 재생 실패: $e');
+    }
+  }
+
+  /// MP3 헤더(ID3) 또는 첫 MPEG 오디오 프레임 동기를 찾아 그 지점부터 잘라냅니다.
+  Uint8List _stripToFirstMp3Frame(Uint8List b) {
+    // ID3 태그면 그대로 두어도 되지만, 곧바로 오디오 프레임부터 시작하고 싶으면
+    // ID3 사이즈를 계산해 건너뛰는 로직을 넣을 수 있습니다.
+    if (b.length >= 3 && b[0] == 0x49 && b[1] == 0x44 && b[2] == 0x33) {
+      // 'ID3' – 여기서는 자르지 않고 그대로 사용 (대부분 플레이어가 처리 가능)
+      return b;
+    }
+    // MPEG 오디오 프레임 동기 0xFFE? 탐색
+    final off = _findFirstMpegSync(b);
+    if (off <= 0) return b; // 0이면 이미 프레임 시작, -1이면 못 찾음 → 그대로
+    return b.sublist(off);
+  }
+
+  int _findFirstMpegSync(Uint8List b) {
+    for (int i = 0; i + 1 < b.length; i++) {
+      if (b[i] == 0xFF && (b[i + 1] & 0xE0) == 0xE0) {
+        // 1111 1111 1110 xxxx (MPEG frame sync)
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  Future<String> _writeTemp(Uint8List bytes, {required String ext}) async {
+    final f = File(
+      '${Directory.systemTemp.path}/llm_audio_${DateTime.now().millisecondsSinceEpoch}.$ext',
+    );
+    await f.writeAsBytes(bytes, flush: true);
+    return f.path;
   }
 
   Future<void> _loadUsername() async {
@@ -177,45 +265,81 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
   }
 
+  Future<void> _enterMicMode() async {
+    await AudioPlayer.global.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playAndRecord,
+          options: {
+            AVAudioSessionOptions.defaultToSpeaker,
+            AVAudioSessionOptions.allowBluetooth, // ✅ 여기서는 허용
+          },
+        ),
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          contentType: AndroidContentType.speech,
+          usageType: AndroidUsageType.voiceCommunication,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _enterPlaybackMode() async {
+    await AudioPlayer.global.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {
+            //  AVAudioSessionOptions.defaultToSpeaker,
+            // AVAudioSessionOptions.allowBluetoothA2DP, // ✅ 재생 모드에서는 이걸 사용
+          },
+        ),
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gain,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _speech.cancel();
     _animationController.dispose();
+
     _assistantSub?.cancel();
     _transcriptSub?.cancel();
+    _pcmSub?.cancel();
 
-    _audioSub?.cancel();
-    _player.closePlayer();
+    _player.dispose();
     super.dispose();
   }
 
-  // ✅ 메시지 저장 + 상단 텍스트 갱신
+  // 메시지 저장 + 상단 텍스트 갱신
   void _addMessage(String sender, String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     _chatBox.add(Message(sender: sender, text: trimmed));
-    if (sender == 'user') {
-      setState(() => _text = trimmed);
-    }
+    if (sender == 'user') setState(() => _text = trimmed);
   }
 
   void _listen() async {
     if (!_isListening) {
       final available = await _speech.initialize(
         onStatus: (status) {
-          // STT 종료되면 서버로 전송
           if (status == "done") {
             final finalText = _text.trim();
-
             if (finalText.isNotEmpty) {
-              voiceService.sendText(finalText); // ✅ 여기에 추가!
+              voiceService.sendText(finalText);
               _addMessage('user', finalText);
             }
-
             _stopListening();
           }
         },
-        onError: (err) => print('× STT 에러: $err'),
+        onError: (err) => debugPrint('× STT 에러: $err'),
       );
 
       if (available) {
@@ -371,30 +495,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                     ),
                   ),
 
-                  //여기가 스피커
+                  // 🔊 스피커 버튼 (버퍼 재생)
                   IconButton(
                     icon: Icon(
                       _isPlaying ? Icons.volume_up : Icons.volume_mute,
                       color: Colors.black87,
                       size: 28,
                     ),
-                    onPressed: () async {
-                      if (_audioBuffer.isEmpty) return;
-
-                      final copiedBuffer = List<Uint8List>.from(
-                        _audioBuffer,
-                      ); // 복사본 생성
-
-                      for (final chunk in copiedBuffer) {
-                        _player.uint8ListSink?.add(chunk);
-                        await Future.delayed(const Duration(milliseconds: 100));
-                      }
-
-                      setState(() {
-                        _isPlaying = true;
-                        _audioBuffer.clear(); // 순회 이후 클리어
-                      });
-                    },
+                    onPressed: _playBufferedAudio,
                   ),
                 ],
               ),
