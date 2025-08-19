@@ -208,20 +208,36 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       },
     );
 
+    String extractTextFromFormattedString(String input) {
+      final regex = RegExp(r'\{text:\s*((.|\n)*?)\s*\}$');
+
+      final match = regex.firstMatch(input);
+      if (match != null) {
+        return match.group(1) ?? input;
+      }
+      return input;
+    }
+
     // 어시스턴트 텍스트 수신 → 채팅에 기록
     _assistantSub = voiceService.assistantStream.listen((reply) {
       if (reply.trim().isEmpty) return;
-      _chatBox.add(Message(sender: 'bot', text: reply.trim()));
 
-      if (_isThinking) setState(() => _isThinking = false);
+      final textOnly = extractTextFromFormattedString(reply.trim());
 
-      if (mounted) setState(() {});
+      _chatBox.add(Message(sender: 'bot', text: textOnly));
+
+      if (mounted) {
+        setState(() {
+          _isThinking = false;
+          _text = textOnly; // ✅ 이제 깔끔한 텍스트만 들어감
+        });
+      }
     });
 
     // STT
     _speech = stt.SpeechToText();
 
-    // 마이크 애니메이션
+    // 마이크 애니메이션x
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -484,6 +500,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
               voiceService.sendText(finalText);
               _addMessage('user', finalText);
             }
+
             _stopListening();
           }
         },
@@ -574,32 +591,39 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        _text.isEmpty ? '🎤 여기에 인식된 텍스트가 표시됩니다' : _text,
-                        style: const TextStyle(fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (_text.trim().isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ChatDetailScreen(userInput: _text),
-                                ),
-                              );
-                            },
-                            child: const Text("자세히 보기"),
+
+                      /// ✅ 여기서부터 바꾸기 시작
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.all(16),
+                        constraints: const BoxConstraints(
+                          maxHeight: 160, // ✅ 이 높이보다 넘으면 스크롤
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: SingleChildScrollView(
+                          child: AnimatedSwitcher(
+                            duration: Duration(milliseconds: 400),
+                            child: Text(
+                              _text.isEmpty ? '🎤 여기에 인식된 텍스트가 표시됩니다' : _text,
+                              key: ValueKey(_text),
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.6,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              textAlign: TextAlign.justify, // ✅ 문단 정렬
+                            ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
               ),
-
             // 🎤 녹음 버튼 + 반응 애니메이션
             Padding(
               padding: const EdgeInsets.only(bottom: 40.0),
