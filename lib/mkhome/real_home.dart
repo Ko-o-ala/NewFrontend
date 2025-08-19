@@ -53,6 +53,83 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // ===== Animation =====
   late AnimationController _animationController;
   late Animation<double> _animation;
+  // === 상태값 추가 ===
+  bool _isThinking = false;
+
+  // === 안내 배너: LLM 생각 중 ===
+  Widget _thinkingBanner() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      child:
+          (_isThinking && !_isListening)
+              ? Container(
+                key: const ValueKey('thinking_on'),
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF0FF),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF8183D9),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        '알라가 여러분의 답변을 듣고 생각하고 있어요…',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2E2E5E),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              : const SizedBox.shrink(),
+    );
+  }
+
+  // === 안내 배너: 마이크 자동 종료 힌트 ===
+  Widget _micAutoStopHint() {
+    if (!_isListening) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.info_outline, color: Colors.red, size: 18),
+          SizedBox(width: 8),
+          Text(
+            '빨간 불일 때 3초간 말이 없으면 자동으로 꺼져요',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -97,6 +174,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     // 서버 오디오(MP3 청크) 수신 → 버퍼에 저장
     _pcmSub = voiceService.audioStream.listen(
       (event) {
+        if (_isThinking) setState(() => _isThinking = false);
+
         final bytes = _toMp3Bytes(event);
         if (bytes.isEmpty) {
           debugPrint('⏩ skip non-audio or empty: ${event.runtimeType}');
@@ -105,6 +184,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
         _audioBuffer.add(bytes);
         _audioAvailable = true;
+
+        // <<<<<<<< 추가: 오디오가 오기 시작하면 '생각 중' 배너 끔
+        if (_isThinking) setState(() => _isThinking = false);
 
         // 디버깅: 처음 몇 바이트 찍기 (ID3/프레임 싱크 확인)
         final preview = bytes
@@ -126,6 +208,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _assistantSub = voiceService.assistantStream.listen((reply) {
       if (reply.trim().isEmpty) return;
       _chatBox.add(Message(sender: 'bot', text: reply.trim()));
+
+      if (_isThinking) setState(() => _isThinking = false);
+
       if (mounted) setState(() {});
     });
 
@@ -175,7 +260,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     _player.onPlayerStateChanged.listen((s) {
       setState(() => _isPlaying = s == PlayerState.playing);
+      if (s == PlayerState.playing && _isThinking) {
+        // 재생이 시작되면 배너 내림 (혹시 안 꺼졌다면)
+        _isThinking = false;
+      }
     });
+
     _player.onPlayerComplete.listen((event) {
       setState(() => _isPlaying = false);
     });
@@ -333,6 +423,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           if (status == "done") {
             final finalText = _text.trim();
             if (finalText.isNotEmpty) {
+              setState(() => _isThinking = true); // ← 추가: 배너 켜기
               voiceService.sendText(finalText);
               _addMessage('user', finalText);
             }
@@ -343,8 +434,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       );
 
       if (available) {
+        _audioBuffer.clear();
+        _audioAvailable = false;
+
         setState(() {
           _isListening = true;
+          _isThinking = false;
           _text = '🎙️ 듣고 있어요...';
         });
 
@@ -396,6 +491,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       body: SafeArea(
         child: Column(
           children: [
+            _thinkingBanner(),
+
             if (_username.isNotEmpty)
               Expanded(
                 child: Center(
@@ -463,6 +560,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                     ),
                     child: const Text('오늘 하루 어떻게 정리하는게 좋을까?'),
                   ),
+
+                  _micAutoStopHint(),
+
                   GestureDetector(
                     onTap: _listen,
                     child: AnimatedBuilder(
