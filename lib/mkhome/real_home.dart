@@ -16,6 +16,12 @@ import 'package:my_app/models/message.dart';
 
 import 'package:audioplayers/audioplayers.dart';
 
+// ── 자동 재생을 위한 조립 타이머 & 큐 ──────────────────────────────
+Timer? _assembleTimer;
+final Duration _assembleGap = const Duration(milliseconds: 350);
+final List<Uint8List> _pendingQueue = [];
+bool _isPreparing = false; // 파일 쓰기 중 재진입 방지
+
 final storage = FlutterSecureStorage();
 
 class RealHomeScreen extends StatefulWidget {
@@ -174,8 +180,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     // 서버 오디오(MP3 청크) 수신 → 버퍼에 저장
     _pcmSub = voiceService.audioStream.listen(
       (event) {
-        if (_isThinking) setState(() => _isThinking = false);
-
         final bytes = _toMp3Bytes(event);
         if (bytes.isEmpty) {
           debugPrint('⏩ skip non-audio or empty: ${event.runtimeType}');
@@ -185,18 +189,18 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _audioBuffer.add(bytes);
         _audioAvailable = true;
 
-        // <<<<<<<< 추가: 오디오가 오기 시작하면 '생각 중' 배너 끔
         if (_isThinking) setState(() => _isThinking = false);
 
-        // 디버깅: 처음 몇 바이트 찍기 (ID3/프레임 싱크 확인)
+        // (선택) 프리뷰 로그
         final preview = bytes
             .take(8)
             .map((b) => b.toRadixString(16).padLeft(2, '0'))
             .join(' ');
         debugPrint(
-          '🎵 chunk in: ${bytes.length} bytes [${preview}]  total=${_audioBuffer.length}',
+          '🎵 chunk in: ${bytes.length} bytes [$preview]  total=${_audioBuffer.length}',
         );
 
+        _scheduleAssemble(); // ← 마지막에 호출
         if (mounted) setState(() {});
       },
       onError: (e, st) {
@@ -235,6 +239,58 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
   }
 
+  void _scheduleAssemble() {
+    _assembleTimer?.cancel();
+    _assembleTimer = Timer(_assembleGap, () async {
+      if (_audioBuffer.isEmpty) return;
+
+      // 1) 버퍼 합치기
+      final all = Uint8List.fromList(_audioBuffer.expand((e) => e).toList());
+      _audioBuffer.clear();
+      _audioAvailable = false;
+
+      // 2) MP3 프레임 경계 정리
+      final trimmed = _stripToFirstMp3Frame(all);
+      if (trimmed.isEmpty) {
+        debugPrint('⚠️ trimmed mp3 is empty');
+        return;
+      }
+
+      // 3) 큐에 넣고, 재생 중이 아니면 바로 재생
+      _pendingQueue.add(trimmed);
+      if (!_isPlaying && !_isPreparing) {
+        _playNextFromQueue();
+      }
+    });
+  }
+
+  Future<void> _playNextFromQueue() async {
+    if (_pendingQueue.isEmpty) return;
+    _isPreparing = true;
+
+    try {
+      // STT 중이면 끄고 재생 모드 전환
+      if (_isListening) {
+        _speech.stop();
+        _stopListening();
+      }
+      await _enterPlaybackMode();
+
+      final bytes = _pendingQueue.removeAt(0);
+
+      // iOS 호환을 위해 파일로 저장 후 재생
+      final path = await _writeTemp(bytes, ext: 'mp3');
+      debugPrint('🎧 auto play: $path');
+
+      await _player.stop();
+      await _player.play(DeviceFileSource(path));
+    } catch (e) {
+      debugPrint('auto play error: $e');
+    } finally {
+      _isPreparing = false;
+    }
+  }
+
   Future<void> _initAudioPlayer() async {
     // iOS 무음 스위치/스피커 라우팅, Android 스피커포스
     await AudioPlayer.global.setAudioContext(
@@ -268,6 +324,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     _player.onPlayerComplete.listen((event) {
       setState(() => _isPlaying = false);
+      _playNextFromQueue(); // ✅ 추가
     });
   }
 
@@ -593,16 +650,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         );
                       },
                     ),
-                  ),
-
-                  // 🔊 스피커 버튼 (버퍼 재생)
-                  IconButton(
-                    icon: Icon(
-                      _isPlaying ? Icons.volume_up : Icons.volume_mute,
-                      color: Colors.black87,
-                      size: 28,
-                    ),
-                    onPressed: _playBufferedAudio,
                   ),
                 ],
               ),
