@@ -1,5 +1,6 @@
 // lib/mkhome/real_home.dart
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:typed_data';
@@ -11,10 +12,13 @@ import 'package:flutter_sound/public/flutter_sound_player.dart';
 import 'dart:convert';
 // ✅ 분리한 소켓 서비스 사용
 import 'package:my_app/services/voice_socket_service.dart';
+import 'package:audio_session/audio_session.dart';
 
 // ✅ Hive에 채팅 누적
 import 'package:hive/hive.dart';
 import 'package:my_app/models/message.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'dart:io' show Platform;
 import 'package:flutter_sound/flutter_sound.dart';
 
 final storage = FlutterSecureStorage();
@@ -49,6 +53,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   late Box<Message> _chatBox;
   StreamSubscription<String>? _assistantSub; // assistant_response
   StreamSubscription<String>? _transcriptSub; // (옵션) transcription
+  StreamSubscription<Uint8List>? _pcmSub; // ← 오디오 스트림 구독 1개만
+  // List<Uint8List> _audioBuffer = [];      // ← 버퍼링 제거
 
   @override
   void initState() {
@@ -59,23 +65,34 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     _chatBox = Hive.box<Message>('chatBox');
     if (!voiceService.isConnected) {
-      voiceService.connect(url: 'https://llm.tassoo.uk');
+      voiceService.connect(url: 'https://llm.tassoo.uk/');
     }
 
+    /*
     _transcriptSub = voiceService.transcriptionStream.listen((userText) {
       if (userText.trim().isNotEmpty) {
         _addMessage('user', userText);
         setState(() => _text = userText);
       }
     });
-
+    */
+    _audioSub = voiceService.audioStream.listen((pcmData) {
+      debugPrint('Received PCM chunk, length: ${pcmData.length}');
+      _audioBuffer.add(pcmData);
+      setState(() {
+        _audioAvailable = true;
+      });
+    });
     _assistantSub = voiceService.assistantStream.listen((reply) {
       print("🤖 LLM 응답 수신: $reply");
 
       if (reply.trim().isEmpty) return;
 
       _chatBox.add(Message(sender: 'bot', text: reply.trim()));
-      setState(() {});
+
+      if (mounted) {
+        setState(() {});
+      }
     });
 
     _speech = stt.SpeechToText();
@@ -97,21 +114,58 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
   }
 
+  final List<Uint8List> _audioBuffer = []; // PCM 청크들 저장
+
+  bool _audioAvailable = false;
+
   Future<void> _initPlayer() async {
+    if (!voiceService.isConnected) {
+      voiceService.connect(url: 'https://llm.tassoo.uk/');
+    }
     await _player.openPlayer();
+    // (버전마다 다를 수 있음) iOS 스피커로 강제 라우팅
+    /* try {
+      if (Platform.isIOS) {
+        await _player.setAudioCategory(
+          SessionCategory.playAndRecord,
+          options: [
+            SessionCategoryOptions.defaultToSpeaker,
+            SessionCategoryOptions.allowBluetooth,
+          ],
+        );
+      }
+    } catch (_) {
+      // 구버전: 카테고리 API 다르면 무시
+    } */
 
     await _player.startPlayerFromStream(
       codec: Codec.pcm16,
       sampleRate: 16000,
       numChannels: 1,
       interleaved: true,
-      bufferSize: 2048, // 또는 4096, 8192 등으로 조정 가능
+      bufferSize: 2048,
     );
 
-    _audioSub = voiceService.audioStream.listen((pcmData) {
-      _player.uint8ListSink?.add(pcmData);
-      setState(() => _isPlaying = true);
+    // 들어오는 PCM을 즉시 먹이기
+    _pcmSub = voiceService.audioStream.listen((Uint8List pcm) {
+      // 중요: 서버 PCM이 16kHz, 16-bit LE, mono인지 반드시 맞춰야 함
+      if (_player.foodSink != null) {
+        _player.foodSink!.add(FoodData(pcm));
+        if (!_isPlaying) setState(() => _isPlaying = true);
+      }
     });
+  }
+
+  void _playBufferedAudio() async {
+    if (!_audioAvailable || _audioBuffer.isEmpty) return;
+
+    for (final chunk in _audioBuffer) {
+      _player.uint8ListSink?.add(chunk);
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    setState(() => _audioAvailable = false);
+    _audioBuffer.clear();
   }
 
   Future<void> _loadUsername() async {
@@ -129,9 +183,10 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _animationController.dispose();
     _assistantSub?.cancel();
     _transcriptSub?.cancel();
-    super.dispose();
+
     _audioSub?.cancel();
     _player.closePlayer();
+    super.dispose();
   }
 
   // ✅ 메시지 저장 + 상단 텍스트 갱신
@@ -151,9 +206,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           // STT 종료되면 서버로 전송
           if (status == "done") {
             final finalText = _text.trim();
+
             if (finalText.isNotEmpty) {
-              voiceService.sendText(finalText); // ← LLM 서버로 텍스트 전송
+              voiceService.sendText(finalText); // ✅ 여기에 추가!
+              _addMessage('user', finalText);
             }
+
             _stopListening();
           }
         },
@@ -312,17 +370,30 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                       },
                     ),
                   ),
+
+                  //여기가 스피커
                   IconButton(
                     icon: Icon(
                       _isPlaying ? Icons.volume_up : Icons.volume_mute,
                       color: Colors.black87,
                       size: 28,
                     ),
-                    onPressed: () {
-                      // 옵션: 눌렀을 때 무언가 트리거하고 싶으면 여기에
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("📢 음성 응답을 듣고 있어요")),
-                      );
+                    onPressed: () async {
+                      if (_audioBuffer.isEmpty) return;
+
+                      final copiedBuffer = List<Uint8List>.from(
+                        _audioBuffer,
+                      ); // 복사본 생성
+
+                      for (final chunk in copiedBuffer) {
+                        _player.uint8ListSink?.add(chunk);
+                        await Future.delayed(const Duration(milliseconds: 100));
+                      }
+
+                      setState(() {
+                        _isPlaying = true;
+                        _audioBuffer.clear(); // 순회 이후 클리어
+                      });
                     },
                   ),
                 ],

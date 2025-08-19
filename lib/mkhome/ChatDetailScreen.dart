@@ -27,7 +27,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     // 초기 유저 입력 저장 + 응답 요청
     _addMessage('user', widget.userInput);
-    _fetchLLMResponse(widget.userInput);
   }
 
   void _addMessage(String sender, String text) {
@@ -40,32 +39,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
   }
 
-  Future<void> _fetchLLMResponse(String input) async {
-    try {
-      final response = await http.post(
-        Uri.parse('https://llm.tassoo.uk/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': input}),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final reply = data['reply'] ?? '응답이 없습니다.';
-        _addMessage('bot', reply);
-      } else {
-        _addMessage('bot', '서버 오류: ${response.statusCode}');
-      }
-    } catch (e) {
-      _addMessage('bot', '에러 발생: $e');
-    }
-  }
-
   void _handleSendMessage() {
     final message = _controller.text.trim();
     if (message.isEmpty) return;
     _controller.clear();
     _addMessage('user', message);
-    _fetchLLMResponse(message);
   }
 
   Widget _buildMessageBubble(Message message) {

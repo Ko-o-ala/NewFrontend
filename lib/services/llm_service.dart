@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class LlmService {
-  // TODO: 필요시 키/엔드포인트를 .env나 secure storage로 분리
   static const String baseUrl = 'https://llm.tassoo.uk';
 
   /// A) 단순 API 형태 (예: /api/chat 로 message 전달)

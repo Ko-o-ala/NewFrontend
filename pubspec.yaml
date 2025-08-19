@@ -10,9 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   socket_io_client: ^2.0.3
-  audioplayers: ^6.0.0
+  audioplayers: ^6.5.0
   record: ^6.1.0
-
+  audio_session: ^0.1.6
   flutter_sound_platform_interface: ^9.2.13
 
 
@@ -64,3 +64,4 @@ flutter:
     - lib/assets/koala.png
     - assets/google_icon.png
     - assets/sounds/
+    - assets/audio/sample.mp3

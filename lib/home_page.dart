@@ -105,6 +105,12 @@ class _HomePageState extends State<HomePage> {
                     ),
                     ElevatedButton(
                       onPressed: () {
+                        Navigator.pushNamed(context, '/test');
+                      },
+                      child: const Text('테스트 화면 바로가기'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
                         Navigator.pushNamed(context, '/start');
                       },
                       child: const Text('시작하기'),
