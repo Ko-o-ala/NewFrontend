@@ -188,7 +188,22 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
               const SizedBox(height: 16),
 
               // 🔁 수면 기록 달력
-              Expanded(
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                height: 360, // 필요시 320~420 선에서 조절 or MediaQuery로 비율 지정
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.black12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias, // 둥근 모서리 클리핑
                 child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
                   future: fetchSleepData(),
                   builder: (context, snap) {
@@ -197,7 +212,19 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                     } else if (!snap.hasData || snap.hasError) {
                       return const Center(child: Text('수면 데이터를 불러오지 못했어요.'));
                     }
-                    return _buildCalendar(now, snap.data!);
+                    return Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: _buildCalendar(
+                          now,
+                          snap.data!,
+                        ), // ← 기존 생성 함수 그대로 사용
+                      ),
+                    );
                   },
                 ),
               ),
@@ -278,10 +305,20 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     );
   }
 
+  String _formatHM2Lines(dynamic minutes) {
+    if (minutes == null || minutes is! int) return '-';
+    final hrs = minutes ~/ 60;
+    final mins = minutes % 60;
+    return '${hrs}H\n${mins}M'; // ✅ 줄바꿈으로 항상 가운데 2줄
+  }
+
   Widget _buildCalendar(
     DateTime now,
     Map<DateTime, Map<String, dynamic>> sleepData,
   ) {
+    const double kCellHeight = 90; // ✅ 모든 사각형(셀) 높이 통일
+    const BorderRadius kRadius = BorderRadius.all(Radius.circular(12));
+
     final currentMonth = DateTime(now.year, now.month);
     final firstWd = DateTime(currentMonth.year, currentMonth.month, 1).weekday;
     final totalDays = DateUtils.getDaysInMonth(now.year, now.month);
@@ -309,12 +346,15 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
             Expanded(
               child: Container(
                 margin: const EdgeInsets.all(4),
+                height: kCellHeight,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
                   color: data != null ? Colors.black : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: kRadius,
                 ),
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
                       '$dayCounter',
@@ -322,18 +362,24 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                         fontWeight: FontWeight.bold,
                         color: data != null ? Colors.white : Colors.black,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                     if (data != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        _formatDuration(data['duration']),
+                        _formatHM2Lines(data['duration']), // ✅ 두 줄
+                        textAlign: TextAlign.center, // ✅ 중앙
+                        maxLines: 2,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
+                          fontSize: 12,
+                          height: 1.1, // 줄간격 살짝 좁게
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
                         '${data['score']}점',
+                        textAlign: TextAlign.center, // ✅ 중앙
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,
