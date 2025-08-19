@@ -6,6 +6,7 @@ import 'package:my_app/sleep_dashboard/sleep_entry_screen.dart';
 import 'package:my_app/sleep_time/sleep_goal_screen.dart';
 import 'package:my_app/sound/sound.dart';
 import 'package:my_app/sleep_dashboard/sleep_entry.dart';
+import 'package:my_app/test.dart';
 import 'package:provider/provider.dart';
 import 'package:my_app/login/login.dart';
 import 'package:my_app/signin/signin.dart';
@@ -24,19 +25,20 @@ import 'package:my_app/device/alarm/alarm_model.dart';
 import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
+import 'package:my_app/models/message.dart';
+import 'package:audio_session/audio_session.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  //Hive 초기화
   await Hive.initFlutter();
 
-  Hive.registerAdapter(AlarmModelAdapter());
+  Hive.registerAdapter(MessageAdapter());
 
-  try {
-    await Hive.openBox<AlarmModel>('alarms');
-    print('✅ Hive box "alarms" opened successfully');
-  } catch (e) {
-    print('❌ Hive box "alarms" open failed: $e');
-  }
+  await Hive.openBox<Message>('chatBox'); // ✅ 여기서 1회만 오픈
+  final session = await AudioSession.instance;
+  await session.configure(AudioSessionConfiguration.music());
 
   runApp(
     MultiProvider(
@@ -95,6 +97,9 @@ class MyApp extends StatelessWidget {
 
           case '/start':
             return MaterialPageRoute(builder: (_) => OnboardingScreen());
+
+          case '/test':
+            return MaterialPageRoute(builder: (_) => MP3TestPage());
 
           case '/complete':
             return MaterialPageRoute(

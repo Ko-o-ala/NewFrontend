@@ -10,9 +10,9 @@ const Map<String, String> sleepLightUsageMap = {
 };
 
 const Map<String, String> lightColorTemperatureMap = {
-  '차가운 (6500K)': 'coolWhite',
-  '중간 (4000K)': 'neutral',
-  '따뜻한 (2700K)': 'warmYellow',
+  '차가운 하얀색(6500K)': 'coolWhite',
+  '중간 톤(4000K)': 'neutral',
+  '따뜻한 노란색(2700K)': 'warmYellow',
   '모르겠어요': 'unknown',
 };
 
@@ -72,7 +72,11 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
       sleepLightUsage != null &&
       lightColorTemperature != null &&
       noisePreference != null &&
-      youtubeContentType != null;
+      youtubeContentType != null &&
+      (noisePreference != '기타' ||
+          (userInputNoise != null && userInputNoise!.isNotEmpty)) &&
+      (youtubeContentType != '기타' ||
+          (userInputYoutube != null && userInputYoutube!.isNotEmpty));
 
   Widget _buildQuestion(
     String title,
@@ -124,22 +128,49 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
               ),
               _buildQuestion(
                 'Q2. 조명의 색온도는 어떤 것을 선호하시나요?',
-                ['차가운 (6500K)', '중간 (4000K)', '따뜻한 (2700K)', '모르겠어요'],
+                ['차가운 하얀색(6500K)', '중간 톤(4000K)', '따뜻한 노란색(2700K)', '모르겠어요'],
                 lightColorTemperature,
                 (v) => setState(() => lightColorTemperature = v),
               ),
+
               _buildQuestion(
                 'Q3. 수면시에 어떤 소리를 좋아하시나요?',
                 ['완전한 무음', '백색소음', '유튜브', '기타'],
                 noisePreference,
-                (v) => setState(() => noisePreference = v),
+                (v) => setState(() {
+                  noisePreference = v;
+                  if (v != '기타') userInputNoise = null;
+                }),
               ),
+              if (noisePreference == '기타')
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: '기타 소리 유형을 입력해주세요',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged:
+                      (value) => setState(() => userInputNoise = value.trim()),
+                ),
               _buildQuestion(
                 'Q4. 유튜브 콘텐츠를 틀면 무엇을 선호하시나요?',
                 ['ASMR', '음악', '라디오', '드라마', '기타'],
                 youtubeContentType,
-                (v) => setState(() => youtubeContentType = v),
+                (v) => setState(() {
+                  youtubeContentType = v;
+                  if (v != '기타') userInputYoutube = null;
+                }),
               ),
+              if (youtubeContentType == '기타')
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: '기타 유튜브 콘텐츠 유형을 입력해주세요',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged:
+                      (value) =>
+                          setState(() => userInputYoutube = value.trim()),
+                ),
+
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed:

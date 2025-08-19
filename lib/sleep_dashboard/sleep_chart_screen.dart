@@ -1,24 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import 'sleep_entry.dart';
 import 'package:health/health.dart';
+import 'sleep_segment.dart';
 
-// 수면 단계에 숫자 매핑 함수
-double stageToValue(HealthDataType type) {
-  switch (type) {
-    case HealthDataType.SLEEP_AWAKE:
-      return 0;
-    case HealthDataType.SLEEP_LIGHT:
-      return 1;
-    case HealthDataType.SLEEP_REM:
-      return 2;
-    case HealthDataType.SLEEP_DEEP:
-      return 3;
-    default:
-      return -1;
-  }
-}
+import 'sleep_segment_painter.dart'; // <-- 여기에 painter 따로 분리하면 좋음
 
 class SleepChartScreen extends StatelessWidget {
   final List<SleepEntry> entries;
@@ -30,34 +15,44 @@ class SleepChartScreen extends StatelessWidget {
     required this.selectedDate,
   }) : super(key: key);
 
+  List<SleepSegment> _convertToSegments(
+    List<SleepEntry> entries,
+    DateTime baseTime,
+  ) {
+    return entries.map((entry) {
+      final start = entry.start.difference(baseTime).inMinutes.toDouble();
+      final end = entry.end.difference(baseTime).inMinutes.toDouble();
+
+      final stage =
+          {
+            HealthDataType.SLEEP_AWAKE: SleepStage.awake,
+            HealthDataType.SLEEP_LIGHT: SleepStage.light,
+            HealthDataType.SLEEP_REM: SleepStage.rem,
+            HealthDataType.SLEEP_DEEP: SleepStage.deep,
+          }[entry.type] ??
+          SleepStage.light;
+
+      return SleepSegment(startMinute: start, endMinute: end, stage: stage);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final totalSleep = entries.fold<Duration>(
-      Duration.zero,
-      (prev, e) => prev + e.duration,
-    );
-
-    final now = DateTime.now();
+    final d = selectedDate; // ← 선택한 날짜
     final baseTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
+      d.year,
+      d.month,
+      d.day,
     ).subtract(const Duration(hours: 6));
 
-    final spots = <FlSpot>[];
-
-    for (var entry in entries) {
-      final startMin = entry.start.difference(baseTime).inMinutes.toDouble();
-      final endMin = entry.end.difference(baseTime).inMinutes.toDouble();
-      final y = stageToValue(entry.type).toDouble();
-
-      // ✅ 같은 y 값을 가진 시작, 종료 두 점 추가
-      spots.add(FlSpot(startMin, y));
-      spots.add(FlSpot(endMin, y));
+    Duration totalSleep = Duration.zero;
+    for (var e in entries) {
+      totalSleep += e.duration;
     }
+    final segments = _convertToSegments(entries, baseTime);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('수면 단계 (Line Chart)')),
+      appBar: AppBar(title: const Text('수면 단계')),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -67,78 +62,58 @@ class SleepChartScreen extends StatelessWidget {
               '${totalSleep.inHours}시간 ${totalSleep.inMinutes % 60}분',
               style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
             ),
-            Text(
-              DateFormat('yyyy년 M월 d일').format(selectedDate),
-              style: const TextStyle(color: Colors.grey),
-            ),
             const SizedBox(height: 20),
+
+            /// ✅ 커스텀 페인터 적용
             SizedBox(
               height: 200,
               width: double.infinity,
-              child:
-                  spots.isEmpty
-                      ? const Center(child: Text('수면 데이터가 없습니다.'))
-                      : LineChart(
-                        LineChartData(
-                          minX: 0,
-                          maxX: 18 * 60.0, // 18시간 기준
-                          minY: 0,
-                          maxY: 3,
-                          gridData: FlGridData(show: true),
-                          borderData: FlBorderData(show: false),
-                          titlesData: FlTitlesData(
-                            leftTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                getTitlesWidget: (val, _) {
-                                  const labels = [
-                                    'Awake',
-                                    'Light',
-                                    'REM',
-                                    'Deep',
-                                  ];
-                                  return Text(
-                                    labels[val.toInt()],
-                                    style: const TextStyle(fontSize: 10),
-                                  );
-                                },
-                                interval: 1,
-                              ),
-                            ),
-                            bottomTitles: AxisTitles(
-                              sideTitles: SideTitles(
-                                showTitles: true,
-                                interval: 180,
-                                getTitlesWidget: (val, _) {
-                                  final h = (val / 60).floor();
-                                  final m = (val % 60).toInt();
-                                  return Text(
-                                    '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}',
-                                    style: const TextStyle(fontSize: 10),
-                                  );
-                                },
-                              ),
-                            ),
-                            topTitles: AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                            rightTitles: AxisTitles(
-                              sideTitles: SideTitles(showTitles: false),
-                            ),
-                          ),
-                          lineBarsData: [
-                            LineChartBarData(
-                              spots: spots,
-                              isCurved: true, // ✅ 곡선으로 변경!
-                              barWidth: 4,
-                              color: Colors.indigo,
-                              dotData: FlDotData(show: false),
-                              belowBarData: BarAreaData(show: false),
-                            ),
-                          ],
-                        ),
+              child: InteractiveViewer(
+                constrained: false,
+                scaleEnabled: true,
+                panEnabled: true,
+                minScale: 1,
+                maxScale: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 그래프
+                    SizedBox(
+                      width: 1080, // 12시간 * 60분 = 720px
+                      height: 150,
+                      child: CustomPaint(
+                        painter: SleepSegmentPainter(segments: segments),
                       ),
+                    ),
+
+                    // 시간 라벨 (가로축)
+                    SizedBox(
+                      width: 1080,
+                      height: 24,
+                      child: Stack(
+                        children: List.generate(7, (i) {
+                          final tickTime = baseTime.add(Duration(hours: i * 3));
+
+                          final hour = (18 + i * 3) % 24;
+                          final label = '${hour.toString().padLeft(2, '0')}:00';
+                          final left = (i / 6.0) * 1080; // 6 구간 → 7 tick
+                          return Positioned(
+                            left: left - 14,
+                            top: 0,
+                            child: Text(
+                              label,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
+
+            const SizedBox(height: 20),
             const Divider(),
             _buildSummary(entries),
           ],
@@ -153,6 +128,7 @@ class SleepChartScreen extends StatelessWidget {
       final key = e.readableType;
       summary[key] = (summary[key] ?? Duration.zero) + e.duration;
     }
+
     return Column(
       children:
           summary.entries.map((e) {

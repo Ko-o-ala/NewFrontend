@@ -9,6 +9,7 @@ import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final storage = FlutterSecureStorage();
 
@@ -24,7 +25,8 @@ class _SleepDashboardState extends State<SleepDashboard> {
   String formattedDuration = '불러오는 중...';
   String username = '사용자';
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
-
+  String goalText = '미설정';
+  Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
   bool _isLoggedIn = false;
@@ -40,6 +42,31 @@ class _SleepDashboardState extends State<SleepDashboard> {
     super.initState();
     _loadUsername();
     _fetchTodaySleep();
+    _loadGoalText();
+  }
+
+  Future<void> _loadGoalText() async {
+    final goal = await _loadTodayGoalSleepDuration();
+    print('[goal] 불러온 수면 목표: ${goal?.inMinutes}분');
+
+    setState(() {
+      goalSleepDuration = goal ?? Duration(hours: 8);
+      goalText =
+          goal != null
+              ? '${goal.inHours}시간 ${goal.inMinutes % 60}분'
+              : '목표수면시간 없음';
+    });
+  }
+
+  Future<Duration?> _loadTodayGoalSleepDuration() async {
+    final prefs = await SharedPreferences.getInstance();
+    final weekday = DateTime.now().weekday % 7; // Sunday = 0
+    final minutes = prefs.getInt('sleepGoal_$weekday');
+
+    if (minutes != null) {
+      return Duration(minutes: minutes);
+    }
+    return null;
   }
 
   Future<void> _loadUsername() async {
@@ -157,6 +184,8 @@ class _SleepDashboardState extends State<SleepDashboard> {
     }
 
     final totalSleepMin = deepMin + remMin + lightMin;
+    if (totalSleepMin == 0) return 0;
+
     final totalMinutes = sleepEnd.difference(sleepStart).inMinutes;
     final goalMinutes = goalSleepDuration.inMinutes;
 
@@ -309,11 +338,6 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final goalText =
-        widget.goalSleepDuration != null
-            ? '${widget.goalSleepDuration!.inHours}시간 ${widget.goalSleepDuration!.inMinutes % 60}분'
-            : '미설정';
-
     return Scaffold(
       appBar: TopNav(
         isLoggedIn: _isLoggedIn,
@@ -388,6 +412,19 @@ class _SleepDashboardState extends State<SleepDashboard> {
                       icon: Icons.access_time,
                       time: goalText,
                       label: '목표 수면 시간',
+                      onTap: () async {
+                        final updatedDuration = await Navigator.pushNamed(
+                          context,
+                          '/time-set',
+                        );
+                        if (updatedDuration is Duration) {
+                          setState(() {
+                            goalSleepDuration = updatedDuration;
+                            goalText =
+                                '${updatedDuration.inHours}시간 ${updatedDuration.inMinutes % 60}분';
+                          });
+                        }
+                      },
                     ),
                   ),
                 ],
@@ -574,34 +611,46 @@ class _InfoItem extends StatelessWidget {
   final IconData icon;
   final String time;
   final String label;
+  final VoidCallback? onTap;
+
   const _InfoItem({
     required this.icon,
     required this.time,
     required this.label,
+    this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Icon(icon, size: 32, color: Colors.blueAccent),
-      const SizedBox(width: 8),
-      Flexible(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              time,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final content = Row(
+      children: [
+        Icon(icon, size: 32, color: Colors.blueAccent),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                time,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+
+    return onTap != null
+        ? GestureDetector(onTap: onTap, child: content)
+        : content;
+  }
 }

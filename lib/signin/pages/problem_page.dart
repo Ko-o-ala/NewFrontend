@@ -54,11 +54,16 @@ class ProblemPage extends StatefulWidget {
 
 class _ProblemPageState extends State<ProblemPage> {
   /// 화면에서 선택된 "라벨"들을 저장합니다.
+  String? emotionalOtherInput;
+
   final Set<String> sleepIssues = {};
   final Set<String> emotionalSleepInterference = {};
 
   bool get isValid =>
-      sleepIssues.isNotEmpty && emotionalSleepInterference.isNotEmpty;
+      sleepIssues.isNotEmpty &&
+      emotionalSleepInterference.isNotEmpty &&
+      (!emotionalSleepInterference.contains('기타') ||
+          (emotionalOtherInput != null && emotionalOtherInput!.isNotEmpty));
 
   /// 공용 멀티 셀렉트 위젯
   Widget _multiSelectQuestion(
@@ -140,6 +145,11 @@ class _ProblemPageState extends State<ProblemPage> {
       emotionalSleepInterference,
       emotionalSleepMap,
     );
+    if (emotionalSleepInterference.contains('기타') &&
+        emotionalOtherInput != null &&
+        emotionalOtherInput!.isNotEmpty) {
+      m['emotionalSleepInterferenceOther'] = emotionalOtherInput;
+    }
 
     // 2) 'none' 단독 전송 보장
     m['sleepIssues'] = _normalizeNone(sleepIssuesEnums);
@@ -189,9 +199,21 @@ class _ProblemPageState extends State<ProblemPage> {
                   checked,
                 ),
               ),
+              if (emotionalSleepInterference.contains('기타'))
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: '기타 감정을 입력해주세요',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged:
+                      (value) =>
+                          setState(() => emotionalOtherInput = value.trim()),
+                ),
+
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: isValid ? _onNext : null,
+
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8183D9),
                   minimumSize: const Size(double.infinity, 50),

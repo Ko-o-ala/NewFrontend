@@ -64,6 +64,25 @@ class _SignInScreenState extends State<SignInScreen> {
         agreedToPrivacy;
   }
 
+  Future<void> _showAlert(String title, String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('확인'),
+              ),
+            ],
+          ),
+    );
+  }
+
   Future<void> _handleSignUp() async {
     setState(() => isLoading = true);
 
@@ -99,9 +118,7 @@ class _SignInScreenState extends State<SignInScreen> {
           _isIdAvailable = false;
           _idHelperText = '이미 사용 중인 아이디예요';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.')),
-        );
+        await _showAlert('아이디 중복', '이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.');
       } else {
         throw Exception('회원가입 실패: ${response.statusCode} ${response.body}');
       }

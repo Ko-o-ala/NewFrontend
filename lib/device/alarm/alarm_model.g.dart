@@ -23,7 +23,7 @@ class AlarmModelAdapter extends TypeAdapter<AlarmModel> {
       alarmSound: fields[3] as bool,
       vibration: fields[4] as bool,
       snooze: fields[5] as bool,
-      isEnabled: fields.containsKey(6) && fields[6] != null ? fields[6] as bool : true, // ✅ null-safe
+      isEnabled: fields[6] as bool,
     );
   }
 

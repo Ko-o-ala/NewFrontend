@@ -1,3 +1,4 @@
+// ✅ 필요한 import 유지
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
@@ -32,11 +33,56 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     });
   }
 
+  Future<Map<String, int?>> fetchMonthlyAverageData() async {
+    final userId = await storage.read(key: 'userID');
+    final token = await storage.read(key: 'jwt');
+
+    final headers = {
+      if (token != null) 'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+    };
+
+    final uri = Uri.parse(
+      'https://kooala.tassoo.uk/sleep-data/$userId/month-avg',
+    );
+
+    try {
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode != 200) {
+        debugPrint('[month-avg] status ${res.statusCode}');
+        return {};
+      }
+
+      final body = json.decode(res.body);
+      final List dataList = body['data'] ?? [];
+
+      final now = DateTime.now();
+      final currentMonthStr = DateFormat('yyyy-MM').format(now);
+
+      final thisMonth = dataList.firstWhere(
+        (e) => e['month'] == currentMonthStr,
+        orElse: () => null,
+      );
+
+      if (thisMonth != null) {
+        final avgDuration = thisMonth['avgTotalSleepDuration'];
+        final avgScore = thisMonth['avgSleepScore'];
+        return {
+          'duration': (avgDuration is num) ? avgDuration.round() : null,
+          'score': (avgScore is num) ? avgScore.round() : null,
+        };
+      }
+    } catch (e) {
+      debugPrint('[month-avg] error: $e');
+    }
+
+    return {};
+  }
+
   Future<Map<DateTime, Map<String, dynamic>>> fetchSleepData() async {
     final userId = await storage.read(key: 'userID');
-    if (userId == null) throw Exception('로그인이 필요합니다.');
+    final token = await storage.read(key: 'jwt'); // ✅ 통일
 
-    final token = await storage.read(key: 'authToken');
     final headers = {
       if (token != null) 'Authorization': 'Bearer $token',
       'Accept': 'application/json',
@@ -60,57 +106,22 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
         }
 
         final body = json.decode(res.body);
-
         Map<String, dynamic>? record;
-        if (body is Map &&
-            body['data'] is List &&
-            (body['data'] as List).isNotEmpty) {
-          record = (body['data'] as List).first as Map<String, dynamic>;
-        } else if (body is Map &&
-            (body['userID'] != null || body['date'] != null)) {
+
+        if (body['data'] is List && (body['data'] as List).isNotEmpty) {
+          record = (body['data'] as List).first;
+        } else if (body['userID'] != null || body['date'] != null) {
           record = body.cast<String, dynamic>();
-        } else {
-          debugPrint('[sleep-month] $ymd -> empty schema');
-          return null;
         }
 
-        final durationBlock =
-            (record['Duration'] ?? record['duration']) as Map<String, dynamic>?;
-        if (durationBlock == null) return null;
+        if (record == null) return null;
 
-        // 숫자/문자 모두 수용
-        int? asInt(dynamic v) {
-          if (v == null) return null;
-          if (v is num) return v.round();
-          if (v is String) return int.tryParse(v);
-          return null;
-        }
+        final durationBlock = record['Duration'] ?? record['duration'];
+        final total = _asInt(durationBlock?['totalSleepDuration']);
+        final score = _asInt(record['sleepScore']);
 
-        final total = asInt(durationBlock['totalSleepDuration']);
-        final score = asInt(record['sleepScore']);
+        if (total == null || score == null) return null;
 
-        if (total == null || score == null) {
-          debugPrint('[sleep-month] $ymd -> missing total/score');
-          return null;
-        }
-
-        // 서버가 다른 날짜로 저장했는지(앵커 불일치) 확인용
-        final serverDateStr =
-            (record['date'] ?? record['anchorDate'])?.toString();
-        if (serverDateStr != null) {
-          try {
-            final sd = DateTime.parse(serverDateStr);
-            final clientKey = DateTime(year, month, i + 1);
-            final serverKey = DateTime(sd.year, sd.month, sd.day);
-            if (clientKey != serverKey) {
-              debugPrint(
-                '[sleep-month] anchor mismatch: query=$ymd, server=${DateFormat('yyyy-MM-dd').format(serverKey)}',
-              );
-            }
-          } catch (_) {}
-        }
-
-        // 캘린더 키는 ‘조회일’로 고정(앵커가 다르면 위 로그로 파악)
         return MapEntry(date, {'duration': total, 'score': score});
       } catch (e) {
         debugPrint('[sleep-month] $ymd -> error $e');
@@ -119,17 +130,19 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     });
 
     final results = await Future.wait(futures);
-    final map = Map.fromEntries(
+    return Map.fromEntries(
       results.whereType<MapEntry<DateTime, Map<String, dynamic>>>(),
     );
+  }
 
-    debugPrint('[sleep-month] collected ${map.length}/$daysInMonth days');
-    return map;
+  int? _asInt(dynamic v) {
+    if (v is num) return v.round();
+    if (v is String) return int.tryParse(v);
+    return null;
   }
 
   Future<void> _handleLogout() async {
-    await storage.delete(key: 'username');
-    await storage.delete(key: 'authToken');
+    await storage.deleteAll();
     Navigator.pushReplacementNamed(context, '/login');
   }
 
@@ -151,13 +164,9 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   username,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(height: 4),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -177,28 +186,58 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+
+              // 🔁 수면 기록 달력
               Expanded(
                 child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
                   future: fetchSleepData(),
                   builder: (context, snap) {
                     if (snap.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
-                    } else if (snap.hasError) {
-                      return Center(child: Text('로딩 실패: ${snap.error}'));
+                    } else if (!snap.hasData || snap.hasError) {
+                      return const Center(child: Text('수면 데이터를 불러오지 못했어요.'));
                     }
                     return _buildCalendar(now, snap.data!);
                   },
                 ),
               ),
+
               const SizedBox(height: 16),
-              Text(
-                '$username님은 ${now.month}월에 ...',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '평균 6시간 12분을 주무셨어요.\n목표보다 아쉽지만, 점점 안정적인 패턴을 찾아가고 있어요!',
-                textAlign: TextAlign.center,
+
+              // 🔁 평균 수면 시간
+              FutureBuilder<Map<String, int?>>(
+                future: fetchMonthlyAverageData(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Text('이번 달 평균 데이터를 불러올 수 없어요.');
+                  }
+
+                  final duration = snapshot.data!['duration'];
+                  final score = snapshot.data!['score'];
+
+                  if (duration == null || score == null) {
+                    return const Text('이번 달 평균 데이터가 부족해요.');
+                  }
+
+                  final hrs = duration ~/ 60;
+                  final mins = duration % 60;
+
+                  return Column(
+                    children: [
+                      Text(
+                        '$username님은 ${now.month}월에 ...',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '평균 ${hrs}시간 ${mins}분을 주무셨어요.\n수면 점수는 평균 ${score}점이에요.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -213,13 +252,6 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
         },
       ),
     );
-  }
-
-  String _formatDuration(dynamic minutes) {
-    if (minutes == null || minutes is! int) return '-';
-    final hrs = minutes ~/ 60;
-    final mins = minutes % 60;
-    return '${hrs}H ${mins}M';
   }
 
   Widget _buildTab(String label, bool selected) {
@@ -319,5 +351,12 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     }
 
     return Column(children: rows);
+  }
+
+  String _formatDuration(dynamic minutes) {
+    if (minutes == null || minutes is! int) return '-';
+    final hrs = minutes ~/ 60;
+    final mins = minutes % 60;
+    return '${hrs}H ${mins}M';
   }
 }
