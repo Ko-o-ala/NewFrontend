@@ -204,28 +204,51 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                   ],
                 ),
                 clipBehavior: Clip.antiAlias, // 둥근 모서리 클리핑
-                child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
-                  future: fetchSleepData(),
-                  builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (!snap.hasData || snap.hasError) {
-                      return const Center(child: Text('수면 데이터를 불러오지 못했어요.'));
-                    }
-                    return Scrollbar(
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ✅ 달력 헤더(월 표시)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                      child: Center(
+                        child: Text(
+                          DateFormat('yyyy년 M월').format(now), // 예: 2025년 8월
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                        child: _buildCalendar(
-                          now,
-                          snap.data!,
-                        ), // ← 기존 생성 함수 그대로 사용
                       ),
-                    );
-                  },
+                    ),
+                    const Divider(height: 1, color: Color(0x11000000)),
+                    // ✅ 달력 내용(스크롤)
+                    Expanded(
+                      child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
+                        future: fetchSleepData(),
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          } else if (!snap.hasData || snap.hasError) {
+                            return const Center(
+                              child: Text('수면 데이터를 불러오지 못했어요.'),
+                            );
+                          }
+                          return Scrollbar(
+                            thumbVisibility: true,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: _buildCalendar(now, snap.data!),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
