@@ -7,7 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
-import 'package:my_app/mkhome/ChatDetailScreen.dart';
+
 import 'package:my_app/services/voice_socket_service.dart';
 import 'dart:convert'; // base64Decode
 

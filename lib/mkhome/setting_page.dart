@@ -6,7 +6,6 @@ import 'package:my_app/connect_settings/faq.dart';
 import 'package:my_app/connect_settings/ask_bug.dart';
 import 'package:my_app/device/light_control_page.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
-import 'package:my_app/device/humidifier_control_page.dart';
 
 // 임시 사용자 정보 (나중에 서버 연동 시 수정)
 Future<UserModel> fetchUserInfo() async {
@@ -103,30 +102,6 @@ class SettingsScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => const LightControlPage(),
-                    ),
-                  );
-                },
-              ),
-              _buildSettingsItem(
-                context,
-                '타이머 설정',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AlarmDashboardPage(),
-                    ),
-                  );
-                },
-              ),
-              _buildSettingsItem(
-                context,
-                '가습기 조절',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const HumidifierControlPage(),
                     ),
                   );
                 },
