@@ -7,7 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
-import 'package:my_app/mkhome/ChatDetailScreen.dart';
+
 import 'package:my_app/services/voice_socket_service.dart';
 import 'dart:convert'; // base64Decode
 
@@ -137,6 +137,33 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     );
   }
 
+  Future<void> _connectWithJwt() async {
+    final jwt = await storage.read(key: 'jwt'); // flutter_secure_storage에서 읽기
+
+    // 서버가 읽는 파라미터 이름을 맞추세요: 'jwt' 또는 'token'
+    const paramName = 'jwt';
+
+    // 기본 URL
+    const base = 'https://llm.tassoo.uk/';
+
+    // 기존 쿼리에 안전하게 병합해서 붙이기
+    String _appendQuery(String baseUrl, Map<String, String> extra) {
+      final uri = Uri.parse(baseUrl);
+      final merged = <String, String>{...uri.queryParameters, ...extra};
+      return uri.replace(queryParameters: merged).toString();
+    }
+
+    final urlWithJwt =
+        (jwt != null && jwt.isNotEmpty)
+            ? _appendQuery(base, {paramName: jwt})
+            : base;
+
+    if (!voiceService.isConnected) {
+      // connect가 void면 await 쓰지 마세요. (스크린샷 에러 원인)
+      voiceService.connect(url: urlWithJwt);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -144,9 +171,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _initAudioPlayer();
 
     _chatBox = Hive.box<Message>('chatBox');
-    if (!voiceService.isConnected) {
-      voiceService.connect(url: 'https://llm.tassoo.uk/');
-    }
+
+    _connectWithJwt();
 
     Uint8List _toMp3Bytes(dynamic evt) {
       try {
@@ -208,20 +234,36 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       },
     );
 
+    String extractTextFromFormattedString(String input) {
+      final regex = RegExp(r'\{text:\s*((.|\n)*?)\s*\}$');
+
+      final match = regex.firstMatch(input);
+      if (match != null) {
+        return match.group(1) ?? input;
+      }
+      return input;
+    }
+
     // 어시스턴트 텍스트 수신 → 채팅에 기록
     _assistantSub = voiceService.assistantStream.listen((reply) {
       if (reply.trim().isEmpty) return;
-      _chatBox.add(Message(sender: 'bot', text: reply.trim()));
 
-      if (_isThinking) setState(() => _isThinking = false);
+      final textOnly = extractTextFromFormattedString(reply.trim());
 
-      if (mounted) setState(() {});
+      _chatBox.add(Message(sender: 'bot', text: textOnly));
+
+      if (mounted) {
+        setState(() {
+          _isThinking = false;
+          _text = textOnly; // ✅ 이제 깔끔한 텍스트만 들어감
+        });
+      }
     });
 
     // STT
     _speech = stt.SpeechToText();
 
-    // 마이크 애니메이션
+    // 마이크 애니메이션x
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -484,6 +526,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
               voiceService.sendText(finalText);
               _addMessage('user', finalText);
             }
+
             _stopListening();
           }
         },
@@ -574,32 +617,39 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        _text.isEmpty ? '🎤 여기에 인식된 텍스트가 표시됩니다' : _text,
-                        style: const TextStyle(fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (_text.trim().isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ChatDetailScreen(userInput: _text),
-                                ),
-                              );
-                            },
-                            child: const Text("자세히 보기"),
+
+                      /// ✅ 여기서부터 바꾸기 시작
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.all(16),
+                        constraints: const BoxConstraints(
+                          maxHeight: 160, // ✅ 이 높이보다 넘으면 스크롤
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: SingleChildScrollView(
+                          child: AnimatedSwitcher(
+                            duration: Duration(milliseconds: 400),
+                            child: Text(
+                              _text.isEmpty ? '🎤 여기에 인식된 텍스트가 표시됩니다' : _text,
+                              key: ValueKey(_text),
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.6,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              textAlign: TextAlign.justify, // ✅ 문단 정렬
+                            ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),
               ),
-
             // 🎤 녹음 버튼 + 반응 애니메이션
             Padding(
               padding: const EdgeInsets.only(bottom: 40.0),
