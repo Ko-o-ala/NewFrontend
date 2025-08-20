@@ -21,6 +21,8 @@ Timer? _assembleTimer;
 final Duration _assembleGap = const Duration(milliseconds: 350);
 final List<Uint8List> _pendingQueue = [];
 bool _isPreparing = false; // 파일 쓰기 중 재진입 방지
+bool _autoResumeMic = true; // 말 끝나면 자동 재시작할지
+DateTime _lastTtsAt = DateTime.fromMillisecondsSinceEpoch(0); // 마지막 TTS 수신 시각
 
 final storage = FlutterSecureStorage();
 
@@ -137,33 +139,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     );
   }
 
-  Future<void> _connectWithJwt() async {
-    final jwt = await storage.read(key: 'jwt'); // flutter_secure_storage에서 읽기
-
-    // 서버가 읽는 파라미터 이름을 맞추세요: 'jwt' 또는 'token'
-    const paramName = 'jwt';
-
-    // 기본 URL
-    const base = 'https://llm.tassoo.uk/';
-
-    // 기존 쿼리에 안전하게 병합해서 붙이기
-    String _appendQuery(String baseUrl, Map<String, String> extra) {
-      final uri = Uri.parse(baseUrl);
-      final merged = <String, String>{...uri.queryParameters, ...extra};
-      return uri.replace(queryParameters: merged).toString();
-    }
-
-    final urlWithJwt =
-        (jwt != null && jwt.isNotEmpty)
-            ? _appendQuery(base, {paramName: jwt})
-            : base;
-
-    if (!voiceService.isConnected) {
-      // connect가 void면 await 쓰지 마세요. (스크린샷 에러 원인)
-      voiceService.connect(url: urlWithJwt);
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -171,8 +146,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _initAudioPlayer();
 
     _chatBox = Hive.box<Message>('chatBox');
-
-    _connectWithJwt();
+    if (!voiceService.isConnected) {
+      voiceService.connect(url: 'https://llm.tassoo.uk/');
+    }
 
     Uint8List _toMp3Bytes(dynamic evt) {
       try {
@@ -207,6 +183,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _pcmSub = voiceService.audioStream.listen(
       (event) {
         final bytes = _toMp3Bytes(event);
+        _lastTtsAt = DateTime.now();
+        _audioAvailable = true;
+
         if (bytes.isEmpty) {
           debugPrint('⏩ skip non-audio or empty: ${event.runtimeType}');
           return;
@@ -333,6 +312,36 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     }
   }
 
+  Future<void> _resumeMicIfQuiet({
+    Duration minSilence = const Duration(milliseconds: 700),
+  }) async {
+    if (!_autoResumeMic) return;
+    if (!mounted) return;
+
+    // 재생/준비/청취 중이면 패스
+    if (_isPlaying || _isPreparing || _isListening) return;
+    // 큐/버퍼에 남은 오디오가 있으면 패스
+    if (_pendingQueue.isNotEmpty || _audioAvailable || _audioBuffer.isNotEmpty)
+      return;
+
+    // 혹시 막판 청크가 더 오나 700ms 기다렸다가…
+    await Future.delayed(minSilence);
+    if (!mounted) return;
+
+    final sinceLast = DateTime.now().difference(_lastTtsAt);
+    final reallyQuiet =
+        _pendingQueue.isEmpty &&
+        !_audioAvailable &&
+        _audioBuffer.isEmpty &&
+        sinceLast >= minSilence;
+
+    if (reallyQuiet && !_isListening) {
+      await _enterMicMode(); // 녹음 세션으로 전환(iOS 필수)
+      await Future.delayed(const Duration(milliseconds: 80)); // 세션 전환 여유
+      if (mounted && !_isListening) _listen();
+    }
+  }
+
   Future<void> _initAudioPlayer() async {
     // iOS 무음 스위치/스피커 라우팅, Android 스피커포스
     await AudioPlayer.global.setAudioContext(
@@ -364,9 +373,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       }
     });
 
-    _player.onPlayerComplete.listen((event) {
+    _player.onPlayerComplete.listen((event) async {
       setState(() => _isPlaying = false);
-      _playNextFromQueue(); // ✅ 추가
+
+      // 아직 재생 대기 큐가 있으면 다음 것 재생
+      if (_pendingQueue.isNotEmpty) {
+        _playNextFromQueue();
+        return;
+      }
+
+      // 더 이상 재생할 게 없으면 —> 조용한지 확인 후 마이크 자동 재시작
+      await _resumeMicIfQuiet(); // ✅ 핵심
     });
   }
 
@@ -517,6 +534,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   void _listen() async {
     if (!_isListening) {
+      await _enterMicMode();
+      await Future.delayed(const Duration(milliseconds: 80));
+
       final available = await _speech.initialize(
         onStatus: (status) {
           if (status == "done") {
