@@ -9,15 +9,17 @@ import 'package:http/http.dart' as http;
 
 class MonthlySleepScreen extends StatefulWidget {
   const MonthlySleepScreen({super.key});
-
   @override
   State<MonthlySleepScreen> createState() => _MonthlySleepScreenState();
 }
 
 class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
-  final storage = FlutterSecureStorage();
+  final storage = const FlutterSecureStorage();
   String username = '사용자';
   bool _isLoggedIn = false;
+
+  /// 보고 있는 달(년/월 단위)
+  DateTime _cursorMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   @override
   void initState() {
@@ -33,15 +35,16 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     });
   }
 
-  Future<Map<String, int?>> fetchMonthlyAverageData() async {
+  /// ⬇️ 이번(커서) 달의 평균 수면(분) / 평균 점수
+  Future<Map<String, int?>> fetchMonthlyAverageData(DateTime month) async {
     final userId = await storage.read(key: 'userID');
     final token = await storage.read(key: 'jwt');
+    if (userId == null) return {};
 
     final headers = {
       if (token != null) 'Authorization': 'Bearer $token',
       'Accept': 'application/json',
     };
-
     final uri = Uri.parse(
       'https://kooala.tassoo.uk/sleep-data/$userId/month-avg',
     );
@@ -52,21 +55,18 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
         debugPrint('[month-avg] status ${res.statusCode}');
         return {};
       }
-
       final body = json.decode(res.body);
       final List dataList = body['data'] ?? [];
+      final monthStr = DateFormat('yyyy-MM').format(month);
 
-      final now = DateTime.now();
-      final currentMonthStr = DateFormat('yyyy-MM').format(now);
-
-      final thisMonth = dataList.firstWhere(
-        (e) => e['month'] == currentMonthStr,
-        orElse: () => null,
+      final item = dataList.cast<Map>().firstWhere(
+        (e) => e['month'] == monthStr,
+        orElse: () => {},
       );
 
-      if (thisMonth != null) {
-        final avgDuration = thisMonth['avgTotalSleepDuration'];
-        final avgScore = thisMonth['avgSleepScore'];
+      if (item.isNotEmpty) {
+        final avgDuration = item['avgTotalSleepDuration'];
+        final avgScore = item['avgSleepScore'];
         return {
           'duration': (avgDuration is num) ? avgDuration.round() : null,
           'score': (avgScore is num) ? avgScore.round() : null,
@@ -75,51 +75,49 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     } catch (e) {
       debugPrint('[month-avg] error: $e');
     }
-
     return {};
   }
 
-  Future<Map<DateTime, Map<String, dynamic>>> fetchSleepData() async {
+  /// ⬇️ 커서 달의 날짜별 기록(분, 점수)
+  Future<Map<DateTime, Map<String, dynamic>>> fetchSleepData(
+    DateTime month,
+  ) async {
     final userId = await storage.read(key: 'userID');
-    final token = await storage.read(key: 'jwt'); // ✅ 통일
+    final token = await storage.read(key: 'jwt');
+    if (userId == null) return {};
 
     final headers = {
       if (token != null) 'Authorization': 'Bearer $token',
       'Accept': 'application/json',
     };
 
-    final now = DateTime.now();
-    final year = now.year;
-    final month = now.month;
-    final daysInMonth = DateUtils.getDaysInMonth(year, month);
+    final year = month.year;
+    final mon = month.month;
+    final daysInMonth = DateUtils.getDaysInMonth(year, mon);
 
     final futures = List.generate(daysInMonth, (i) async {
-      final date = DateTime(year, month, i + 1);
+      final date = DateTime(year, mon, i + 1);
       final ymd = DateFormat('yyyy-MM-dd').format(date);
       final uri = Uri.parse('https://kooala.tassoo.uk/sleep-data/$userId/$ymd');
 
       try {
         final res = await http.get(uri, headers: headers);
-        if (res.statusCode != 200) {
-          debugPrint('[sleep-month] $ymd -> ${res.statusCode}');
-          return null;
-        }
+        if (res.statusCode != 200) return null; // 데이터 없는 날
 
         final body = json.decode(res.body);
         Map<String, dynamic>? record;
 
         if (body['data'] is List && (body['data'] as List).isNotEmpty) {
-          record = (body['data'] as List).first;
-        } else if (body['userID'] != null || body['date'] != null) {
-          record = body.cast<String, dynamic>();
+          record = Map<String, dynamic>.from((body['data'] as List).first);
+        } else if (body is Map &&
+            (body['userID'] != null || body['date'] != null)) {
+          record = Map<String, dynamic>.from(body);
         }
-
         if (record == null) return null;
 
         final durationBlock = record['Duration'] ?? record['duration'];
         final total = _asInt(durationBlock?['totalSleepDuration']);
         final score = _asInt(record['sleepScore']);
-
         if (total == null || score == null) return null;
 
         return MapEntry(date, {'duration': total, 'score': score});
@@ -143,12 +141,26 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
 
   Future<void> _handleLogout() async {
     await storage.deleteAll();
-    Navigator.pushReplacementNamed(context, '/login');
+    if (mounted) Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  /// 달 이동: delta -1(이전), +1(다음)
+  void _changeMonth(int delta) {
+    final next = DateTime(_cursorMonth.year, _cursorMonth.month + delta);
+    final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    if (next.isAfter(nowMonth)) return; // 미래 달 금지
+    setState(() => _cursorMonth = next);
+  }
+
+  bool get _canGoNext {
+    final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    return _cursorMonth.isBefore(nowMonth);
   }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final monthLabel = DateFormat('yyyy년 M월').format(_cursorMonth);
+
     return Scaffold(
       appBar: TopNav(
         isLoggedIn: _isLoggedIn,
@@ -187,10 +199,10 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🔁 수면 기록 달력
+              // 🔁 수면 기록 달력 카드
               Container(
                 margin: const EdgeInsets.only(top: 8),
-                height: 360, // 필요시 320~420 선에서 조절 or MediaQuery로 비율 지정
+                height: 360,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -203,34 +215,53 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                     ),
                   ],
                 ),
-                clipBehavior: Clip.antiAlias, // 둥근 모서리 클리핑
+                clipBehavior: Clip.antiAlias,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ✅ 달력 헤더(월 표시)
+                    // ✅ 달력 헤더(이전/다음 화살표 + 월)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                      child: Center(
-                        child: Text(
-                          DateFormat('yyyy년 M월').format(now), // 예: 2025년 8월
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: () => _changeMonth(-1),
+                            tooltip: '이전 달',
                           ),
-                        ),
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                monthLabel,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed:
+                                _canGoNext ? () => _changeMonth(1) : null,
+                            tooltip: '다음 달',
+                          ),
+                        ],
                       ),
                     ),
                     const Divider(height: 1, color: Color(0x11000000)),
-                    // ✅ 달력 내용(스크롤)
+
+                    // ✅ 달력 내용
                     Expanded(
                       child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
-                        future: fetchSleepData(),
+                        future: fetchSleepData(_cursorMonth),
                         builder: (context, snap) {
                           if (snap.connectionState == ConnectionState.waiting) {
                             return const Center(
                               child: CircularProgressIndicator(),
                             );
-                          } else if (!snap.hasData || snap.hasError) {
+                          }
+                          if (!snap.hasData || snap.hasError) {
                             return const Center(
                               child: Text('수면 데이터를 불러오지 못했어요.'),
                             );
@@ -242,7 +273,7 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                                 horizontal: 12,
                                 vertical: 10,
                               ),
-                              child: _buildCalendar(now, snap.data!),
+                              child: _buildCalendar(_cursorMonth, snap.data!),
                             ),
                           );
                         },
@@ -254,21 +285,21 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
 
               const SizedBox(height: 16),
 
-              // 🔁 평균 수면 시간
+              // 🔁 평균 수면 시간/점수 (커서 달 기준)
               FutureBuilder<Map<String, int?>>(
-                future: fetchMonthlyAverageData(),
+                future: fetchMonthlyAverageData(_cursorMonth),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const CircularProgressIndicator();
-                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Text('이번 달 평균 데이터를 불러올 수 없어요.');
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Text('이 달의 평균 데이터를 불러올 수 없어요.');
                   }
 
                   final duration = snapshot.data!['duration'];
                   final score = snapshot.data!['score'];
-
                   if (duration == null || score == null) {
-                    return const Text('이번 달 평균 데이터가 부족해요.');
+                    return const Text('이 달의 평균 데이터가 부족해요.');
                   }
 
                   final hrs = duration ~/ 60;
@@ -277,7 +308,7 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                   return Column(
                     children: [
                       Text(
-                        '$username님은 ${now.month}월에 ...',
+                        '$username님은 ${_cursorMonth.month}월에 ...',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
@@ -332,19 +363,19 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     if (minutes == null || minutes is! int) return '-';
     final hrs = minutes ~/ 60;
     final mins = minutes % 60;
-    return '${hrs}H\n${mins}M'; // ✅ 줄바꿈으로 항상 가운데 2줄
+    return '${hrs}H\n${mins}M';
   }
 
   Widget _buildCalendar(
-    DateTime now,
+    DateTime month,
     Map<DateTime, Map<String, dynamic>> sleepData,
   ) {
-    const double kCellHeight = 90; // ✅ 모든 사각형(셀) 높이 통일
+    const double kCellHeight = 90;
     const BorderRadius kRadius = BorderRadius.all(Radius.circular(12));
 
-    final currentMonth = DateTime(now.year, now.month);
-    final firstWd = DateTime(currentMonth.year, currentMonth.month, 1).weekday;
-    final totalDays = DateUtils.getDaysInMonth(now.year, now.month);
+    final firstDay = DateTime(month.year, month.month, 1);
+    final firstWd = firstDay.weekday; // 1=Mon ... 7=Sun
+    final totalDays = DateUtils.getDaysInMonth(month.year, month.month);
 
     const weekHeaders = ['일', '월', '화', '수', '목', '금', '토'];
     final rows = <Widget>[
@@ -356,14 +387,14 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
       ),
     ];
 
-    int dayCounter = 1 - (firstWd % 7);
+    int dayCounter = 1 - (firstWd % 7); // Sun-start 보정
     while (dayCounter <= totalDays) {
       final week = <Widget>[];
       for (int wd = 0; wd < 7; wd++, dayCounter++) {
         if (dayCounter < 1 || dayCounter > totalDays) {
           week.add(const Expanded(child: SizedBox()));
         } else {
-          final d = DateTime(now.year, now.month, dayCounter);
+          final d = DateTime(month.year, month.month, dayCounter);
           final data = sleepData[d];
           week.add(
             Expanded(
@@ -390,19 +421,19 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
                     if (data != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        _formatHM2Lines(data['duration']), // ✅ 두 줄
-                        textAlign: TextAlign.center, // ✅ 중앙
+                        _formatHM2Lines(data['duration']),
+                        textAlign: TextAlign.center,
                         maxLines: 2,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
-                          height: 1.1, // 줄간격 살짝 좁게
+                          height: 1.1,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
                         '${data['score']}점',
-                        textAlign: TextAlign.center, // ✅ 중앙
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 10,
@@ -420,12 +451,5 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     }
 
     return Column(children: rows);
-  }
-
-  String _formatDuration(dynamic minutes) {
-    if (minutes == null || minutes is! int) return '-';
-    final hrs = minutes ~/ 60;
-    final mins = minutes % 60;
-    return '${hrs}H ${mins}M';
   }
 }
