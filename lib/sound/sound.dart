@@ -11,6 +11,8 @@ import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+Timer? _prefDebounce; // 슬라이더 PATCH 디바운스
+
 class SoundScreen extends StatefulWidget {
   const SoundScreen({Key? key}) : super(key: key);
 
@@ -270,6 +272,7 @@ class _SoundScreenState extends State<SoundScreen> {
 
   @override
   void dispose() {
+    _prefDebounce?.cancel();
     _execDebounce?.cancel(); // ← 추가
     player.dispose();
     controller.dispose();
@@ -411,6 +414,54 @@ class _SoundScreenState extends State<SoundScreen> {
     }
   }
 
+  Future<void> _patchPreferenceBalance(double balance) async {
+    if (userId == null) return;
+    try {
+      final url = Uri.parse('https://kooala.tassoo.uk/users/survey/modify');
+      final headers = await _authHeaders();
+      // 서버가 0~1 스케일을 받는다고 가정 (필요 시 매핑 수정)
+      final payload = {
+        "userID": userId,
+        "preferenceBalance": double.parse(balance.toStringAsFixed(2)),
+      };
+
+      final resp = await http.patch(
+        url,
+        headers: headers,
+        body: json.encode(payload),
+      );
+
+      debugPrint(
+        '[PATCH] preferenceBalance=${payload["preferenceBalance"]} '
+        'status=${resp.statusCode} body=${resp.body}',
+      );
+
+      if (resp.statusCode == 401) {
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401)');
+      }
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('preferenceBalance PATCH 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('설정 저장 중 오류: $e')));
+      }
+    }
+  }
+
+  void _debouncedPrefUpdate() {
+    _prefDebounce?.cancel();
+    final value = preferenceRatio; // 현재 슬라이더 값 캡처
+    _prefDebounce = Timer(const Duration(milliseconds: 350), () async {
+      await _patchPreferenceBalance(value); // 1) 서버에 저장
+      await _executeRecommendation(); // 2) 최신 선호도로 추천 재실행
+    });
+  }
+
   Future<void> _playSound(String fileName) async {
     if (currentPlaying == fileName && isPlaying) {
       await player.pause();
@@ -543,8 +594,7 @@ class _SoundScreenState extends State<SoundScreen> {
                   label: "${(preferenceRatio * 100).toInt()}%",
                   onChanged: (value) {
                     setState(() => preferenceRatio = value);
-                    // _applyPreferenceRatio(); // 로컬 반영
-                    _debouncedExecute(); // 서버 실행(디바운스)
+                    _debouncedPrefUpdate(); // ✅ PATCH + 추천 재실행 (디바운스)
                   },
                 ),
 
