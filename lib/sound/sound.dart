@@ -305,6 +305,53 @@ class _SoundScreenState extends State<SoundScreen> {
     };
   }
 
+  Future<void> _patchPreferredSoundsRank() async {
+    try {
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/users/modify/preferred/sounds/rank',
+      );
+      final headers = await _authHeaders();
+
+      // 현재 화면상의 전체 순서를 1-base rank로 생성
+      final preferred = <Map<String, dynamic>>[
+        for (int i = 0; i < soundFiles.length; i++)
+          {"filename": soundFiles[i], "rank": i + 1},
+      ];
+
+      final body = json.encode({"preferredSounds": preferred});
+
+      final resp = await http.patch(url, headers: headers, body: body);
+
+      debugPrint(
+        '[PATCH preferredSounds] status=${resp.statusCode} body=${resp.body}',
+      );
+      if (resp.statusCode == 401) {
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401)');
+      }
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('preferredSounds PATCH 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('정렬 저장 실패: $e')));
+      }
+    }
+  }
+
+  void _onReorder(int oldIdx, int newIdx) async {
+    setState(() {
+      final item = soundFiles.removeAt(oldIdx);
+      soundFiles.insert(newIdx, item);
+    });
+
+    // ✅ 사용자가 순서를 바꿀 때마다 서버에 즉시 반영
+    await _patchPreferredSoundsRank();
+  }
+
   Future<void> _executeRecommendation() async {
     if (userId == null) {
       debugPrint('[EXEC] skip: userId is null');
@@ -494,13 +541,6 @@ class _SoundScreenState extends State<SoundScreen> {
     _execDebounce?.cancel();
     _execDebounce = Timer(const Duration(milliseconds: 350), () {
       _executeRecommendation();
-    });
-  }
-
-  void _onReorder(int oldIdx, int newIdx) {
-    setState(() {
-      final item = soundFiles.removeAt(oldIdx);
-      soundFiles.insert(newIdx, item);
     });
   }
 
