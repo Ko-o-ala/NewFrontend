@@ -1,10 +1,14 @@
 // 전체 코드 + 모든 사운드 메타데이터 포함
 // 파일명: SoundScreen.dart
 
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/bottomNavigationBar.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SoundScreen extends StatefulWidget {
   const SoundScreen({Key? key}) : super(key: key);
@@ -14,10 +18,19 @@ class SoundScreen extends StatefulWidget {
 }
 
 class _SoundScreenState extends State<SoundScreen> {
+  final FlutterSecureStorage storage = const FlutterSecureStorage();
   final player = AudioPlayer();
   String? currentPlaying;
   bool isPlaying = false;
   double preferenceRatio = 0.75;
+
+  /// 🔹 추천 API 관련 상태
+  String? recommendationText; // 서버가 내려주는 recommendation_text
+  List<String> topRecommended = []; // 서버에서 온 filename 리스트(순위 정렬 적용)
+  bool loadingRecommendations = false;
+  String userId = 'minho1991'; // 기본값 (라우트 args로 덮어씀)
+  DateTime recDate = DateTime(2025, 8, 12); // 기본값 (라우트 args로 덮어씀)
+  bool _argsApplied = false; // didChangeDependencies 1회만 실행하기 위한 플래그
 
   final List<String> soundFiles = [
     "NATURE_1_WATER.mp3",
@@ -188,11 +201,55 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
+  /// 라우트에서 넘어온 userId/date를 1회 반영 + 추천 호출
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_argsApplied) return;
+    _argsApplied = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map) {
+      if (args['userId'] is String && (args['userId'] as String).isNotEmpty) {
+        userId = args['userId'] as String;
+      }
+      final d = args['date'];
+      if (d is String && d.isNotEmpty) {
+        final parsed = DateTime.tryParse(d);
+        if (parsed != null) recDate = parsed;
+      } else if (d is DateTime) {
+        recDate = d;
+      }
+    }
+
+    _loadRecommendations(); // 최초 1회 호출
+  }
+
   @override
   void dispose() {
     player.dispose();
     controller.dispose();
     super.dispose();
+  }
+
+  // JWT 읽기 + 인증 헤더 생성
+  Future<String?> _getJwt() async {
+    // 로그인 시 저장해 둔 jwt 읽기
+    return await storage.read(key: 'jwt');
+  }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final jwt = await _getJwt();
+    if (jwt == null || jwt.isEmpty) {
+      throw Exception('JWT가 없습니다. 다시 로그인해주세요.');
+    }
+    // 저장된 값이 이미 'Bearer '로 시작하면 그대로 사용
+    final token = jwt.startsWith('Bearer ') ? jwt : 'Bearer $jwt';
+    return {
+      HttpHeaders.authorizationHeader: token,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
   }
 
   Future<void> _playSound(String fileName) async {
@@ -207,6 +264,11 @@ class _SoundScreenState extends State<SoundScreen> {
         });
       } catch (e) {
         debugPrint("⚠️ 재생 오류: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('재생 오류: $e')));
+        }
       }
     }
   }
@@ -215,6 +277,46 @@ class _SoundScreenState extends State<SoundScreen> {
     await player.stop();
     setState(() {
       currentPlaying = null;
+    });
+  }
+
+  /// 🔸 슬라이더 비율에 따라 추천을 상단에 몇 개 고정할지 반영
+  void _applyPreferenceRatio() {
+    if (topRecommended.isEmpty) return;
+
+    // 예시: 추천 목록 중 앞에서부터 (비율 * 추천개수) 만큼만 상단 고정
+    final int keep = (preferenceRatio * topRecommended.length).round();
+
+    final selected = topRecommended.take(keep).toList();
+    final rest = soundFiles.where((f) => !selected.contains(f)).toList();
+
+    setState(() {
+      /// 🔸 슬라이더 비율에 따라 추천을 상단에 몇 개 고정할지 반영
+      void _applyPreferenceRatio() {
+        if (topRecommended.isEmpty) return;
+
+        // 예시: 추천 목록 중 앞에서부터 (비율 * 추천개수) 만큼만 상단 고정
+        final int keep = (preferenceRatio * topRecommended.length).round();
+
+        final selected = topRecommended.take(keep).toList();
+        final rest = soundFiles.where((f) => !selected.contains(f)).toList();
+
+        setState(() {
+          soundFiles
+            ..clear()
+            ..addAll(selected)
+            ..addAll(rest);
+
+          currentPage = 0;
+          controller.jumpToPage(0);
+        });
+        _applyPreferenceRatio();
+      }
+
+      soundFiles
+        ..clear()
+        ..addAll(selected)
+        ..addAll(rest);
     });
   }
 
@@ -230,6 +332,74 @@ class _SoundScreenState extends State<SoundScreen> {
     return soundFiles.skip(start).take(perPage).toList();
   }
 
+  /// 🔹 YYYY-MM-DD 포맷
+  String _fmtDate(DateTime d) {
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$mm-$dd';
+  }
+
+  /// 🔹 추천 API 호출 + 리스트 상단 정렬
+  Future<void> _loadRecommendations() async {
+    setState(() => loadingRecommendations = true);
+    try {
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/recommend-sound/${Uri.encodeComponent(userId)}/${_fmtDate(recDate)}/results',
+      );
+
+      // 추천 API 호출부(_loadRecommendations)에서 사용
+      final resp = await http.get(url, headers: await _authHeaders());
+
+      if (resp.statusCode == 401) {
+        // 만료/유효하지 않은 토큰
+        // (선택) 토큰 삭제 및 로그인 화면으로 이동
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401): 로그인 토큰이 만료되었거나 유효하지 않습니다.');
+      }
+
+      final Map<String, dynamic> jsonBody = json.decode(resp.body);
+      final String? recText = jsonBody['recommendation_text']?.toString();
+      final List<dynamic> recs =
+          (jsonBody['recommended_sounds'] as List?) ?? [];
+
+      // rank 순으로 정렬 후, 존재하는 파일만 추림
+      final sorted =
+          recs.whereType<Map<String, dynamic>>().toList()
+            ..sort((a, b) => (a['rank'] ?? 999).compareTo(b['rank'] ?? 999));
+
+      final List<String> filenames = [];
+      for (final m in sorted) {
+        final fn = m['filename']?.toString();
+        if (fn != null && soundFiles.contains(fn)) {
+          filenames.add(fn);
+        }
+      }
+
+      // 추천 항목을 soundFiles 최상단으로 이동(중복 제거, 나머지는 기존 순서 유지)
+      final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
+      setState(() {
+        recommendationText = recText;
+        topRecommended = filenames;
+        soundFiles
+          ..clear()
+          ..addAll(filenames)
+          ..addAll(rest);
+        // 페이지를 추천이 있는 첫 페이지로 이동
+        currentPage = 0;
+        controller.jumpToPage(0);
+      });
+    } catch (e) {
+      debugPrint('추천 조회 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('추천을 불러오지 못했습니다: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => loadingRecommendations = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const perPage = 6;
@@ -241,7 +411,7 @@ class _SoundScreenState extends State<SoundScreen> {
 
       body: Column(
         children: [
-          // build() 메서드 안 Column(children: [...]) 부분 위쪽에 삽입:
+          // 상단: AI 추천 비율 슬라이더
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: Column(
@@ -259,6 +429,7 @@ class _SoundScreenState extends State<SoundScreen> {
                   label: "${(preferenceRatio * 100).toInt()}%",
                   onChanged: (value) {
                     setState(() => preferenceRatio = value);
+                    _applyPreferenceRatio();
                   },
                 ),
                 Row(
@@ -278,6 +449,73 @@ class _SoundScreenState extends State<SoundScreen> {
             ),
           ),
 
+          // 🔹 추천 결과 표시 카드(문구 + 새로고침 + 추천 태그)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome,
+                          color: Color(0xFF8183D9),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            loadingRecommendations
+                                ? "추천 불러오는 중..."
+                                : (recommendationText ??
+                                    "아래 새로고침을 눌러 오늘의 추천을 받아보세요."),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '추천 새로고침',
+                          icon: const Icon(Icons.refresh),
+                          onPressed:
+                              loadingRecommendations
+                                  ? null
+                                  : _loadRecommendations,
+                        ),
+                      ],
+                    ),
+                    if (topRecommended.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: -6,
+                        children:
+                            topRecommended
+                                .map(
+                                  (f) => Chip(
+                                    label: Text(
+                                      '추천 • ${f.replaceAll(".mp3", "")}',
+                                    ),
+                                    backgroundColor: const Color(0xFFEDEBFF),
+                                    labelStyle: const TextStyle(
+                                      color: Color(0xFF4B4EBD),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 본문: 페이지당 6개, 추천이 맨 위로 온 soundFiles를 사용
           Expanded(
             child: PageView.builder(
               controller: controller,
@@ -300,6 +538,7 @@ class _SoundScreenState extends State<SoundScreen> {
                         .replaceAll('_', ' ');
                     final selected = currentPlaying == file;
                     final data = metadata[file];
+                    final isRecommended = topRecommended.contains(file);
 
                     return Card(
                       key: ValueKey(file),
@@ -328,15 +567,42 @@ class _SoundScreenState extends State<SoundScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    name,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight:
-                                          selected
-                                              ? FontWeight.bold
-                                              : FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight:
+                                                selected
+                                                    ? FontWeight.bold
+                                                    : FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isRecommended)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEDEBFF),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '추천',
+                                            style: TextStyle(
+                                              color: Color(0xFF4B4EBD),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                                 IconButton(
@@ -385,6 +651,8 @@ class _SoundScreenState extends State<SoundScreen> {
               },
             ),
           ),
+
+          // 페이지 인디케이터/점프
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Wrap(
@@ -412,6 +680,8 @@ class _SoundScreenState extends State<SoundScreen> {
               }),
             ),
           ),
+
+          // 현재 재생 중 바
           if (currentPlaying != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -436,10 +706,11 @@ class _SoundScreenState extends State<SoundScreen> {
                     icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
                     color: const Color(0xFF8183D9),
                     onPressed: () {
-                      if (isPlaying)
+                      if (isPlaying) {
                         player.pause();
-                      else
+                      } else {
                         player.play();
+                      }
                     },
                   ),
                   IconButton(
@@ -450,6 +721,8 @@ class _SoundScreenState extends State<SoundScreen> {
                 ],
               ),
             ),
+
+          // 하단 네비게이션
           CustomBottomNavBar(
             currentIndex: 2,
             onTap: (index) {
