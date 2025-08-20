@@ -108,13 +108,13 @@ class _HealthPageState extends State<HealthPage> {
                 (v) => setState(() => caffeineIntakeLevel = v),
               ),
               _q(
-                'Q21. 운동을 얼마나 자주 하시나요??',
+                'Q21. 운동을 얼마나 자주 하시나요?',
                 ['하지 않음', '주2~3회', '매일'],
                 exerciseFrequency,
                 (v) => setState(() => exerciseFrequency = v),
               ),
               _q(
-                'Q22. 운동을 언제 하시나요??',
+                'Q22. 운동을 언제 하시나요?',
                 ['오전', '낮', '저녁', '운동을 하지 않음'],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
