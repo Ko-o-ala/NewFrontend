@@ -250,7 +250,7 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                                 icon: const Icon(Icons.arrow_back_ios),
                                 onPressed: () {
                                   setState(() {
-                                    weekOffset -= 1;
+                                    weekOffset += 1;
                                     _fetchWeeklySleep();
                                   });
                                 },
@@ -262,7 +262,7 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                                         ? null
                                         : () {
                                           setState(() {
-                                            weekOffset += 1;
+                                            weekOffset -= 1;
                                             _fetchWeeklySleep();
                                           });
                                         },
