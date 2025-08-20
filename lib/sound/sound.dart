@@ -350,6 +350,7 @@ class _SoundScreenState extends State<SoundScreen> {
       debugPrint('[RESULTS] skip: userId is null');
       return;
     }
+
     setState(() => loadingRecommendations = true);
 
     try {
@@ -370,7 +371,6 @@ class _SoundScreenState extends State<SoundScreen> {
       }
 
       final Map<String, dynamic> jsonBody = json.decode(resp.body);
-      final String? recText = jsonBody['recommendation_text']?.toString();
       final List<dynamic> recs =
           (jsonBody['recommended_sounds'] as List?) ?? [];
 
@@ -385,8 +385,9 @@ class _SoundScreenState extends State<SoundScreen> {
       }
 
       final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
+
       setState(() {
-        recommendationText = recText;
+        recommendationText = null;
         topRecommended = filenames;
         soundFiles
           ..clear()
@@ -398,9 +399,6 @@ class _SoundScreenState extends State<SoundScreen> {
           controller.jumpToPage(0);
         }
       });
-
-      // 슬라이더 비율 적용해서 일부만 고정
-      _applyPreferenceRatio();
     } catch (e) {
       debugPrint('추천 조회 실패: $e');
       if (mounted) {
@@ -445,22 +443,6 @@ class _SoundScreenState extends State<SoundScreen> {
     _execDebounce?.cancel();
     _execDebounce = Timer(const Duration(milliseconds: 350), () {
       _executeRecommendation();
-    });
-  }
-
-  /// 🔸 슬라이더 비율에 따라 추천 일부만 상단에 고정
-  void _applyPreferenceRatio() {
-    if (topRecommended.isEmpty) return;
-
-    final int keep = (preferenceRatio * topRecommended.length).round();
-    final selected = topRecommended.take(keep).toList();
-    final rest = soundFiles.where((f) => !selected.contains(f)).toList();
-
-    setState(() {
-      soundFiles
-        ..clear()
-        ..addAll(selected)
-        ..addAll(rest);
     });
   }
 
@@ -561,7 +543,7 @@ class _SoundScreenState extends State<SoundScreen> {
                   label: "${(preferenceRatio * 100).toInt()}%",
                   onChanged: (value) {
                     setState(() => preferenceRatio = value);
-                    _applyPreferenceRatio(); // 로컬 반영
+                    // _applyPreferenceRatio(); // 로컬 반영
                     _debouncedExecute(); // 서버 실행(디바운스)
                   },
                 ),
@@ -624,24 +606,29 @@ class _SoundScreenState extends State<SoundScreen> {
                     ),
                     if (topRecommended.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: -6,
-                        children:
-                            topRecommended
-                                .map(
-                                  (f) => Chip(
-                                    label: Text(
-                                      '추천 • ${f.replaceAll(".mp3", "")}',
+                      if (topRecommended.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: -6,
+                          children:
+                              topRecommended
+                                  .take(2)
+                                  .map(
+                                    // ✅ 상위 2개만
+                                    (f) => Chip(
+                                      label: Text(
+                                        '추천 • ${f.replaceAll(".mp3", "")}',
+                                      ),
+                                      backgroundColor: const Color(0xFFEDEBFF),
+                                      labelStyle: const TextStyle(
+                                        color: Color(0xFF4B4EBD),
+                                      ),
                                     ),
-                                    backgroundColor: const Color(0xFFEDEBFF),
-                                    labelStyle: const TextStyle(
-                                      color: Color(0xFF4B4EBD),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                      ),
+                                  )
+                                  .toList(),
+                        ),
+                      ],
                     ],
                   ],
                 ),
