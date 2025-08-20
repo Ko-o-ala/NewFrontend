@@ -1,5 +1,6 @@
 // 전체 코드 + 모든 사운드 메타데이터 포함
 // 파일명: SoundScreen.dart
+import 'dart:async';
 
 import 'dart:convert';
 import 'dart:io';
@@ -18,6 +19,9 @@ class SoundScreen extends StatefulWidget {
 }
 
 class _SoundScreenState extends State<SoundScreen> {
+  Timer? _execDebounce;
+  bool executing = false; // (선택) 실행 중 UI 제어에 쓰고 싶으면 사용
+
   final FlutterSecureStorage storage = const FlutterSecureStorage();
   final player = AudioPlayer();
   String? currentPlaying;
@@ -28,7 +32,8 @@ class _SoundScreenState extends State<SoundScreen> {
   String? recommendationText; // 서버가 내려주는 recommendation_text
   List<String> topRecommended = []; // 서버에서 온 filename 리스트(순위 정렬 적용)
   bool loadingRecommendations = false;
-  String userId = 'minho1991'; // 기본값 (라우트 args로 덮어씀)
+  String? userId;
+  bool authReady = false;
   DateTime recDate = DateTime(2025, 8, 12); // 기본값 (라우트 args로 덮어씀)
   bool _argsApplied = false; // didChangeDependencies 1회만 실행하기 위한 플래그
 
@@ -209,24 +214,63 @@ class _SoundScreenState extends State<SoundScreen> {
     _argsApplied = true;
 
     final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map) {
-      if (args['userId'] is String && (args['userId'] as String).isNotEmpty) {
-        userId = args['userId'] as String;
-      }
-      final d = args['date'];
-      if (d is String && d.isNotEmpty) {
-        final parsed = DateTime.tryParse(d);
-        if (parsed != null) recDate = parsed;
-      } else if (d is DateTime) {
-        recDate = d;
-      }
-    }
 
-    _loadRecommendations(); // 최초 1회 호출
+    Future.microtask(() async {
+      try {
+        // 1) 날짜 먼저 반영
+        if (args is Map) {
+          final d = args['date'];
+          if (d is String && d.isNotEmpty) {
+            final parsed = DateTime.tryParse(d);
+            if (parsed != null) recDate = parsed;
+          } else if (d is DateTime) {
+            recDate = d;
+          }
+        } else {
+          // 날짜를 못 받았으면 오늘로 (404 회피)
+          recDate = DateTime.now();
+        }
+
+        // 2) userId 확보 (JWT/스토리지 기준으로 보정)
+        final ensured = await _ensureUserId();
+        var finalId = ensured;
+
+        // 3) 라우트 userId는 JWT와 같을 때만 허용 (불일치 = 403 유발)
+        if (args is Map &&
+            args['userId'] is String &&
+            (args['userId'] as String).isNotEmpty) {
+          final fromArgs = (args['userId'] as String).trim();
+          if (fromArgs == ensured) {
+            finalId = fromArgs;
+          } else {
+            debugPrint(
+              '[USER] ignore mismatching route userId=$fromArgs; use token=$ensured',
+            );
+          }
+        }
+
+        setState(() {
+          userId = finalId;
+          authReady = true;
+        });
+
+        debugPrint('[USER] final userId=$userId, date=${_fmtDate(recDate)}');
+
+        // 4) ✅ 한 번만 실행
+        await _executeRecommendation();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인 정보가 없습니다. 다시 로그인해주세요.')),
+        );
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    });
   }
 
   @override
   void dispose() {
+    _execDebounce?.cancel(); // ← 추가
     player.dispose();
     controller.dispose();
     super.dispose();
@@ -239,17 +283,134 @@ class _SoundScreenState extends State<SoundScreen> {
   }
 
   Future<Map<String, String>> _authHeaders() async {
-    final jwt = await _getJwt();
-    if (jwt == null || jwt.isEmpty) {
+    // userId 확보 여부 로그용
+    debugPrint('[AUTH] preparing headers, userId=$userId');
+    String? raw = await storage.read(key: 'jwt');
+    if (raw == null || raw.trim().isEmpty) {
       throw Exception('JWT가 없습니다. 다시 로그인해주세요.');
     }
-    // 저장된 값이 이미 'Bearer '로 시작하면 그대로 사용
-    final token = jwt.startsWith('Bearer ') ? jwt : 'Bearer $jwt';
+    final tokenOnly =
+        raw.startsWith(RegExp(r'Bearer\s', caseSensitive: false))
+            ? raw.split(' ').last
+            : raw;
+    final bearer = 'Bearer $tokenOnly';
     return {
-      HttpHeaders.authorizationHeader: token,
+      'Authorization': bearer,
+      HttpHeaders.authorizationHeader: bearer,
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
+  }
+
+  Future<void> _executeRecommendation() async {
+    if (userId == null) {
+      debugPrint('[EXEC] skip: userId is null');
+      return;
+    }
+    if (executing) return;
+
+    try {
+      setState(() => executing = true);
+      final url = Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute');
+      final headers = await _authHeaders();
+      final body = json.encode({
+        "userID": userId,
+        "date": _fmtDate(recDate),
+        // "preferenceRatio": preferenceRatio, // 서버가 받으면 주석 해제
+      });
+
+      final resp = await http.post(url, headers: headers, body: body);
+      debugPrint('[EXEC] status=${resp.statusCode} body=${resp.body}');
+
+      if (resp.statusCode == 401) {
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401)');
+      }
+      if (resp.statusCode == 200 ||
+          resp.statusCode == 202 ||
+          resp.statusCode == 204) {
+        await _loadRecommendations();
+        return;
+      }
+      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+    } catch (e) {
+      debugPrint('execute 에러: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('추천 실행 오류: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => executing = false);
+    }
+  }
+
+  Future<void> _loadRecommendations() async {
+    if (userId == null) {
+      debugPrint('[RESULTS] skip: userId is null');
+      return;
+    }
+    setState(() => loadingRecommendations = true);
+
+    try {
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/recommend-sound/${Uri.encodeComponent(userId!)}/${_fmtDate(recDate)}/results',
+      );
+      debugPrint('[RESULTS] GET $url');
+
+      final resp = await http.get(url, headers: await _authHeaders());
+      debugPrint('[RESULTS] status=${resp.statusCode} body=${resp.body}');
+
+      if (resp.statusCode == 401) {
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401)');
+      }
+      if (resp.statusCode != 200) {
+        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+      }
+
+      final Map<String, dynamic> jsonBody = json.decode(resp.body);
+      final String? recText = jsonBody['recommendation_text']?.toString();
+      final List<dynamic> recs =
+          (jsonBody['recommended_sounds'] as List?) ?? [];
+
+      final sorted =
+          recs.whereType<Map<String, dynamic>>().toList()
+            ..sort((a, b) => (a['rank'] ?? 999).compareTo(b['rank'] ?? 999));
+
+      final filenames = <String>[];
+      for (final m in sorted) {
+        final fn = m['filename']?.toString();
+        if (fn != null && soundFiles.contains(fn)) filenames.add(fn);
+      }
+
+      final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
+      setState(() {
+        recommendationText = recText;
+        topRecommended = filenames;
+        soundFiles
+          ..clear()
+          ..addAll(filenames)
+          ..addAll(rest);
+
+        currentPage = 0;
+        if (controller.hasClients) {
+          controller.jumpToPage(0);
+        }
+      });
+
+      // 슬라이더 비율 적용해서 일부만 고정
+      _applyPreferenceRatio();
+    } catch (e) {
+      debugPrint('추천 조회 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('추천을 불러오지 못했습니다: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => loadingRecommendations = false);
+    }
   }
 
   Future<void> _playSound(String fileName) async {
@@ -280,39 +441,22 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
-  /// 🔸 슬라이더 비율에 따라 추천을 상단에 몇 개 고정할지 반영
+  void _debouncedExecute() {
+    _execDebounce?.cancel();
+    _execDebounce = Timer(const Duration(milliseconds: 350), () {
+      _executeRecommendation();
+    });
+  }
+
+  /// 🔸 슬라이더 비율에 따라 추천 일부만 상단에 고정
   void _applyPreferenceRatio() {
     if (topRecommended.isEmpty) return;
 
-    // 예시: 추천 목록 중 앞에서부터 (비율 * 추천개수) 만큼만 상단 고정
     final int keep = (preferenceRatio * topRecommended.length).round();
-
     final selected = topRecommended.take(keep).toList();
     final rest = soundFiles.where((f) => !selected.contains(f)).toList();
 
     setState(() {
-      /// 🔸 슬라이더 비율에 따라 추천을 상단에 몇 개 고정할지 반영
-      void _applyPreferenceRatio() {
-        if (topRecommended.isEmpty) return;
-
-        // 예시: 추천 목록 중 앞에서부터 (비율 * 추천개수) 만큼만 상단 고정
-        final int keep = (preferenceRatio * topRecommended.length).round();
-
-        final selected = topRecommended.take(keep).toList();
-        final rest = soundFiles.where((f) => !selected.contains(f)).toList();
-
-        setState(() {
-          soundFiles
-            ..clear()
-            ..addAll(selected)
-            ..addAll(rest);
-
-          currentPage = 0;
-          controller.jumpToPage(0);
-        });
-        _applyPreferenceRatio();
-      }
-
       soundFiles
         ..clear()
         ..addAll(selected)
@@ -339,69 +483,57 @@ class _SoundScreenState extends State<SoundScreen> {
     return '${d.year}-$mm-$dd';
   }
 
-  /// 🔹 추천 API 호출 + 리스트 상단 정렬
-  Future<void> _loadRecommendations() async {
-    setState(() => loadingRecommendations = true);
-    try {
-      final url = Uri.parse(
-        'https://kooala.tassoo.uk/recommend-sound/${Uri.encodeComponent(userId)}/${_fmtDate(recDate)}/results',
-      );
-
-      // 추천 API 호출부(_loadRecommendations)에서 사용
-      final resp = await http.get(url, headers: await _authHeaders());
-
-      if (resp.statusCode == 401) {
-        // 만료/유효하지 않은 토큰
-        // (선택) 토큰 삭제 및 로그인 화면으로 이동
-        await storage.delete(key: 'jwt');
-        throw Exception('Unauthorized (401): 로그인 토큰이 만료되었거나 유효하지 않습니다.');
-      }
-
-      final Map<String, dynamic> jsonBody = json.decode(resp.body);
-      final String? recText = jsonBody['recommendation_text']?.toString();
-      final List<dynamic> recs =
-          (jsonBody['recommended_sounds'] as List?) ?? [];
-
-      // rank 순으로 정렬 후, 존재하는 파일만 추림
-      final sorted =
-          recs.whereType<Map<String, dynamic>>().toList()
-            ..sort((a, b) => (a['rank'] ?? 999).compareTo(b['rank'] ?? 999));
-
-      final List<String> filenames = [];
-      for (final m in sorted) {
-        final fn = m['filename']?.toString();
-        if (fn != null && soundFiles.contains(fn)) {
-          filenames.add(fn);
+  Future<String> _ensureUserId() async {
+    // JWT에서 복구
+    final raw = await storage.read(key: 'jwt');
+    String? fromJwt;
+    if (raw != null && raw.trim().isNotEmpty) {
+      try {
+        final tokenOnly =
+            raw.startsWith(RegExp(r'Bearer\s', caseSensitive: false))
+                ? raw.split(' ').last
+                : raw;
+        final parts = tokenOnly.split('.');
+        if (parts.length == 3) {
+          final payloadJson = utf8.decode(
+            base64Url.decode(base64Url.normalize(parts[1])),
+          );
+          final payload = json.decode(payloadJson) as Map<String, dynamic>;
+          fromJwt =
+              (payload['userId'] ?? payload['userID'] ?? payload['sub'])
+                  ?.toString();
+          debugPrint('[USER] recovered from JWT: $fromJwt');
         }
+      } catch (e) {
+        debugPrint('[USER] JWT parse fail: $e');
       }
-
-      // 추천 항목을 soundFiles 최상단으로 이동(중복 제거, 나머지는 기존 순서 유지)
-      final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
-      setState(() {
-        recommendationText = recText;
-        topRecommended = filenames;
-        soundFiles
-          ..clear()
-          ..addAll(filenames)
-          ..addAll(rest);
-        // 페이지를 추천이 있는 첫 페이지로 이동
-        currentPage = 0;
-        controller.jumpToPage(0);
-      });
-    } catch (e) {
-      debugPrint('추천 조회 실패: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('추천을 불러오지 못했습니다: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => loadingRecommendations = false);
     }
+
+    // 스토리지에서 읽기 (userID / userId 모두 시도)
+    String? fromStorage =
+        await storage.read(key: 'userID') ?? await storage.read(key: 'userId');
+    debugPrint('[USER] storage userId(userID/userId): $fromStorage');
+
+    // JWT와 스토리지 불일치면 JWT 값으로 보정
+    if (fromJwt != null && fromJwt.isNotEmpty && fromStorage != fromJwt) {
+      await storage.write(key: 'userID', value: fromJwt);
+      await storage.write(key: 'userId', value: fromJwt); // 양쪽 키에 모두 저장(안전)
+      fromStorage = fromJwt;
+      debugPrint('[USER] storage userID/userId updated to JWT value');
+    }
+
+    if (fromStorage != null && fromStorage.trim().isNotEmpty) {
+      return fromStorage.trim();
+    }
+
+    throw Exception('userID 미존재');
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!authReady) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     const perPage = 6;
     final pageCount = (soundFiles.length / perPage).ceil();
 
@@ -429,9 +561,11 @@ class _SoundScreenState extends State<SoundScreen> {
                   label: "${(preferenceRatio * 100).toInt()}%",
                   onChanged: (value) {
                     setState(() => preferenceRatio = value);
-                    _applyPreferenceRatio();
+                    _applyPreferenceRatio(); // 로컬 반영
+                    _debouncedExecute(); // 서버 실행(디바운스)
                   },
                 ),
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: const [

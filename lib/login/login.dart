@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart'; // kDebugMode
 
 final storage = FlutterSecureStorage();
 
@@ -54,11 +55,32 @@ class _LoginScreenState extends State<LoginScreen> {
       final decoded = json.decode(response.body);
       final token = decoded['data']['token'];
       final responseUserId = decoded['data']['userID']; // ✅ 수정
-      final username = decoded['data']['name'];
+      final username = decoded['data']['name'] as String;
 
+      if (kDebugMode) {
+        // 전체 토큰 출력 (개발용)
+        debugPrint('🔐 JWT token: $token', wrapWidth: 1024);
+
+        // JWT payload 디코드해서 보기
+        final parts = token.split('.');
+        if (parts.length == 3) {
+          final payloadJson = utf8.decode(
+            base64Url.decode(base64Url.normalize(parts[1])),
+          );
+          debugPrint('📦 JWT payload: $payloadJson', wrapWidth: 1024);
+        }
+      }
       await storage.write(key: 'jwt', value: token);
       await storage.write(key: 'userID', value: responseUserId); // 로그인 후
       await storage.write(key: 'username', value: username);
+      // 저장된 값 검증 로그
+      if (kDebugMode) {
+        final savedJwt = await storage.read(key: 'jwt');
+        final savedUserId = await storage.read(key: 'userID');
+        debugPrint(
+          '💾 saved jwt length=${savedJwt?.length}, userID=$savedUserId',
+        );
+      }
 
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/real-home');
