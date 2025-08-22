@@ -4,7 +4,7 @@ import 'package:health/health.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:my_app/TopNav.dart';
-import 'package:my_app/bottomNavigationBar.dart';
+
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/sleep_dashboard.dart';
 
@@ -184,6 +184,30 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
 
   @override
   Widget build(BuildContext context) {
+    /// 해당 weekOffset의 주(월요일 시작) 월요일 날짜
+    DateTime _mondayOfCurrentOffset() {
+      final base = DateTime.now().subtract(Duration(days: 7 * weekOffset));
+      return base.subtract(Duration(days: base.weekday - DateTime.monday));
+    }
+
+    /// 월요일 시작 기준, '몇 주차'인지 계산
+    int _weekOfMonth(DateTime date) {
+      final firstOfMonth = DateTime(date.year, date.month, 1);
+      final offset = (firstOfMonth.weekday - DateTime.monday + 7) % 7; // 0~6
+      return ((date.day + offset - 1) ~/ 7) + 1;
+    }
+
+    /// 상단에 보여줄 라벨: "YYYY년 M월 N주차 (M.D–M.D)"
+    String _currentWeekLabel() {
+      final monday = _mondayOfCurrentOffset();
+      final sunday = monday.add(const Duration(days: 6));
+      final wom = _weekOfMonth(monday);
+      String mmdd(DateTime d) => '${d.month}.${d.day}';
+      return '${monday.year}년 ${monday.month}월 ${wom}주차  (${mmdd(monday)}–${mmdd(sunday)})';
+    }
+
+    final weekLabel = _currentWeekLabel();
+
     final bestDay =
         scores.entries.isNotEmpty
             ? scores.entries.reduce((a, b) => a.value > b.value ? a : b).key
@@ -195,6 +219,8 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
 
     final today = DateTime.now().subtract(const Duration(days: 1));
     final todayKey = _dayToKey(today.weekday);
+
+    final isCurrentWeek = weekOffset == 0;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -227,6 +253,21 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDEBFF),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          weekLabel,
+                          style: const TextStyle(color: Color(0xFF4B4EBD)),
+                        ),
+                      ),
                       const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -250,7 +291,7 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                                 icon: const Icon(Icons.arrow_back_ios),
                                 onPressed: () {
                                   setState(() {
-                                    weekOffset -= 1;
+                                    weekOffset += 1;
                                     _fetchWeeklySleep();
                                   });
                                 },
@@ -262,7 +303,7 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                                         ? null
                                         : () {
                                           setState(() {
-                                            weekOffset += 1;
+                                            weekOffset -= 1;
                                             _fetchWeeklySleep();
                                           });
                                         },
@@ -278,7 +319,9 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children:
                               scores.entries.map((e) {
-                                final isToday = e.key == todayKey;
+                                final isToday =
+                                    isCurrentWeek && e.key == todayKey;
+
                                 return _buildBar(
                                   e.key,
                                   e.value,
@@ -326,14 +369,6 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                   ),
                 ),
               ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 1,
-        onTap: (idx) {
-          if (idx == 0) Navigator.pushReplacementNamed(context, '/real-home');
-          if (idx == 2) Navigator.pushReplacementNamed(context, '/sound');
-          if (idx == 3) Navigator.pushReplacementNamed(context, '/setting');
-        },
-      ),
     );
   }
 

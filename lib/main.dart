@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:my_app/mkhome/real_home.dart';
 import 'package:my_app/signin/onboarding_screen.dart';
 import 'package:my_app/signin/pages/complete_page.dart';
-import 'package:my_app/sleep_dashboard/sleep_entry_screen.dart';
+
 import 'package:my_app/sleep_time/sleep_goal_screen.dart';
 import 'package:my_app/sound/sound.dart';
-import 'package:my_app/sleep_dashboard/sleep_entry.dart';
+
 import 'package:my_app/test.dart';
 import 'package:provider/provider.dart';
 import 'package:my_app/login/login.dart';
@@ -21,12 +21,11 @@ import 'package:my_app/mkhome/sleep_routine_setup_page.dart';
 import 'package:my_app/mkhome/setting_page.dart';
 import 'package:my_app/connect_settings/notification.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:my_app/device/alarm/alarm_model.dart';
+
 import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
 import 'package:my_app/models/message.dart';
-import 'package:audio_session/audio_session.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,8 +36,6 @@ void main() async {
   Hive.registerAdapter(MessageAdapter());
 
   await Hive.openBox<Message>('chatBox'); // ✅ 여기서 1회만 오픈
-  final session = await AudioSession.instance;
-  await session.configure(AudioSessionConfiguration.music());
 
   runApp(
     MultiProvider(
@@ -111,25 +108,15 @@ class MyApp extends StatelessWidget {
                   ),
             );
 
-          case '/sleep-entry':
-            final entry = settings.arguments as SleepEntry;
-            return MaterialPageRoute(
-              builder: (_) => SleepEntryScreen(entry: entry),
-            );
-
           case '/sleep-chart':
-            final args = settings.arguments as Map<String, dynamic>;
-            final entries = args['entries'] as List<SleepEntry>;
-            final selectedDate = DateTime.now().subtract(
-              const Duration(hours: 6),
-            ); // ✅ 현재 기준 날짜로 계산
-            return MaterialPageRoute(
-              builder:
-                  (_) => SleepChartScreen(
-                    entries: entries,
-                    selectedDate: selectedDate,
-                  ),
-            );
+            {
+              final args = settings.arguments as Map<String, dynamic>?;
+              final selectedDate =
+                  (args?['date'] as DateTime?) ?? DateTime.now();
+              return MaterialPageRoute(
+                builder: (_) => SleepChartScreen(selectedDate: selectedDate),
+              );
+            }
 
           default:
             return MaterialPageRoute(

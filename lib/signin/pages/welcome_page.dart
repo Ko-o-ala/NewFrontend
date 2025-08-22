@@ -29,7 +29,7 @@ class _WelcomePageState extends State<WelcomePage> {
               Image.asset('lib/assets/koala.png', width: 150),
               const SizedBox(height: 30),
               const Text(
-                '안녕하세요.\n저는 수면요정 코알라, 알라야예요.',
+                '안녕하세요.\n저는 수면요정 코알라, 알라예요.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 20,

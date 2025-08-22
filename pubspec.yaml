@@ -9,11 +9,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  
   socket_io_client: ^2.0.3
   audioplayers: ^6.5.0
   record: ^6.1.0
   audio_session: ^0.1.6
   flutter_sound_platform_interface: ^9.2.13
+  background_fetch: ^1.2.3
 
 
   # 저장소
