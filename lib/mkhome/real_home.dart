@@ -67,7 +67,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // === 안내 배너: LLM 생각 중 ===
   Widget _thinkingBanner() {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 400),
       child:
           (_isThinking && !_isListening)
               ? Container(
@@ -83,38 +83,133 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF6C63FF).withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
+                      color: const Color(0xFF6C63FF).withOpacity(0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
-                child: Row(
+                child: Column(
                   children: [
+                    // 상단 아이콘과 텍스트
+                    Row(
+                      children: [
+                        // 생각하는 코알라 아이콘
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.psychology,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            '알라가 생각하고 있어요',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // 하단 설명 텍스트와 애니메이션
+                    Row(
+                      children: [
+                        // 말풍선 아이콘
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.chat_bubble_outline,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            '여러분의 답변을 듣고 분석하고 있어요...',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white70,
+                              fontSize: 14,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // 로딩 애니메이션
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: const Duration(seconds: 2),
+                            builder: (context, value, child) {
+                              return Transform.rotate(
+                                angle: value * 2 * 3.14159,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // 진행 바 애니메이션
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      height: 3,
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      child: const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Expanded(
-                      child: Text(
-                        '코알라가 여러분의 답변을 듣고 생각하고 있어요…',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(seconds: 3),
+                        builder: (context, value, child) {
+                          return FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: value,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Colors.white, Colors.white70],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -641,80 +736,79 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       body: SafeArea(
         child: Column(
           children: [
+            // 상단에 고정된 thinking banner (alert 형태)
             _thinkingBanner(),
 
-            if (_username.isNotEmpty)
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+            // 메인 콘텐츠
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    if (_username.isNotEmpty) ...[
                       // 코알라 캐릭터 이미지
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(32),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(100),
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF6C63FF).withOpacity(0.3),
+                              color: const Color(0xFF6C63FF).withOpacity(0.25),
                               blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'lib/assets/koala.png',
-                          width: 160,
-                          height: 160,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // 환영 메시지
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 24),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1D1E33),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
+                              offset: const Offset(0, 12),
                             ),
                           ],
                         ),
                         child: Column(
                           children: [
+                            // 코알라 이미지
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(80),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: Image.asset(
+                                'lib/assets/koala.png',
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(
                                   Icons.waving_hand,
-                                  color: Color(0xFF6C63FF),
+                                  color: Colors.white,
                                   size: 24,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  _username.isNotEmpty
-                                      ? '$_username님, 안녕하세요!'
-                                      : '안녕하세요!',
+                                  '$_username님, 안녕하세요!',
                                   style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             const Text(
                               '오늘 하루는 어땠나요?\n코알라와 대화해보세요!',
                               style: TextStyle(
@@ -728,20 +822,15 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         ),
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
 
                       // 음성 인식 텍스트 표시 영역
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        width: double.infinity,
                         padding: const EdgeInsets.all(20),
-                        constraints: const BoxConstraints(maxHeight: 160),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1D1E33),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(0xFF6C63FF).withOpacity(0.3),
-                            width: 1,
-                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.2),
@@ -755,43 +844,282 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                           children: [
                             Row(
                               children: [
-                                const Icon(
-                                  Icons.mic,
-                                  color: Color(0xFF6C63FF),
-                                  size: 20,
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF6C63FF,
+                                    ).withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.mic,
+                                    color: Color(0xFF6C63FF),
+                                    size: 20,
+                                  ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 12),
                                 const Text(
                                   '음성 인식 결과',
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.white70,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 400),
-                                  child: Text(
-                                    _text.isEmpty
-                                        ? '🎤 여기에 인식된 텍스트가 표시됩니다'
-                                        : _text,
-                                    key: ValueKey(_text),
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      height: 1.6,
-                                      color:
-                                          _text.isEmpty
-                                              ? Colors.white54
-                                              : Colors.white,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                    textAlign: TextAlign.justify,
+                            const SizedBox(height: 16),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0A0E21),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF6C63FF,
+                                  ).withOpacity(0.2),
+                                  width: 1,
+                                ),
+                              ),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 400),
+                                child: Text(
+                                  _text.isEmpty
+                                      ? '🎤 여기에 인식된 텍스트가 표시됩니다'
+                                      : _text,
+                                  key: ValueKey(_text),
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    height: 1.6,
+                                    color:
+                                        _text.isEmpty
+                                            ? Colors.white54
+                                            : Colors.white,
+                                    fontWeight: FontWeight.w400,
                                   ),
+                                  textAlign: TextAlign.justify,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // 대화 제안 카드
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D1E33),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 10,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFD700).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.lightbulb_outline,
+                                color: Color(0xFFFFD700),
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Expanded(
+                              child: Text(
+                                '오늘 하루 어떻게 정리하는게 좋을까?',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // 마이크 버튼 섹션
+                      Column(
+                        children: [
+                          // 마이크 버튼
+                          GestureDetector(
+                            onTap: _listen,
+                            child: AnimatedBuilder(
+                              animation: _animationController,
+                              builder: (context, child) {
+                                final scale =
+                                    _isListening
+                                        ? (_animation.value +
+                                            (_soundLevel / 40).clamp(0.0, 1.0))
+                                        : 1.0;
+                                return Transform.scale(
+                                  scale: scale,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(28),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors:
+                                            _isListening
+                                                ? [
+                                                  Colors.red,
+                                                  Colors.red.shade700,
+                                                ]
+                                                : [
+                                                  const Color(0xFF6C63FF),
+                                                  const Color(0xFF4B47BD),
+                                                ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (_isListening
+                                                  ? Colors.red
+                                                  : const Color(0xFF6C63FF))
+                                              .withOpacity(0.4),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      _isListening ? Icons.stop : Icons.mic,
+                                      color: Colors.white,
+                                      size: 40,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // 상태 표시 텍스트
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1D1E33),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color:
+                                    _isListening
+                                        ? const Color(
+                                          0xFF6C63FF,
+                                        ).withOpacity(0.3)
+                                        : Colors.white.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              _isListening
+                                  ? '🎙️ 듣고 있어요...'
+                                  : '🎤 마이크를 탭해서 대화 시작',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color:
+                                    _isListening
+                                        ? const Color(0xFF6C63FF)
+                                        : Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _micAutoStopHint(),
+                    ] else ...[
+                      // 로그인하지 않은 경우
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF6C63FF).withOpacity(0.25),
+                              blurRadius: 20,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.login,
+                              color: Colors.white,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              '로그인이 필요합니다',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              '코알라와 대화하려면\n먼저 로그인해주세요',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed:
+                                  () => Navigator.pushNamed(context, '/login'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                '로그인하기',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
@@ -799,125 +1127,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ),
-
-            // 🎤 녹음 버튼 + 반응 애니메이션
-            Padding(
-              padding: const EdgeInsets.only(bottom: 40.0),
-              child: Column(
-                children: [
-                  // 대화 제안 카드
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1D1E33),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: const Color(0xFF6C63FF).withOpacity(0.3),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.lightbulb_outline,
-                          color: Color(0xFFFFD700),
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            '오늘 하루 어떻게 정리하는게 좋을까?',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  _micAutoStopHint(),
-
-                  // 마이크 버튼
-                  GestureDetector(
-                    onTap: _listen,
-                    child: AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        final scale =
-                            _isListening
-                                ? (_animation.value +
-                                    (_soundLevel / 40).clamp(0.0, 1.0))
-                                : 1.0;
-                        return Transform.scale(
-                          scale: scale,
-                          child: Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors:
-                                    _isListening
-                                        ? [Colors.red, Colors.red.shade700]
-                                        : [
-                                          const Color(0xFF6C63FF),
-                                          const Color(0xFF4B47BD),
-                                        ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (_isListening
-                                          ? Colors.red
-                                          : const Color(0xFF6C63FF))
-                                      .withOpacity(0.4),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              _isListening ? Icons.stop : Icons.mic,
-                              color: Colors.white,
-                              size: 36,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 상태 표시 텍스트
-                  Text(
-                    _isListening ? '🎙️ 듣고 있어요...' : '🎤 마이크를 탭해서 대화 시작',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color:
-                          _isListening
-                              ? const Color(0xFF6C63FF)
-                              : Colors.white70,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
