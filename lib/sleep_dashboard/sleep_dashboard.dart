@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
-import 'package:my_app/TopNav.dart';
+import 'package:my_app/Top_Nav.dart';
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
 import 'dart:convert';
@@ -560,11 +560,16 @@ class _SleepDashboardState extends State<SleepDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: TopNav(
-        isLoggedIn: _isLoggedIn,
-        onLogin: () => Navigator.pushNamed(context, '/login'),
-        onLogout: _handleLogout,
+      appBar: const TopNav(
+        title: '알라와 코잘라',
+        showBackButton: false, // 홈은 루트이므로 숨김
+        // gradient: LinearGradient( // 필요시 그라디언트 켜기
+        //   colors: [Color(0xFF1D1E33), Color(0xFF141527)],
+        //   begin: Alignment.topLeft,
+        //   end: Alignment.bottomRight,
+        // ),
       ),
+
       backgroundColor: const Color(0xFF0A0E21),
       body: SafeArea(
         child: SingleChildScrollView(

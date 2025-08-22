@@ -34,7 +34,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
         title: const Text(
-          '쿠알라',
+          '알라와 코잘라',
           style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         centerTitle: true,

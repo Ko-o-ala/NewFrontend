@@ -3,8 +3,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:my_app/TopNav.dart';
-
+//import 'package:my_app/TopNav.dart';
+import 'package:my_app/Top_Nav.dart';
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/sleep_dashboard.dart';
 
@@ -224,10 +224,14 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: TopNav(
-        isLoggedIn: _isLoggedIn,
-        onLogin: () => Navigator.pushReplacementNamed(context, '/login'),
-        onLogout: _handleLogout,
+      appBar: const TopNav(
+        title: '알라와 코잘라',
+        showBackButton: false, // 홈은 루트이므로 숨김
+        // gradient: LinearGradient( // 필요시 그라디언트 켜기
+        //   colors: [Color(0xFF1D1E33), Color(0xFF141527)],
+        //   begin: Alignment.topLeft,
+        //   end: Alignment.bottomRight,
+        // ),
       ),
       body:
           loading
