@@ -424,6 +424,13 @@ class _SoundScreenState extends State<SoundScreen> {
       final List<dynamic> recs =
           (jsonBody['recommended_sounds'] as List?) ?? [];
 
+      // recommendation_text 필드 추출
+      final recommendationText = jsonBody['recommendation_text'] as String?;
+
+      // 디버그 로깅 추가
+      debugPrint('[RESULTS] recommendation_text: $recommendationText');
+      debugPrint('[RESULTS] recommended_sounds count: ${recs.length}');
+
       final sorted =
           recs.whereType<Map<String, dynamic>>().toList()
             ..sort((a, b) => (a['rank'] ?? 999).compareTo(b['rank'] ?? 999));
@@ -437,7 +444,7 @@ class _SoundScreenState extends State<SoundScreen> {
       final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
 
       setState(() {
-        recommendationText = null;
+        this.recommendationText = recommendationText; // recommendationText 설정
         topRecommended = filenames;
         soundFiles
           ..clear()
@@ -449,6 +456,12 @@ class _SoundScreenState extends State<SoundScreen> {
           controller.jumpToPage(0);
         }
       });
+
+      // 디버그 로깅 추가
+      debugPrint(
+        '[RESULTS] Updated recommendationText: ${this.recommendationText}',
+      );
+      debugPrint('[RESULTS] Updated topRecommended: $topRecommended');
     } catch (e) {
       debugPrint('추천 조회 실패: $e');
       if (mounted) {
@@ -605,334 +618,1003 @@ class _SoundScreenState extends State<SoundScreen> {
   @override
   Widget build(BuildContext context) {
     if (!authReady) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0E21),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
+        ),
+      );
     }
     const perPage = 6;
     final pageCount = (soundFiles.length / perPage).ceil();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F8FF),
-      appBar: TopNav(isLoggedIn: true, onLogin: () {}, onLogout: () {}),
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '수면 사운드',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
 
-      body: Column(
-        children: [
-          // 상단: AI 추천 비율 슬라이더
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "AI 추천 비율 조정",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Slider(
-                  value: preferenceRatio,
-                  min: 0.0,
-                  max: 1.0,
-                  divisions: 20,
-                  label: "${(preferenceRatio * 100).toInt()}%",
-                  onChanged: (value) {
-                    setState(() => preferenceRatio = value);
-                    _debouncedPrefUpdate(); // ✅ PATCH + 추천 재실행 (디바운스)
-                  },
-                ),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text(
-                      "내가 좋아하는 소리를 \n 더 추천해주세요",
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    Text(
-                      "수면 데이터에 맞춰 \n 추천해주세요",
-                      style: TextStyle(fontSize: 12),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          // 🔹 추천 결과 표시 카드(문구 + 새로고침 + 추천 태그)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.music_note,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '수면을 위한 완벽한 사운드',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'AI가 추천하는 맞춤형 수면 사운드로\n편안한 잠을 경험해보세요',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
+
+              const SizedBox(height: 24),
+
+              // AI 추천 비율 슬라이더
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.auto_awesome,
-                          color: Color(0xFF8183D9),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome,
+                            color: Color(0xFF6C63FF),
+                            size: 20,
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "AI 추천 비율 조정",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: const Color(0xFF6C63FF),
+                        inactiveTrackColor: Colors.white.withOpacity(0.2),
+                        thumbColor: const Color(0xFF6C63FF),
+                        overlayColor: const Color(0xFF6C63FF).withOpacity(0.2),
+                        valueIndicatorColor: const Color(0xFF6C63FF),
+                        valueIndicatorTextStyle: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Slider(
+                        value: preferenceRatio,
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 20,
+                        label: "${(preferenceRatio * 100).toInt()}%",
+                        onChanged: (value) {
+                          setState(() => preferenceRatio = value);
+                          _debouncedPrefUpdate();
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "내가 좋아하는 소리를\n더 추천해주세요",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                            height: 1.3,
+                          ),
+                        ),
+                        Text(
+                          "수면 데이터에 맞춰\n추천해주세요",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 추천 결과 표시 카드
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD700).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome,
+                            color: Color(0xFFFFD700),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             loadingRecommendations
                                 ? "추천 불러오는 중..."
                                 : (recommendationText ??
                                     "아래 새로고침을 눌러 오늘의 추천을 받아보세요."),
-                            style: const TextStyle(fontSize: 14),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                         IconButton(
                           tooltip: '추천 새로고침',
-                          icon: const Icon(Icons.refresh),
+                          icon: const Icon(
+                            Icons.refresh,
+                            color: Color(0xFF6C63FF),
+                          ),
                           onPressed:
                               loadingRecommendations
                                   ? null
-                                  : _loadRecommendations,
+                                  : _executeRecommendation,
                         ),
                       ],
                     ),
                     if (topRecommended.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      if (topRecommended.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: -6,
-                          children:
-                              topRecommended
-                                  .take(2)
-                                  .map(
-                                    // ✅ 상위 2개만
-                                    (f) => Chip(
-                                      label: Text(
-                                        '추천 • ${f.replaceAll(".mp3", "")}',
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children:
+                            topRecommended
+                                .take(2)
+                                .map(
+                                  (f) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFF6C63FF),
+                                          Color(0xFF4B47BD),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                      backgroundColor: const Color(0xFFEDEBFF),
-                                      labelStyle: const TextStyle(
-                                        color: Color(0xFF4B4EBD),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      '추천 • ${f.replaceAll(".mp3", "")}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                  )
-                                  .toList(),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      // 추천 이유 보기 버튼 추가
+                      if (recommendationText != null &&
+                          recommendationText!.isNotEmpty)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => RecommendationReasonPage(
+                                        recommendationText: recommendationText!,
+                                        recommendedSounds: topRecommended,
+                                      ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.help_outline,
+                              color: Colors.white,
+                            ),
+                            label: const Text(
+                              '왜 이런 사운드가 추천되나요?',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6C63FF),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 16,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 8,
+                              shadowColor: const Color(
+                                0xFF6C63FF,
+                              ).withOpacity(0.3),
+                            ),
+                          ),
                         ),
-                      ],
                     ],
                   ],
                 ),
               ),
-            ),
-          ),
 
-          // 본문: 페이지당 6개, 추천이 맨 위로 온 soundFiles를 사용
-          Expanded(
-            child: PageView.builder(
-              controller: controller,
-              onPageChanged: (idx) => setState(() => currentPage = idx),
-              itemCount: pageCount,
-              itemBuilder: (_, pageIndex) {
-                final items = _getPageItems(pageIndex, perPage);
-                return ReorderableListView(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  onReorder: (oldI, newI) {
-                    final old = pageIndex * perPage + oldI;
-                    final neo =
-                        pageIndex * perPage + (newI > oldI ? newI - 1 : newI);
-                    _onReorder(old, neo);
-                  },
-                  children: List.generate(items.length, (i) {
-                    final file = items[i];
-                    final name = file
-                        .replaceAll('.mp3', '')
-                        .replaceAll('_', ' ');
-                    final selected = currentPlaying == file;
-                    final data = metadata[file];
-                    final isRecommended = topRecommended.contains(file);
+              const SizedBox(height: 24),
 
-                    return Card(
-                      key: ValueKey(file),
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      color: selected ? const Color(0xFFEDEBFF) : Colors.white,
-                      elevation: 4,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const CircleAvatar(
-                                  backgroundColor: Color(0xFF8183D9),
-                                  child: Icon(
-                                    Icons.music_note,
-                                    color: Colors.white,
+              // 사운드 목록
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4CAF50).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.library_music,
+                            color: Color(0xFF4CAF50),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "사운드 목록",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 페이지 인디케이터
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(pageCount, (i) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          child: GestureDetector(
+                            onTap: () => controller.jumpToPage(i),
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color:
+                                    currentPage == i
+                                        ? const Color(0xFF6C63FF)
+                                        : Colors.white.withOpacity(0.3),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // 사운드 카드들
+                    SizedBox(
+                      height: 400,
+                      child: PageView.builder(
+                        controller: controller,
+                        onPageChanged:
+                            (idx) => setState(() => currentPage = idx),
+                        itemCount: pageCount,
+                        itemBuilder: (_, pageIndex) {
+                          final items = _getPageItems(pageIndex, perPage);
+                          return ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: items.length,
+                            itemBuilder: (context, i) {
+                              final file = items[i];
+                              final name = file
+                                  .replaceAll('.mp3', '')
+                                  .replaceAll('_', ' ');
+                              final selected = currentPlaying == file;
+                              final data = metadata[file];
+                              final isRecommended = topRecommended.contains(
+                                file,
+                              );
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color:
+                                      selected
+                                          ? const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.2)
+                                          : const Color(0xFF0A0E21),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color:
+                                        selected
+                                            ? const Color(0xFF6C63FF)
+                                            : Colors.white.withOpacity(0.1),
+                                    width: 1,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Row(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Expanded(
-                                        child: Text(
-                                          name,
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight:
-                                                selected
-                                                    ? FontWeight.bold
-                                                    : FontWeight.w600,
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  selected
+                                                      ? const Color(0xFF6C63FF)
+                                                      : Colors.white
+                                                          .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Icon(
+                                              selected
+                                                  ? Icons.pause_circle
+                                                  : Icons.play_circle,
+                                              color:
+                                                  selected
+                                                      ? Colors.white
+                                                      : const Color(0xFF6C63FF),
+                                              size: 24,
+                                            ),
                                           ),
-                                        ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        name,
+                                                        style: TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              selected
+                                                                  ? FontWeight
+                                                                      .bold
+                                                                  : FontWeight
+                                                                      .w600,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (isRecommended)
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 8,
+                                                              vertical: 4,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(
+                                                            0xFFFFD700,
+                                                          ).withOpacity(0.2),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
+                                                        ),
+                                                        child: const Text(
+                                                          '추천',
+                                                          style: TextStyle(
+                                                            color: Color(
+                                                              0xFFFFD700,
+                                                            ),
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                                if (data != null) ...[
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    "• ${data["feature"]}",
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "• ${data["effect"]}",
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(
+                                              selected && isPlaying
+                                                  ? Icons.pause_circle
+                                                  : Icons.play_circle,
+                                              size: 32,
+                                              color:
+                                                  selected
+                                                      ? const Color(0xFF6C63FF)
+                                                      : Colors.white70,
+                                            ),
+                                            onPressed: () => _playSound(file),
+                                          ),
+                                        ],
                                       ),
-                                      if (isRecommended)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFEDEBFF),
-                                            borderRadius: BorderRadius.circular(
-                                              999,
-                                            ),
-                                          ),
-                                          child: const Text(
-                                            '추천',
-                                            style: TextStyle(
-                                              color: Color(0xFF4B4EBD),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
+                                      if (data != null) ...[
+                                        const SizedBox(height: 12),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children:
+                                              data["tags"]!
+                                                  .split(',')
+                                                  .map(
+                                                    (tag) => Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                          0xFF6C63FF,
+                                                        ).withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              8,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: const Color(
+                                                            0xFF6C63FF,
+                                                          ).withOpacity(0.3),
+                                                          width: 1,
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        '#${tag.trim()}',
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                            0xFF6C63FF,
+                                                          ),
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  )
+                                                  .toList(),
                                         ),
+                                      ],
                                     ],
                                   ),
                                 ),
-                                IconButton(
-                                  icon: Icon(
-                                    selected && isPlaying
-                                        ? Icons.pause_circle
-                                        : Icons.play_circle,
-                                    size: 32,
-                                    color:
-                                        selected
-                                            ? const Color(0xFF8183D9)
-                                            : Colors.grey,
-                                  ),
-                                  onPressed: () => _playSound(file),
-                                ),
-                              ],
-                            ),
-                            if (data != null) ...[
-                              const SizedBox(height: 10),
-                              Text("• 특징: ${data["feature"]}"),
-                              Text("• 효과: ${data["effect"]}"),
-                              Text("• 추천 대상: ${data["target"]}"),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                children:
-                                    data["tags"]!
-                                        .split(',')
-                                        .map(
-                                          (tag) => Chip(
-                                            label: Text('#${tag.trim()}'),
-                                            backgroundColor: const Color(
-                                              0xFFF0F0F0,
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 미니 플레이어 공간 확보
+              const SizedBox(height: 100),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 추천 이유를 보여주는 페이지
+class RecommendationReasonPage extends StatelessWidget {
+  final String recommendationText;
+  final List<String> recommendedSounds;
+
+  const RecommendationReasonPage({
+    Key? key,
+    required this.recommendationText,
+    required this.recommendedSounds,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '추천 이유',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'AI가 추천한 이유',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '개인화된 수면 패턴 분석을 바탕으로\n맞춤형 사운드를 추천해드려요',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 추천된 사운드 목록
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4CAF50).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.music_note,
+                            color: Color(0xFF4CAF50),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "추천된 사운드",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children:
+                          recommendedSounds.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final sound = entry.value;
+                            final name = sound
+                                .replaceAll('.mp3', '')
+                                .replaceAll('_', ' ');
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
-                            ],
-                          ],
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors:
+                                      index < 3
+                                          ? [
+                                            const Color(0xFFFFD700),
+                                            const Color(0xFFFFA000),
+                                          ]
+                                          : [
+                                            const Color(0xFF6C63FF),
+                                            const Color(0xFF4B47BD),
+                                          ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (index < 3
+                                            ? const Color(0xFFFFD700)
+                                            : const Color(0xFF6C63FF))
+                                        .withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // 추천 이유 상세 설명
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD700).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.psychology,
+                            color: Color(0xFFFFD700),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "AI 분석 결과",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A0E21),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF6C63FF).withOpacity(0.3),
+                          width: 1,
                         ),
                       ),
-                    );
-                  }),
-                );
-              },
-            ),
-          ),
-
-          // 페이지 인디케이터/점프
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Wrap(
-              spacing: 8,
-              alignment: WrapAlignment.center,
-              children: List.generate(pageCount, (i) {
-                return OutlinedButton(
-                  onPressed: () => controller.jumpToPage(i),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor:
-                        currentPage == i
-                            ? const Color(0xFF8183D9)
-                            : Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                      child: Text(
+                        recommendationText,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                          height: 1.6,
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    '${i + 1}',
-                    style: TextStyle(
-                      color: currentPage == i ? Colors.white : Colors.black,
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-
-          // 현재 재생 중 바
-          if (currentPlaying != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                  ],
+                ),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.music_note, color: Color(0xFF8183D9)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      currentPlaying!
-                          .replaceAll('.mp3', '')
-                          .replaceAll('_', ' '),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
+
+              const SizedBox(height: 24),
+
+              // 하단 안내
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                    color: const Color(0xFF8183D9),
-                    onPressed: () {
-                      if (isPlaying) {
-                        player.pause();
-                      } else {
-                        player.play();
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.stop),
-                    color: Colors.redAccent,
-                    onPressed: _stop,
-                  ),
-                ],
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4CAF50).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF4CAF50),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '이 추천은 당신의 수면 패턴과\n개인 취향을 분석한 결과입니다',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '더 정확한 추천을 위해\n정기적으로 수면 데이터를 업데이트해주세요',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
-            ),
-        ],
+
+              const SizedBox(height: 100),
+            ],
+          ),
+        ),
       ),
     );
   }
