@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:my_app/mkhome/real_home.dart';
 import 'package:my_app/signin/onboarding_screen.dart';
 import 'package:my_app/signin/pages/complete_page.dart';
-import 'package:my_app/sleep_dashboard/sleep_entry_screen.dart';
+
 import 'package:my_app/sleep_time/sleep_goal_screen.dart';
 import 'package:my_app/sound/sound.dart';
-import 'package:my_app/sleep_dashboard/sleep_entry.dart';
+
 import 'package:my_app/test.dart';
 import 'package:provider/provider.dart';
 import 'package:my_app/login/login.dart';
@@ -21,7 +21,7 @@ import 'package:my_app/mkhome/sleep_routine_setup_page.dart';
 import 'package:my_app/mkhome/setting_page.dart';
 import 'package:my_app/connect_settings/notification.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:my_app/device/alarm/alarm_model.dart';
+
 import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
@@ -106,12 +106,6 @@ class MyApp extends StatelessWidget {
                       // TODO: 원하는 submit 동작을 여기에 정의하거나 다른 곳에서 주입
                     },
                   ),
-            );
-
-          case '/sleep-entry':
-            final entry = settings.arguments as SleepEntry;
-            return MaterialPageRoute(
-              builder: (_) => SleepEntryScreen(entry: entry),
             );
 
           case '/sleep-chart':
