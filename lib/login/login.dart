@@ -83,7 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/real-home');
+      Navigator.pushReplacementNamed(context, '/');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('로그인 실패. 아이디 또는 비밀번호를 확인하세요.')),

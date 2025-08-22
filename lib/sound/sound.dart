@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:my_app/TopNav.dart';
-import 'package:my_app/bottomNavigationBar.dart';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 Timer? _prefDebounce; // 슬라이더 PATCH 디바운스
@@ -932,20 +932,6 @@ class _SoundScreenState extends State<SoundScreen> {
                 ],
               ),
             ),
-
-          // 하단 네비게이션
-          CustomBottomNavBar(
-            currentIndex: 2,
-            onTap: (index) {
-              if (index == 0) {
-                Navigator.pushReplacementNamed(context, '/real-home');
-              } else if (index == 2) {
-                Navigator.pushReplacementNamed(context, '/sound');
-              } else if (index == 3) {
-                Navigator.pushReplacementNamed(context, '/setting');
-              }
-            },
-          ),
         ],
       ),
     );

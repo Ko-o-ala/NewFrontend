@@ -1,8 +1,32 @@
 // home_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool _isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final storage = FlutterSecureStorage();
+    final username = await storage.read(key: 'username');
+    final jwt = await storage.read(key: 'jwt');
+
+    setState(() {
+      _isLoggedIn = username != null && jwt != null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,10 +258,10 @@ class HomePage extends StatelessWidget {
                   ),
                   _buildFeatureItem(
                     context,
-                    icon: Icons.psychology,
-                    title: '수면 조언',
-                    subtitle: '전문가의 수면 개선 팁',
-                    onTap: () => Navigator.pushNamed(context, '/advice'),
+                    icon: Icons.lightbulb,
+                    title: '조명 관리',
+                    subtitle: '수면 환경 조명 설정',
+                    onTap: () => Navigator.pushNamed(context, '/light-control'),
                   ),
                 ],
               ),
@@ -282,18 +306,34 @@ class HomePage extends StatelessWidget {
                         Expanded(
                           child: _buildQuickAccessButton(
                             context,
-                            icon: Icons.login,
-                            label: '로그인',
-                            onTap: () => Navigator.pushNamed(context, '/login'),
+                            icon: Icons.person,
+                            label: '프로필 수정',
+                            onTap:
+                                () => Navigator.pushNamed(
+                                  context,
+                                  '/profile-edit',
+                                ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildQuickAccessButton(
                             context,
-                            icon: Icons.science,
-                            label: '테스트',
-                            onTap: () => Navigator.pushNamed(context, '/test'),
+                            icon: _isLoggedIn ? Icons.logout : Icons.login,
+                            label: _isLoggedIn ? '로그아웃' : '로그인',
+                            onTap:
+                                _isLoggedIn
+                                    ? () async {
+                                      // 로그아웃 로직
+                                      final storage = FlutterSecureStorage();
+                                      await storage.delete(key: 'username');
+                                      await storage.delete(key: 'jwt');
+                                      setState(() {
+                                        _isLoggedIn = false;
+                                      });
+                                    }
+                                    : () =>
+                                        Navigator.pushNamed(context, '/login'),
                           ),
                         ),
                       ],
@@ -306,9 +346,18 @@ class HomePage extends StatelessWidget {
                         Expanded(
                           child: _buildQuickAccessButton(
                             context,
-                            icon: Icons.info_outline,
-                            label: '도움말',
-                            onTap: () {},
+                            icon: Icons.question_answer,
+                            label: '자주 묻는 질문',
+                            onTap: () => Navigator.pushNamed(context, '/faq'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildQuickAccessButton(
+                            context,
+                            icon: Icons.description,
+                            label: '이용약관/개인정보',
+                            onTap: () => Navigator.pushNamed(context, '/terms'),
                           ),
                         ),
                       ],

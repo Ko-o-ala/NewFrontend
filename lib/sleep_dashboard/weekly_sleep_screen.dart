@@ -4,7 +4,7 @@ import 'package:health/health.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:my_app/TopNav.dart';
-import 'package:my_app/bottomNavigationBar.dart';
+
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/sleep_dashboard.dart';
 
@@ -369,14 +369,6 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
                   ),
                 ),
               ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 1,
-        onTap: (idx) {
-          if (idx == 0) Navigator.pushReplacementNamed(context, '/real-home');
-          if (idx == 2) Navigator.pushReplacementNamed(context, '/sound');
-          if (idx == 3) Navigator.pushReplacementNamed(context, '/setting');
-        },
-      ),
     );
   }
 

@@ -79,7 +79,21 @@ class _LightControlPageState extends State<LightControlPage> {
     final previewHex = _applyBrightnessToHex(baseHex, brightness);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('조명 설정')),
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '조명 관리',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),

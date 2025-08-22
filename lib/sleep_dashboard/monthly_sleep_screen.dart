@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
-import 'package:my_app/bottomNavigationBar.dart';
+
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -323,14 +323,6 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 1,
-        onTap: (i) {
-          if (i == 0) Navigator.pushReplacementNamed(context, '/real-home');
-          if (i == 2) Navigator.pushReplacementNamed(context, '/sound');
-          if (i == 3) Navigator.pushReplacementNamed(context, '/setting');
-        },
       ),
     );
   }

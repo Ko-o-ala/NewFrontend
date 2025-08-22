@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:percent_indicator/percent_indicator.dart';
-import 'package:my_app/bottomNavigationBar.dart';
+
 import 'package:my_app/TopNav.dart';
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
@@ -931,18 +931,6 @@ class _SleepDashboardState extends State<SleepDashboard> {
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 1,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushReplacementNamed(context, '/real-home');
-          } else if (index == 2) {
-            Navigator.pushReplacementNamed(context, '/sound');
-          } else if (index == 3) {
-            Navigator.pushReplacementNamed(context, '/setting');
-          }
-        },
       ),
     );
   }

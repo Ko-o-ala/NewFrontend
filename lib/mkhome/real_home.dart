@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/TopNav.dart';
-import 'package:my_app/bottomNavigationBar.dart';
 
 import 'package:my_app/services/voice_socket_service.dart';
 import 'dart:convert'; // base64Decode
@@ -1133,18 +1132,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushReplacementNamed(context, '/real-home');
-          } else if (index == 2) {
-            Navigator.pushReplacementNamed(context, '/sound');
-          } else if (index == 3) {
-            Navigator.pushReplacementNamed(context, '/setting');
-          }
-        },
       ),
     );
   }
