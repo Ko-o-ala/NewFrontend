@@ -46,7 +46,7 @@ class opening extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 32.0),
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.pushNamed(context, '/sign-in');
+                        Navigator.pushNamed(context, '/start');
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
