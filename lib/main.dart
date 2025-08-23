@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:my_app/mkhome/real_home.dart';
 import 'package:my_app/signin/onboarding_screen.dart';
 import 'package:my_app/signin/pages/complete_page.dart';
+import 'package:my_app/sleep_dashboard/sleep_score_details.dart';
 
 import 'package:my_app/sleep_time/sleep_goal_screen.dart';
 import 'package:my_app/sound/sound.dart';
@@ -97,6 +98,19 @@ class MyApp extends StatelessWidget {
 
           case '/test':
             return MaterialPageRoute(builder: (_) => MP3TestPage());
+
+          case '/sleep-score':
+            final args = settings.arguments as SleepScoreArgs;
+            return MaterialPageRoute(
+              builder:
+                  (_) => SleepScoreDetailsPage(
+                    data: args.data,
+                    sleepStart: args.sleepStart,
+                    sleepEnd: args.sleepEnd,
+                    goalSleepDuration: args.goalSleepDuration,
+                    finalScore: args.finalScore,
+                  ),
+            );
 
           case '/complete':
             return MaterialPageRoute(

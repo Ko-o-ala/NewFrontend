@@ -10,6 +10,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:my_app/sleep_dashboard/sleep_score_details.dart'
+    show SleepScoreArgs;
 
 final storage = FlutterSecureStorage();
 
@@ -877,14 +879,32 @@ class _SleepDashboardState extends State<SleepDashboard> {
                         ),
                         const Spacer(),
                         TextButton(
-                          onPressed: () {},
-                          child: const Text(
-                            '더 알아보기 >',
-                            style: TextStyle(
-                              color: Color(0xFF6C63FF),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                          onPressed: () {
+                            if (healthData.isEmpty ||
+                                sleepStart == null ||
+                                sleepEnd == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('수면 데이터를 먼저 불러와 주세요.'),
+                                ),
+                              );
+                              return;
+                            }
+                            Navigator.pushNamed(
+                              context,
+                              '/sleep-score',
+                              arguments: SleepScoreArgs(
+                                data: healthData,
+                                sleepStart: sleepStartReal ?? sleepStart!,
+                                sleepEnd: sleepEndReal ?? sleepEnd!,
+                                goalSleepDuration:
+                                    goalSleepDuration ??
+                                    const Duration(hours: 8),
+                                finalScore: sleepScore,
+                              ),
+                            );
+                          },
+                          child: const Text('더 알아보기 >'),
                         ),
                       ],
                     ),

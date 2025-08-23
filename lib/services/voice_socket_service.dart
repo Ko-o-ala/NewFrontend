@@ -48,7 +48,32 @@ class VoiceSocketService {
       ..on('audio_chunk', _handleAudioEvent)
       ..on('mp3', _handleAudioEvent)
       ..on('mp3_chunk', _handleAudioEvent)
+      ..on('server_disconnect', (data) {
+        handleServerDisconnect(data);
+
+        // 직접 연결 끊고 싶으면:
+        _socket?.disconnect();
+      })
+      ..onDisconnect((_) {
+        print('❌ 실제 연결 끊김');
+        // 재연결 로직 등
+      })
       ..connect();
+  }
+
+  void handleServerDisconnect(dynamic data) {
+    print('🔌 Server disconnected: $data');
+
+    // 사용자에게 알림 (예: 이벤트 스트림 또는 콜백 사용)
+    _assistantCtrl.add("⚠️ 서버 연결이 끊어졌습니다.");
+
+    // 필요 시 스트림 정리
+    // _audioController.add(Uint8List(0));  // 무음 처리 등
+
+    // 재연결 시도할 수도 있음 (자동 재연결이 꺼진 경우)
+    // Future.delayed(Duration(seconds: 3), () => connect(url: ...));
+
+    // 기타 처리 (로그, 상태관리 등)
   }
 
   void _handleAudioEvent(dynamic data) {
