@@ -26,6 +26,8 @@ class _SleepDashboardState extends State<SleepDashboard> {
   String username = '사용자';
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
   String goalText = '미설정';
+  String _fmtMin(int m) => '${m ~/ 60}시간 ${m % 60}분';
+
   Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
@@ -59,6 +61,8 @@ class _SleepDashboardState extends State<SleepDashboard> {
       final durationMin = (m['Duration']?['totalSleepDuration'] ?? 0) as int;
       final hrs = durationMin ~/ 60;
       final mins = durationMin % 60;
+      final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
+      final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
       setState(() {
         formattedDuration = '${hrs}시간 ${mins}분';
         sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
@@ -125,9 +129,11 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final durationMin = (server['Duration']?['totalSleepDuration'] ?? 0) as int;
     final hrs = durationMin ~/ 60;
     final mins = durationMin % 60;
+    final awakeMin = (server['Duration']?['awakeDuration'] ?? 0) as int;
+    final inBedMin = durationMin + awakeMin; // ✅ 포함
 
     setState(() {
-      formattedDuration = '${hrs}시간 ${mins}분';
+      formattedDuration = '${inBedMin ~/ 60}시간 ${inBedMin % 60}분';
       sleepScore = (server['sleepScore'] as int?) ?? sleepScore;
     });
 
@@ -484,7 +490,10 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
     sleepStart = DateTime(now.year, now.month, now.day - 1, 18);
     sleepEnd = DateTime(now.year, now.month, now.day, 12);
-
+    final inBedMin = deepMin + remMin + lightMin + awakeMin; // ✅ 포함
+    setState(() {
+      formattedDuration = _fmtMin(inBedMin);
+    });
     final authorized = await health.requestAuthorization(types);
     if (!authorized) {
       setState(() => formattedDuration = '❌ 건강 앱 접근 거부됨');
