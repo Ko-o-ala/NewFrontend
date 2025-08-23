@@ -12,7 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:my_app/login/login.dart';
 import 'package:my_app/signin/signin.dart';
 import 'package:my_app/sleep_dashboard/sleep_chart_screen.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'home_page.dart';
 import 'sleep_dashboard/sleep_dashboard.dart';
 import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
@@ -27,10 +27,13 @@ import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
 import 'package:my_app/models/message.dart';
+import 'package:my_app/services/api_client.dart';
 
+late final ApiClient apiClient;
 void main() async {
+  await dotenv.load();
   WidgetsFlutterBinding.ensureInitialized();
-
+  apiClient = ApiClient(baseUrl: dotenv.env['API_BASE_URL']!);
   //Hive 초기화
   await Hive.initFlutter();
 

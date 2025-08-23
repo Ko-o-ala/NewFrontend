@@ -9,21 +9,17 @@ import 'package:my_app/Top_Nav.dart';
 
 import 'package:my_app/services/voice_socket_service.dart';
 import 'dart:convert'; // base64Decode
-
+import 'package:my_app/services/api_client.dart';
 import 'package:hive/hive.dart';
 import 'package:my_app/models/message.dart';
 
 import 'package:audioplayers/audioplayers.dart';
 
-// ── 자동 재생을 위한 조립 타이머 & 큐 ──────────────────────────────
-Timer? _assembleTimer;
-final Duration _assembleGap = const Duration(milliseconds: 350);
-final List<Uint8List> _pendingQueue = [];
-bool _isPreparing = false; // 파일 쓰기 중 재진입 방지
-bool _autoResumeMic = true; // 말 끝나면 자동 재시작할지
-DateTime _lastTtsAt = DateTime.fromMillisecondsSinceEpoch(0); // 마지막 TTS 수신 시각
-
 final storage = FlutterSecureStorage();
+final apiClient = ApiClient(
+  baseUrl: 'https://llm.tassoo.uk',
+  storage: storage, // 선택: 같은 storage 공유
+);
 
 class RealHomeScreen extends StatefulWidget {
   const RealHomeScreen({super.key});
@@ -34,6 +30,19 @@ class RealHomeScreen extends StatefulWidget {
 
 class _RealHomeScreenState extends State<RealHomeScreen>
     with SingleTickerProviderStateMixin {
+  // ── 자동 재생을 위한 조립 타이머 & 큐 ──────────────────────────────
+  Timer? _assembleTimer;
+  final Duration _assembleGap = const Duration(milliseconds: 350);
+  final List<Uint8List> _pendingQueue = [];
+  bool _isPreparing = false; // 파일 쓰기 중 재진입 방지
+  bool _autoResumeMic = true; // 말 끝나면 자동 재시작할지
+  DateTime _lastTtsAt = DateTime.fromMillisecondsSinceEpoch(0); // 마지막 TTS 수신 시각
+
+  // 필드 추가
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<void>? _playerCompleteSub;
+  bool _disposed = false;
+
   // ===== Speech & UI =====
   late stt.SpeechToText _speech;
   bool _isListening = false;
@@ -52,6 +61,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   StreamSubscription<String>? _assistantSub;
   StreamSubscription<String>? _transcriptSub;
   StreamSubscription<dynamic>? _pcmSub; // MP3 청크 구독
+  StreamSubscription<bool>? _connSub;
 
   // MP3 버퍼 (WebSocket에서 받은 8KB 청크를 모았다가 한 번에 재생)
   final List<Uint8List> _audioBuffer = [];
@@ -268,11 +278,38 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     super.initState();
     _loadUsername();
     _initAudioPlayer();
+    _connectVoice();
 
     _chatBox = Hive.box<Message>('chatBox');
-    if (!voiceService.isConnected) {
-      voiceService.connect(url: 'https://llm.tassoo.uk/');
-    }
+
+    // 🔌 소켓 연결 상태 반영
+    _connSub = voiceService.connectionStream.listen((connected) async {
+      if (!connected) {
+        _autoResumeMic = false;
+        if (_isListening) {
+          try {
+            await _speech.stop();
+          } catch (_) {}
+          _stopListening();
+        }
+        try {
+          await _player.stop();
+        } catch (_) {}
+        _pendingQueue.clear();
+        _audioBuffer.clear();
+        _audioAvailable = false;
+
+        if (mounted) {
+          setState(() {
+            _isPlaying = false;
+            _isThinking = false;
+            _text = '⚠️ 서버 연결이 끊어졌습니다.';
+          });
+        }
+      } else {
+        _autoResumeMic = true;
+      }
+    });
 
     Uint8List _toMp3Bytes(dynamic evt) {
       try {
@@ -387,6 +424,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   void _scheduleAssemble() {
     _assembleTimer?.cancel();
     _assembleTimer = Timer(_assembleGap, () async {
+      if (!mounted || _disposed) return;
       if (_audioBuffer.isEmpty) return;
 
       // 1) 버퍼 합치기
@@ -407,6 +445,36 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _playNextFromQueue();
       }
     });
+  }
+
+  Future<void> _connectVoice() async {
+    final jwt = await storage.read(key: 'jwt') ?? ''; // 🔑 저장키가 'jwt'인지 확인!
+    final wsUri = Uri(
+      scheme: 'wss',
+      host: 'llm.tassoo.uk',
+      // path: '/ws', // 서버가 경로 요구하면 설정
+      queryParameters: jwt.isNotEmpty ? {'jwt': jwt} : null,
+    );
+
+    debugPrint('WS connect: $wsUri'); // 예: wss://llm.tassoo.uk?jwt=...
+    voiceService.connect(url: wsUri.toString());
+  }
+
+  Future<void> _callUserProfile() async {
+    try {
+      final response = await apiClient.getJson('');
+      print('👤 사용자 정보: $response');
+
+      // 예: 이름 갱신
+      if (mounted) {
+        setState(() {
+          _username = response['name'] ?? _username;
+        });
+      }
+    } catch (e, stack) {
+      print('❌ 사용자 정보 요청 실패: $e');
+      print(stack);
+    }
   }
 
   Future<void> _playNextFromQueue() async {
@@ -489,25 +557,25 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     await _player.setReleaseMode(ReleaseMode.stop);
 
-    _player.onPlayerStateChanged.listen((s) {
-      setState(() => _isPlaying = s == PlayerState.playing);
-      if (s == PlayerState.playing && _isThinking) {
-        // 재생이 시작되면 배너 내림 (혹시 안 꺼졌다면)
-        _isThinking = false;
-      }
+    _playerStateSub?.cancel();
+    _playerCompleteSub?.cancel();
+
+    _playerStateSub = _player.onPlayerStateChanged.listen((s) {
+      if (!mounted || _disposed) return;
+      setState(() {
+        _isPlaying = s == PlayerState.playing;
+        if (_isPlaying) _isThinking = false;
+      });
     });
 
-    _player.onPlayerComplete.listen((event) async {
+    _playerCompleteSub = _player.onPlayerComplete.listen((_) async {
+      if (!mounted || _disposed) return;
       setState(() => _isPlaying = false);
-
-      // 아직 재생 대기 큐가 있으면 다음 것 재생
       if (_pendingQueue.isNotEmpty) {
         _playNextFromQueue();
-        return;
+      } else {
+        await _resumeMicIfQuiet();
       }
-
-      // 더 이상 재생할 게 없으면 —> 조용한지 확인 후 마이크 자동 재시작
-      await _resumeMicIfQuiet(); // ✅ 핵심
     });
   }
 
@@ -637,6 +705,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   @override
   void dispose() {
+    _connSub?.cancel();
+    _disposed = true; // ✅ 가드 온
+    _assembleTimer?.cancel(); // ✅ 타이머 취소
+    _playerStateSub?.cancel(); // ✅ 구독 취소
+    _playerCompleteSub?.cancel();
+
     _speech.cancel();
     _animationController.dispose();
 

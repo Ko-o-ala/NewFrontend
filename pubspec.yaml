@@ -69,3 +69,4 @@ flutter:
     - assets/google_icon.png
     - assets/sounds/
     - assets/audio/sample.mp3
+    - .env

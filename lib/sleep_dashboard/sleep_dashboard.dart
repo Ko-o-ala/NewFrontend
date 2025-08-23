@@ -869,15 +869,18 @@ class _SleepDashboardState extends State<SleepDashboard> {
                           size: 24,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          '오늘 $username님의 수면점수',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        Expanded(
+                          child: Text(
+                            '오늘 $username님의 수면점수',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Spacer(),
+
                         TextButton(
                           onPressed: () {
                             if (healthData.isEmpty ||
