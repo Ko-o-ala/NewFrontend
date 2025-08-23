@@ -133,134 +133,367 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0E21),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.pop(context),
+              // 뒤로가기 버튼
+              Align(
+                alignment: Alignment.topLeft,
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ),
-              const SizedBox(height: 10),
-              Center(
+
+              const SizedBox(height: 20),
+
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
                 child: Column(
-                  children: const [
-                    Text(
-                      '계정을 생성하세요',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.person_add,
+                        color: Colors.white,
+                        size: 32,
                       ),
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      '1분이면 끝나요! 편하게 시작해보세요 😊',
-                      style: TextStyle(fontSize: 14, color: Color(0xFF8183D9)),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '계정을 생성하세요',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '1분이면 끝나요!\n편하게 시작해보세요 😊',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 30),
 
-              _buildIdField(),
-              const SizedBox(height: 12),
-
-              _buildInputField(
-                controller: birthdateController,
-                hint: '생년월일 (예: 1995-08-07)',
-                isValid: _isBirthdateValid(birthdateController.text),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<int>(
-                value: selectedGender,
-                items: const [
-                  DropdownMenuItem(value: 0, child: Text('선택 안함')),
-                  DropdownMenuItem(value: 1, child: Text('남자')),
-                  DropdownMenuItem(value: 2, child: Text('여자')),
-                ],
-                onChanged:
-                    (value) => setState(() => selectedGender = value ?? 0),
-                decoration: InputDecoration(
-                  hintText: '성별 선택',
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              TextField(
-                controller: passwordController,
-                obscureText: !isPasswordVisible,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: '비밀번호',
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      isPasswordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: Colors.grey,
+              // 코알라 이미지
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
                     ),
-                    onPressed:
-                        () => setState(() {
-                          isPasswordVisible = !isPasswordVisible;
-                        }),
-                  ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              Row(
-                children: [
-                  Checkbox(
-                    value: agreedToPrivacy,
-                    onChanged:
-                        (value) =>
-                            setState(() => agreedToPrivacy = value ?? false),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '개인정보 처리방침을 읽고 동의합니다',
-                      style: TextStyle(color: Colors.green.shade700),
+                child: Column(
+                  children: [
+                    Image.asset(
+                      'lib/assets/koala.png',
+                      width: 100,
+                      height: 100,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              ElevatedButton(
-                onPressed: isFormValid && !isLoading ? _handleSignUp : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isFormValid
-                          ? const Color(0xFF9187F4)
-                          : const Color(0xFF9187F4).withOpacity(0.3),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25),
-                  ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '코알라와 함께\n수면 관리의 여정을 시작해보세요!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
-                child:
-                    isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('시작하기'),
               ),
-              const SizedBox(height: 20),
+
+              const SizedBox(height: 30),
+
+              // 회원가입 폼
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4CAF50).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.account_circle,
+                            color: Color(0xFF4CAF50),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "회원가입 정보",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 아이디 입력
+                    _buildIdField(),
+                    const SizedBox(height: 16),
+
+                    // 생년월일 입력
+                    _buildInputField(
+                      controller: birthdateController,
+                      hint: '생년월일 (예: 1995-08-07)',
+                      isValid: _isBirthdateValid(birthdateController.text),
+                      icon: Icons.calendar_today,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 성별 선택
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A0E21),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: const Color(0xFF6C63FF).withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: DropdownButtonFormField<int>(
+                        value: selectedGender,
+                        dropdownColor: const Color(0xFF0A0E21),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('선택 안함')),
+                          DropdownMenuItem(value: 1, child: Text('남자')),
+                          DropdownMenuItem(value: 2, child: Text('여자')),
+                        ],
+                        onChanged:
+                            (value) =>
+                                setState(() => selectedGender = value ?? 0),
+                        decoration: const InputDecoration(
+                          hintText: '성별 선택',
+                          hintStyle: TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          prefixIcon: Icon(
+                            Icons.person_outline,
+                            color: Color(0xFF6C63FF),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 비밀번호 입력
+                    TextField(
+                      controller: passwordController,
+                      obscureText: !isPasswordVisible,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      decoration: InputDecoration(
+                        hintText: '비밀번호',
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFF0A0E21),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(
+                            color: const Color(0xFF6C63FF).withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(
+                            color: const Color(0xFF6C63FF).withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF6C63FF),
+                            width: 2,
+                          ),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.lock,
+                          color: Color(0xFF6C63FF),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isPasswordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: Colors.white54,
+                          ),
+                          onPressed:
+                              () => setState(() {
+                                isPasswordVisible = !isPasswordVisible;
+                              }),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 개인정보 동의
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A0E21),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color:
+                              agreedToPrivacy
+                                  ? const Color(0xFF4CAF50).withOpacity(0.5)
+                                  : const Color(0xFF6C63FF).withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: agreedToPrivacy,
+                            onChanged:
+                                (value) => setState(
+                                  () => agreedToPrivacy = value ?? false,
+                                ),
+                            activeColor: const Color(0xFF4CAF50),
+                            checkColor: Colors.white,
+                          ),
+                          Expanded(
+                            child: Text(
+                              '개인정보 처리방침을 읽고 동의합니다',
+                              style: TextStyle(
+                                color:
+                                    agreedToPrivacy
+                                        ? const Color(0xFF4CAF50)
+                                        : Colors.white70,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 시작하기 버튼
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: isFormValid && !isLoading ? _handleSignUp : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        isFormValid
+                            ? const Color(0xFF6C63FF)
+                            : const Color(0xFF6C63FF).withOpacity(0.3),
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+                  ),
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Text(
+                            '시작하기',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                ),
+              ),
             ],
           ),
         ),
@@ -272,21 +505,46 @@ class _SignInScreenState extends State<SignInScreen> {
     required TextEditingController controller,
     required String hint,
     required bool isValid,
+    required IconData icon,
   }) {
     return TextField(
       controller: controller,
       onChanged: (_) => setState(() {}),
+      style: const TextStyle(color: Colors.white, fontSize: 16),
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: const Color(0xFF0A0E21),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(
+            color: const Color(0xFF6C63FF).withOpacity(0.3),
+            width: 1,
+          ),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color: const Color(0xFF6C63FF).withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Color(0xFF6C63FF), width: 2),
+        ),
+        prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
         suffixIcon:
             isValid
-                ? const Icon(Icons.check, color: Colors.green)
+                ? Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF4CAF50),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, color: Colors.white, size: 16),
+                )
                 : const SizedBox(width: 0),
       ),
     );
@@ -298,20 +556,56 @@ class _SignInScreenState extends State<SignInScreen> {
     return TextField(
       controller: idController,
       onChanged: _onIdChanged,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
       decoration: InputDecoration(
         hintText: '아이디',
-        helperText: _idHelperText, // 409 이후에만 메시지 노출
+        helperText: _idHelperText,
         helperStyle: TextStyle(
-          color: duplicated ? Colors.red : Colors.grey[600],
+          color: duplicated ? Colors.red : Colors.white54,
+          fontSize: 12,
         ),
+        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: const Color(0xFF0A0E21),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(
+            color:
+                duplicated
+                    ? Colors.red.withOpacity(0.5)
+                    : const Color(0xFF6C63FF).withOpacity(0.3),
+            width: 1,
+          ),
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color:
+                duplicated
+                    ? Colors.red.withOpacity(0.5)
+                    : const Color(0xFF6C63FF).withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(
+            color: duplicated ? Colors.red : const Color(0xFF6C63FF),
+            width: 2,
+          ),
+        ),
+        prefixIcon: const Icon(Icons.person, color: Color(0xFF6C63FF)),
         suffixIcon:
-            duplicated ? const Icon(Icons.close, color: Colors.red) : null,
+            duplicated
+                ? Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.red, size: 16),
+                )
+                : null,
       ),
     );
   }

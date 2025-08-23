@@ -562,7 +562,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
     return Scaffold(
       appBar: const TopNav(
         title: '알라와 코잘라',
-        showBackButton: false, // 홈은 루트이므로 숨김
+        showBackButton: true, // 홈은 루트이므로 숨김
         // gradient: LinearGradient( // 필요시 그라디언트 켜기
         //   colors: [Color(0xFF1D1E33), Color(0xFF141527)],
         //   begin: Alignment.topLeft,

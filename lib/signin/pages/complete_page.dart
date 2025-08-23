@@ -276,7 +276,7 @@ class CompletePage extends StatelessWidget {
                       if (resp.statusCode == 200) {
                         debugPrint('✅ 설문 저장 성공');
                         // ignore: use_build_context_synchronously
-                        Navigator.pushReplacementNamed(context, '/real-home');
+                        Navigator.pushReplacementNamed(context, '/home');
                       } else {
                         debugPrint('❌ 설문 저장 실패: ${resp.statusCode}');
                         debugPrint(resp.body);
