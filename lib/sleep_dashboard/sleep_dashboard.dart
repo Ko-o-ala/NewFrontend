@@ -731,10 +731,10 @@ class _SleepDashboardState extends State<SleepDashboard> {
                     child: _InfoItem(
                       icon: Icons.nights_stay,
                       time: formattedDuration,
-                      label: '오늘 총 수면 시간',
+                      label: '오늘 총 수면시간',
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 20),
                   Expanded(
                     child: _InfoItem(
                       icon: Icons.access_time,
@@ -758,93 +758,93 @@ class _SleepDashboardState extends State<SleepDashboard> {
                 ],
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (sleepScore == 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("수면점수 계산 중입니다. 잠시 후 다시 시도해주세요."),
-                      ),
-                    );
-                    return;
-                  }
-                  final token = await storage.read(key: 'jwt');
-                  final userId = await storage.read(key: 'userID');
-                  if (token == null ||
-                      userId == null ||
-                      todaySleep == null ||
-                      sleepStart == null ||
-                      sleepEnd == null) {
-                    print('❌ 유저/토큰/수면데이터 부족');
-                    return;
-                  }
-                  print('📤 sleepScore 전송 전 확인: $sleepScore');
-                  print('🕒 sleepStartReal: $sleepStartReal');
-                  final segments =
-                      healthData
-                          .where(
-                            (d) =>
-                                _isSleepType(d.type) ||
-                                d.type == HealthDataType.SLEEP_AWAKE,
-                          )
-                          .map((d) {
-                            String stage;
-                            switch (d.type) {
-                              case HealthDataType.SLEEP_DEEP:
-                                stage = "deep";
-                                break;
-                              case HealthDataType.SLEEP_REM:
-                                stage = "rem";
-                                break;
-                              case HealthDataType.SLEEP_LIGHT:
-                              case HealthDataType.SLEEP_ASLEEP:
-                                stage = "light";
-                                break;
-                              case HealthDataType.SLEEP_AWAKE:
-                                stage = "awake";
-                                break;
-                              default:
-                                stage = "unknown";
-                            }
+              // ElevatedButton(
+              //   onPressed: () async {
+              //     if (sleepScore == 0) {
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         const SnackBar(
+              //           content: Text("수면점수 계산 중입니다. 잠시 후 다시 시도해주세요."),
+              //         ),
+              //       );
+              //       return;
+              //     }
+              //     final token = await storage.read(key: 'jwt');
+              //     final userId = await storage.read(key: 'userID');
+              //     if (token == null ||
+              //         userId == null ||
+              //         todaySleep == null ||
+              //         sleepStart == null ||
+              //         sleepEnd == null) {
+              //       print('❌ 유저/토큰/수면데이터 부족');
+              //       return;
+              //     }
+              //     print('📤 sleepScore 전송 전 확인: $sleepScore');
+              //     print('🕒 sleepStartReal: $sleepStartReal');
+              //     final segments =
+              //         healthData
+              //             .where(
+              //               (d) =>
+              //                   _isSleepType(d.type) ||
+              //                   d.type == HealthDataType.SLEEP_AWAKE,
+              //             )
+              //             .map((d) {
+              //               String stage;
+              //               switch (d.type) {
+              //               case HealthDataType.SLEEP_DEEP:
+              //     stage = "deep";
+              //     break;
+              //   case HealthDataType.SLEEP_REM:
+              //     stage = "rem";
+              //     break;
+              //   case HealthDataType.SLEEP_LIGHT:
+              //   case HealthDataType.SLEEP_ASLEEP:
+              //     stage = "light";
+              //     break;
+              //   case HealthDataType.SLEEP_AWAKE:
+              //     stage = "awake";
+              //     break;
+              //   default:
+              //     stage = "unknown";
+              // }
 
-                            return {
-                              "startTime": d.dateFrom
-                                  .toIso8601String()
-                                  .substring(11, 16),
-                              "endTime": d.dateTo.toIso8601String().substring(
-                                11,
-                                16,
-                              ),
-                              "stage": stage,
-                            };
-                          })
-                          .toList();
-                  await sendSleepData(
-                    userId: userId,
-                    token: token,
-                    sleepStart: sleepStartReal ?? sleepStart!,
-                    sleepEnd: sleepEndReal ?? sleepEnd!,
-                    totalSleep: deepMin + remMin + lightMin,
-                    deepSleep: deepMin,
-                    remSleep: remMin,
-                    lightSleep: lightMin,
-                    awakeDuration: awakeMin,
-                    segments: segments, // 이건 위에서 따로 생성해 둔 리스트
-                    sleepScore: sleepScore,
-                  );
-                  await _refreshFromServerByRealStart();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2C2C72),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('🛏️ 오늘 수면 데이터 전송하기'),
-              ),
-              const SizedBox(height: 24),
+              // return {
+              //   "startTime": d.dateFrom
+              //       .toIso8601String()
+              //       .substring(11, 16),
+              //   "endTime": d.dateTo.toIso8601String().substring(
+              //     11,
+              //     16,
+              //   ),
+              //     "stage": stage,
+              //   };
+              //         })
+              //         .toList();
+              //     await sendSleepData(
+              //       userId: userId,
+              //       token: userId,
+              //       sleepStart: sleepStartReal ?? sleepStart!,
+              //       sleepEnd: sleepEndReal ?? sleepEnd!,
+              //       totalSleep: deepMin + remMin + lightMin,
+              //       deepSleep: deepMin,
+              //       remSleep: remMin,
+              //       lightSleep: lightMin,
+              //       awakeDuration: awakeMin,
+              //       segments: segments, // 이건 위에서 따로 생성해 둔 리스트
+              //       sleepScore: sleepScore,
+              //     );
+              //     await _refreshFromServerByRealStart();
+              //   },
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: const Color(0xFF2C2C72),
+              //       shape: RoundedRectangleBorder(
+              //         borderRadius: BorderRadius.circular(8),
+              //       ),
+              //       foregroundColor: Colors.white,
+              //       padding: const EdgeInsets.symmetric(vertical: 14),
+              //     ),
+              //   child: const Text('🛏️ 오늘 수면 데이터 전송하기'),
+              // ),
+              // const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -883,29 +883,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
                         TextButton(
                           onPressed: () {
-                            if (healthData.isEmpty ||
-                                sleepStart == null ||
-                                sleepEnd == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('수면 데이터를 먼저 불러와 주세요.'),
-                                ),
-                              );
-                              return;
-                            }
-                            Navigator.pushNamed(
-                              context,
-                              '/sleep-score',
-                              arguments: SleepScoreArgs(
-                                data: healthData,
-                                sleepStart: sleepStartReal ?? sleepStart!,
-                                sleepEnd: sleepEndReal ?? sleepEnd!,
-                                goalSleepDuration:
-                                    goalSleepDuration ??
-                                    const Duration(hours: 8),
-                                finalScore: sleepScore,
-                              ),
-                            );
+                            Navigator.pushNamed(context, '/score-explain');
                           },
                           child: const Text('더 알아보기 >'),
                         ),
@@ -958,9 +936,9 @@ class _SleepDashboardState extends State<SleepDashboard> {
                     const Divider(color: Colors.white10, height: 32),
                     _buildActionTile(
                       icon: Icons.psychology,
-                      title: '수면 조언 받으러 가기',
+                      title: '내 수면 자세히 알아보기',
                       subtitle: '전문가의 수면 개선 팁',
-                      onTap: () => Navigator.pushNamed(context, '/advice'),
+                      onTap: () => Navigator.pushNamed(context, '/sleep-chart'),
                     ),
                   ],
                 ),
@@ -1073,7 +1051,8 @@ class _InfoItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = Container(
-      padding: const EdgeInsets.all(20),
+      height: 90,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1D1E33),
         borderRadius: BorderRadius.circular(16),
@@ -1088,32 +1067,35 @@ class _InfoItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: const Color(0xFF6C63FF).withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 28, color: const Color(0xFF6C63FF)),
+            child: Icon(icon, size: 20, color: const Color(0xFF6C63FF)),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   time,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 15,
                     color: Colors.white,
                   ),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 14, color: Colors.white70),
+                  style: const TextStyle(fontSize: 11, color: Colors.white70),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ],
             ),

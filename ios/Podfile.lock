@@ -18,7 +18,7 @@ PODS:
     - Flutter
     - flutter_sound_core (= 9.28.0)
   - flutter_sound_core (9.28.0)
-  - health (13.1.1):
+  - health (13.1.2):
     - Flutter
   - just_audio (0.0.1):
     - Flutter
@@ -111,7 +111,7 @@ SPEC CHECKSUMS:
   flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
   flutter_sound: b9236a5875299aaa4cef1690afd2f01d52a3f890
   flutter_sound_core: 427465f72d07ab8c3edbe8ffdde709ddacd3763c
-  health: 0488159eaa0cb4551cb066fe469c6a647416ca1a
+  health: 7c5c1611e2957702338f07d7d2ed4195b6c53f35
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   permission_handler_apple: 3787117e48f80715ff04a3830ca039283d6a4f29

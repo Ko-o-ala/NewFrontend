@@ -349,6 +349,17 @@ class _SoundScreenState extends State<SoundScreen> {
     super.initState();
     // 전역 사운드 상태 변경 시 화면 갱신
     sound.addListener(() => mounted ? setState(() {}) : null);
+
+    // 기본 사운드 목록이 있다면 자동재생 시도
+    if (soundFiles.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 2000), () async {
+        if (mounted) {
+          debugPrint('[INIT] 기본 사운드 자동재생 시도: ${soundFiles.first}');
+          await _playSound(soundFiles.first);
+          debugPrint('[INIT] 기본 사운드 자동재생 완료');
+        }
+      });
+    }
   }
 
   @override
@@ -469,10 +480,11 @@ class _SoundScreenState extends State<SoundScreen> {
 
   void _onReorder(int oldIdx, int newIdx) async {
     setState(() {
+      if (newIdx > oldIdx) newIdx -= 1; // ✅ Flutter 인덱스 보정
       final item = soundFiles.removeAt(oldIdx);
       soundFiles.insert(newIdx, item);
     });
-    await _patchPreferredSoundsRank();
+    await _patchPreferredSoundsRank(); // ✅ 서버에 정렬 저장
   }
 
   Future<void> _executeRecommendation() async {
@@ -499,6 +511,17 @@ class _SoundScreenState extends State<SoundScreen> {
           resp.statusCode == 202 ||
           resp.statusCode == 204) {
         await _loadRecommendations();
+
+        // 추천 실행 후 자동재생 시도
+        if (soundFiles.isNotEmpty) {
+          debugPrint('[EXEC] 추천 실행 완료 후 자동재생 시도: ${soundFiles.first}');
+          await Future.delayed(const Duration(milliseconds: 1500));
+          if (mounted) {
+            await _playSound(soundFiles.first);
+            debugPrint('[EXEC] 자동재생 완료');
+          }
+        }
+
         return;
       }
       throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
@@ -575,6 +598,19 @@ class _SoundScreenState extends State<SoundScreen> {
           controller.jumpToPage(0);
         }
       });
+
+      // 맨 위에 있는 사운드 자동재생
+      if (soundFiles.isNotEmpty) {
+        debugPrint('[AUTO-PLAY] 사운드 목록 로드 완료, 첫 번째 사운드: ${soundFiles.first}');
+        await Future.delayed(
+          const Duration(milliseconds: 1000),
+        ); // UI 렌더링 대기 시간 증가
+        if (mounted) {
+          debugPrint('[AUTO-PLAY] 자동재생 시작: ${soundFiles.first}');
+          await _playSound(soundFiles.first);
+          debugPrint('[AUTO-PLAY] 자동재생 완료');
+        }
+      }
     } catch (e) {
       debugPrint('추천 조회 실패: $e');
       if (mounted) {

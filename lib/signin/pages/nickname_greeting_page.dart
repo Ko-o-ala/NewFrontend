@@ -128,10 +128,28 @@ class _NicknameGreetPageState extends State<NicknameGreetPage> {
                               ),
                             ],
                           ),
-                          child: Image.asset(
-                            'lib/assets/koala.png',
-                            width: 130,
-                            height: 130,
+                          child: Container(
+                            width: 150,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Image.asset(
+                                'lib/assets/koala.png',
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
                           ),
                         ),
 

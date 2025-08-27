@@ -39,7 +39,6 @@ class opening extends StatelessWidget {
                       child: const Text("홈으로"),
                     ),
                   ),
-
                   const SizedBox(height: 16), // 🔸 버튼 간격
                   // 🔸 시작하기 버튼
                   Padding(

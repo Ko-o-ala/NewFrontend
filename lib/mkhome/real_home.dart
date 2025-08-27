@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/Top_Nav.dart';
-
 import 'package:my_app/services/voice_socket_service.dart';
 import 'dart:convert'; // base64Decode
 import 'package:my_app/services/api_client.dart';
@@ -62,6 +61,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   StreamSubscription<String>? _transcriptSub;
   StreamSubscription<dynamic>? _pcmSub; // MP3 청크 구독
   StreamSubscription<bool>? _connSub;
+  StreamSubscription<ServerDisconnectEvent>? _serverDiscSub;
 
   // MP3 버퍼 (WebSocket에서 받은 8KB 청크를 모았다가 한 번에 재생)
   final List<Uint8List> _audioBuffer = [];
@@ -285,29 +285,31 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     // 🔌 소켓 연결 상태 반영
     _connSub = voiceService.connectionStream.listen((connected) async {
       if (!connected) {
-        _autoResumeMic = false;
-        if (_isListening) {
-          try {
-            await _speech.stop();
-          } catch (_) {}
-          _stopListening();
-        }
-        try {
-          await _player.stop();
-        } catch (_) {}
-        _pendingQueue.clear();
-        _audioBuffer.clear();
-        _audioAvailable = false;
-
-        if (mounted) {
-          setState(() {
-            _isPlaying = false;
-            _isThinking = false;
-            _text = '⚠️ 서버 연결이 끊어졌습니다.';
-          });
-        }
+        await _gracefulStopAll('서버 연결이 끊어졌습니다');
       } else {
         _autoResumeMic = true;
+      }
+    });
+
+    // ② 서버가 의도적으로 끊을 때(이유 포함) 처리
+    _serverDiscSub = voiceService.serverDisconnectStream.listen((evt) async {
+      // 공통 정리
+      await _gracefulStopAll(evt.message);
+
+      // reason 분기
+      if (evt.reason == 'sound') {
+        // 사운드 페이지로 이동 + 추천 자동재생 플래그 전달
+        if (mounted) {
+          Navigator.pushNamed(
+            context,
+            '/sound',
+            arguments: {
+              'autoplayRecommended': true,
+            }, // ← 사운드 페이지에서 이 값을 보고 3개 자동재생
+          );
+        }
+      } else {
+        // 'silent' 또는 기타: 추가 동작 없이 종료만
       }
     });
 
@@ -474,6 +476,32 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     } catch (e, stack) {
       print('❌ 사용자 정보 요청 실패: $e');
       print(stack);
+    }
+  }
+
+  Future<void> _gracefulStopAll(String uiMessage) async {
+    _autoResumeMic = false;
+
+    if (_isListening) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+      _stopListening();
+    }
+    try {
+      await _player.stop();
+    } catch (_) {}
+
+    _pendingQueue.clear();
+    _audioBuffer.clear();
+    _audioAvailable = false;
+
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+        _isThinking = false;
+        _text = uiMessage; // 화면에 사유/안내 표시
+      });
     }
   }
 
@@ -705,6 +733,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   @override
   void dispose() {
+    _serverDiscSub?.cancel();
     _connSub?.cancel();
     _disposed = true; // ✅ 가드 온
     _assembleTimer?.cancel(); // ✅ 타이머 취소

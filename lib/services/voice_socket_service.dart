@@ -4,6 +4,20 @@ import 'dart:convert'; // base64Decode
 import 'dart:typed_data';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
+class ServerDisconnectEvent {
+  final String reason; // 'sound' | 'silent' | 기타
+  final String message; // 서버가 보낸 안내 메시지
+  final int? timestampMs; // (옵션) 서버 타임스탬프(ms)
+  final Map<String, dynamic>? stats; // (옵션) 세션 통계
+
+  ServerDisconnectEvent({
+    required this.reason,
+    required this.message,
+    this.timestampMs,
+    this.stats,
+  });
+}
+
 /// 음성/텍스트 실시간 통신용 소켓 서비스 (Singleton)
 class VoiceSocketService {
   VoiceSocketService._internal();
@@ -29,6 +43,12 @@ class VoiceSocketService {
   // 소켓 연결 상태: true=connected, false=disconnected (연결 시도 시작 시에도 false 한 번 쏨)
   final _connCtrl = StreamController<bool>.broadcast();
   Stream<bool> get connectionStream => _connCtrl.stream;
+
+  // ==== 새 스트림: 서버가 의도적으로 끊을 때 상세 이벤트 ====
+  final _serverDisconnectCtrl =
+      StreamController<ServerDisconnectEvent>.broadcast();
+  Stream<ServerDisconnectEvent> get serverDisconnectStream =>
+      _serverDisconnectCtrl.stream;
 
   /// 서버에 연결합니다.
   /// [url] 예) `wss://llm.tassoo.uk?jwt=...`
@@ -89,8 +109,47 @@ class VoiceSocketService {
       ..on('mp3_chunk', _handleAudioEvent)
       // 서버에서 커스텀 종료 통지 시
       ..on('server_disconnect', (payload) {
-        print('⚠️ server_disconnect: $payload');
-        _assistantCtrl.add('⚠️ 서버 연결이 끊어졌습니다.');
+        // payload: Map 또는 [Map, ...] 모두 대응
+        Map<String, dynamic>? m;
+        if (payload is Map) {
+          m = Map<String, dynamic>.from(payload);
+        } else if (payload is List &&
+            payload.isNotEmpty &&
+            payload.first is Map) {
+          m = Map<String, dynamic>.from(payload.first as Map);
+        }
+
+        String reason = m?['reason']?.toString() ?? 'unknown';
+        String message = m?['message']?.toString() ?? 'Server is disconnecting';
+        // 서버가 timestamp / timestampMs 중 뭘 보내든 흡수
+        int? _toInt(dynamic v) {
+          if (v is int) return v;
+          if (v is String) return int.tryParse(v);
+          return null;
+        }
+
+        Map<String, dynamic>? stats;
+        if (m?['session_stats'] is Map) {
+          stats = Map<String, dynamic>.from(m!['session_stats']);
+        }
+
+        final int? ts = _toInt(m?['timestamp']) ?? _toInt(m?['timestampMs']);
+
+        final evt = ServerDisconnectEvent(
+          reason: reason,
+          message: message,
+          timestampMs: ts,
+          stats: stats,
+        );
+
+        // 1) 구독자에게 먼저 알리고
+        _serverDisconnectCtrl.add(evt);
+        print('⚠️ server_disconnect: $m');
+
+        // 2) UI에도 안내(선택)
+        _assistantCtrl.add('⚠️ 서버 연결이 끊어졌습니다. ($reason)');
+
+        // 3) 연결 상태 false → 소켓 종료
         _connCtrl.add(false);
         _socket?.disconnect();
       })

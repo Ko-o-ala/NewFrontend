@@ -311,7 +311,7 @@ class _HomePageState extends State<HomePage> {
                             onTap:
                                 () => Navigator.pushNamed(
                                   context,
-                                  '/profile-edit',
+                                  '/edit-account',
                                 ),
                           ),
                         ),
@@ -357,7 +357,8 @@ class _HomePageState extends State<HomePage> {
                             context,
                             icon: Icons.description,
                             label: '이용약관/개인정보',
-                            onTap: () => Navigator.pushNamed(context, '/terms'),
+                            onTap:
+                                () => Navigator.pushNamed(context, '/notice'),
                           ),
                         ),
                       ],

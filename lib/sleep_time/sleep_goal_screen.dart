@@ -107,184 +107,537 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
             : '0시간 0분';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
-        title: const Text('목표 수면 시간 수정', style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
+        title: const Text(
+          '목표 수면 시간 수정',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
-        foregroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 예쁜 토글
-              Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.grey.shade400),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: () => setState(() => isWakeUpMode = false),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF1D1E33), Color(0xFF0A0E21)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // 헤더 카드
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6C63FF).withOpacity(0.25),
+                          blurRadius: 20,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color:
-                                isWakeUpMode
-                                    ? Colors.grey.shade200
-                                    : const Color(0xFFB0AEF4),
-                            borderRadius: const BorderRadius.horizontal(
-                              left: Radius.circular(30),
-                            ),
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            'Go to bed at',
-                            style: TextStyle(
-                              color: isWakeUpMode ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.bold,
+                          child: const Icon(
+                            Icons.bedtime,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '목표 수면 시간',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '건강한 수면을 위한 목표를 설정하세요',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 모드 선택 토글
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C63FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.swap_horiz,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              '수면 모드 선택',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0A0E21),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: const Color(0xFF6C63FF).withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap:
+                                      () =>
+                                          setState(() => isWakeUpMode = false),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          isWakeUpMode
+                                              ? Colors.transparent
+                                              : const Color(0xFF6C63FF),
+                                      borderRadius:
+                                          const BorderRadius.horizontal(
+                                            left: Radius.circular(30),
+                                          ),
+                                      boxShadow:
+                                          isWakeUpMode
+                                              ? null
+                                              : [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                    0xFF6C63FF,
+                                                  ).withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                    ),
+                                    child: Text(
+                                      'Go to bed at',
+                                      style: TextStyle(
+                                        color:
+                                            isWakeUpMode
+                                                ? Colors.white70
+                                                : Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap:
+                                      () => setState(() => isWakeUpMode = true),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          isWakeUpMode
+                                              ? const Color(0xFF6C63FF)
+                                              : Colors.transparent,
+                                      borderRadius:
+                                          const BorderRadius.horizontal(
+                                            right: Radius.circular(30),
+                                          ),
+                                      boxShadow:
+                                          isWakeUpMode
+                                              ? [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                    0xFF6C63FF,
+                                                  ).withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ]
+                                              : null,
+                                    ),
+                                    child: Text(
+                                      'Wake up at',
+                                      style: TextStyle(
+                                        color:
+                                            isWakeUpMode
+                                                ? Colors.white
+                                                : Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 정보 배너
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2C2C72), Color(0xFF1F1F4C)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      GestureDetector(
-                        onTap: () => setState(() => isWakeUpMode = true),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF2C2C72).withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color:
-                                isWakeUpMode
-                                    ? const Color(0xFFB0AEF4)
-                                    : Colors.grey.shade200,
-                            borderRadius: const BorderRadius.horizontal(
-                              right: Radius.circular(30),
-                            ),
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(16),
                           ),
+                          child: const Icon(
+                            Icons.info_outline,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
                           child: Text(
-                            'Wake up at',
-                            style: TextStyle(
-                              color: isWakeUpMode ? Colors.white : Colors.black,
-                              fontWeight: FontWeight.bold,
+                            isWakeUpMode
+                                ? '$durationText 수면을 취하실 수 있습니다'
+                                : '오늘 주무실 시간을 선택해주세요',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 시간 선택 필드
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C63FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.access_time,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              '시간 선택',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: () => _selectTime(context),
+                          child: AbsorbPointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0A0E21),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF6C63FF,
+                                  ).withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: TextField(
+                                controller: TextEditingController(
+                                  text:
+                                      (isWakeUpMode ? wakeTime : bedTime)
+                                          ?.format(context) ??
+                                      '',
+                                ),
+                                readOnly: true,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: '시간을 선택해주세요',
+                                  hintStyle: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 16,
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 16,
+                                  ),
+                                  suffixIcon: Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF6C63FF,
+                                      ).withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.access_time,
+                                      color: Color(0xFF6C63FF),
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 요일 선택 섹션
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C63FF),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_today,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              '요일 선택',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          '목표를 달성하고 싶은 요일을 알려주세요',
+                          style: TextStyle(fontSize: 16, color: Colors.white70),
+                        ),
+                        const SizedBox(height: 20),
+                        WeekdaySelector(
+                          selectedDays: selectedDays,
+                          onDayToggle: (index) {
+                            setState(() {
+                              if (selectedDays.contains(index)) {
+                                selectedDays.remove(index);
+                              } else {
+                                selectedDays.add(index);
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // 저장 버튼
+                  Container(
+                    width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // 배너
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF08063D),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  isWakeUpMode
-                      ? '$durationText 수면을 취하실 수 있습니다'
-                      : '오늘 주무실 시간을 선택해주세요',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // 시간 선택 필드
-              GestureDetector(
-                onTap: () => _selectTime(context),
-                child: AbsorbPointer(
-                  child: TextField(
-                    controller: TextEditingController(
-                      text:
-                          (isWakeUpMode ? wakeTime : bedTime)?.format(
-                            context,
-                          ) ??
-                          '',
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6C63FF).withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                    readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: '시간 선택',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.access_time),
+                    child: ElevatedButton(
+                      onPressed:
+                          (bedTime != null && wakeTime != null)
+                              ? () async {
+                                await _saveSleepGoal();
+                                final sleepDuration = calculateSleepDuration();
+                                Navigator.pop(context, sleepDuration);
+                              }
+                              : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        '저장하기',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+
+                  const SizedBox(height: 40),
+                ],
               ),
-
-              const SizedBox(height: 25),
-
-              const Center(
-                // ✅ 텍스트도 가운데 정렬
-                child: Text(
-                  '목표를 달성하고 싶은 요일을 알려주세요',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              WeekdaySelector(
-                selectedDays: selectedDays,
-                onDayToggle: (index) {
-                  setState(() {
-                    if (selectedDays.contains(index)) {
-                      selectedDays.remove(index);
-                    } else {
-                      selectedDays.add(index);
-                    }
-                  });
-                },
-              ),
-
-              const SizedBox(height: 40),
-
-              // 저장 버튼
-              ElevatedButton(
-                onPressed:
-                    (bedTime != null && wakeTime != null)
-                        ? () async {
-                          await _saveSleepGoal();
-                          final sleepDuration = calculateSleepDuration();
-                          Navigator.pop(context, sleepDuration);
-                        }
-                        : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFB0AEF4),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                ),
-                child: const Text(
-                  '저장하기',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black, // ✅ 글자색을 검정으로 설정
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
