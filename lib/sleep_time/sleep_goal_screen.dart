@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'weekday_selector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert'; // ✅ jsonEncode / jsonDecode 제공
 
 class SleepGoalScreen extends StatefulWidget {
   @override
@@ -51,24 +52,45 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
     final prefs = await SharedPreferences.getInstance();
     final duration = calculateSleepDuration();
 
+    // 모든 요일 목표 시간 초기화
+    for (int i = 1; i <= 7; i++) {
+      await prefs.remove('sleep_goal_weekday_$i');
+      await prefs.remove('sleep_goal_enabled_$i');
+    }
+
+    // 선택 요일(0=일~6=토) → 1=월~7=일로 변환
+    final selectedWeekdays =
+        selectedDays.map((day) => day == 0 ? 7 : day).toSet();
+
+    // 선택된 요일에만 목표 시간 저장
     if (duration != null) {
-      for (final day in selectedDays) {
-        // day: 0(Sunday) ~ 6(Saturday)
-        // sleep_dashboard.dart에서 사용하는 키와 일치하도록 수정
-        final weekday = (day + 1) % 7; // 0=일요일을 7=일요일로 변환
-        prefs.setInt('sleep_goal_weekday_$weekday', duration.inMinutes);
+      for (final wd in selectedWeekdays) {
+        await prefs.setInt('sleep_goal_weekday_$wd', duration.inMinutes);
       }
     }
 
-    // ✅ 저장 시 bedTime, wakeTime 저장
-    if (bedTime != null && wakeTime != null) {
-      prefs.setInt('bedHour', bedTime!.hour);
-      prefs.setInt('bedMin', bedTime!.minute);
-      prefs.setInt('wakeHour', wakeTime!.hour);
-      prefs.setInt('wakeMin', wakeTime!.minute);
+    // ✅ 활성 요일 키도 함께 저장 (A/B 둘 다 지원)
+    await prefs.setString(
+      'sleep_goal_enabled_days',
+      jsonEncode(selectedWeekdays.toList()),
+    );
+    for (int i = 1; i <= 7; i++) {
+      await prefs.setBool(
+        'sleep_goal_enabled_$i',
+        selectedWeekdays.contains(i),
+      );
     }
-    // ✅ 선택한 요일들 저장
-    prefs.setStringList(
+
+    // 취침/기상 시각 저장
+    if (bedTime != null && wakeTime != null) {
+      await prefs.setInt('bedHour', bedTime!.hour);
+      await prefs.setInt('bedMin', bedTime!.minute);
+      await prefs.setInt('wakeHour', wakeTime!.hour);
+      await prefs.setInt('wakeMin', wakeTime!.minute);
+    }
+
+    // 선택한 요일(원본 0~6)도 계속 보존
+    await prefs.setStringList(
       'selectedDays',
       selectedDays.map((e) => e.toString()).toList(),
     );

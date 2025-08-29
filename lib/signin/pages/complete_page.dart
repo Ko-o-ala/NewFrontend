@@ -12,8 +12,9 @@ class CompletePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
-      body: SafeArea(
-        child: Center(
+      body: Container(
+        color: const Color(0xFF0A0E21), // SafeArea 위아래 흰색 방지
+        child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(

@@ -57,10 +57,10 @@ class _SleepDashboardState extends State<SleepDashboard>
         final minutes = goalMinutes % 60;
         return '${hours}시간 ${minutes}분';
       } else {
-        return '시간 선택 안함';
+        return '시간 없음';
       }
     } catch (e) {
-      return '시간 선택 안함';
+      return '시간 없음';
     }
   }
 
@@ -218,12 +218,83 @@ class _SleepDashboardState extends State<SleepDashboard>
   }
 
   Future<void> _loadGoalText() async {
-    final today = DateTime.now();
-    final goalTextForToday = await _getGoalTextForWeekday(today);
-
+    final text = await _getGoalTextForTodayWithEnabledCheck();
+    if (!mounted) return;
     setState(() {
-      goalText = goalTextForToday;
+      goalText = text;
     });
+  }
+
+  // ✅ SleepDashboard 내 _getGoalTextForTodayWithEnabledCheck 보강
+  Future<String> _getGoalTextForTodayWithEnabledCheck() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final weekday = DateTime.now().weekday; // 1=월 .. 7=일
+      bool enabledToday = true;
+
+      // A) sleep_goal_enabled_days : JSON 또는 CSV
+      final enabledStr = prefs.getString('sleep_goal_enabled_days');
+      if (enabledStr != null) {
+        Set<int> enabled = {};
+        try {
+          final decoded = json.decode(enabledStr);
+          if (decoded is List) {
+            enabled =
+                decoded
+                    .map((e) => int.tryParse(e.toString()) ?? -1)
+                    .where((v) => v >= 1 && v <= 7)
+                    .toSet();
+          } else {
+            enabled =
+                enabledStr
+                    .split(RegExp(r'[^\d]+'))
+                    .where((s) => s.isNotEmpty)
+                    .map(int.parse)
+                    .toSet();
+          }
+        } catch (_) {
+          enabled =
+              enabledStr
+                  .split(RegExp(r'[^\d]+'))
+                  .where((s) => s.isNotEmpty)
+                  .map(int.parse)
+                  .toSet();
+        }
+        if (enabled.isNotEmpty) enabledToday = enabled.contains(weekday);
+      } else {
+        // B) 개별 플래그: sleep_goal_enabled_{weekday}
+        final flag = prefs.getBool('sleep_goal_enabled_$weekday');
+        if (flag != null) enabledToday = flag;
+      }
+
+      // C) ✅ SleepGoalScreen이 저장한 selectedDays(0=일~6=토)도 지원
+      if (enabledStr == null) {
+        // 위 키가 없을 때만 보조로 사용
+        final selected = prefs.getStringList('selectedDays');
+        if (selected != null && selected.isNotEmpty) {
+          final selectedWeekdays =
+              selected
+                  .map((s) => int.tryParse(s) ?? -1)
+                  .where((d) => d >= 0 && d <= 6)
+                  .map((d) => d == 0 ? 7 : d) // 0(일) → 7(일)
+                  .toSet();
+          enabledToday = selectedWeekdays.contains(weekday);
+        }
+      }
+
+      if (!enabledToday) return '시간 없음';
+
+      final goalKey = 'sleep_goal_weekday_$weekday';
+      final goalMinutes = prefs.getInt(goalKey);
+      if (goalMinutes != null && goalMinutes > 0) {
+        final hours = goalMinutes ~/ 60;
+        final minutes = goalMinutes % 60;
+        return '${hours}시간 ${minutes}분';
+      }
+      return '시간 없음';
+    } catch (_) {
+      return '시간 없음';
+    }
   }
 
   // 전역: 서버에서 하루 데이터 조회
@@ -765,16 +836,23 @@ class _SleepDashboardState extends State<SleepDashboard>
                       icon: Icons.access_time,
                       time: goalText,
                       label: '목표 수면 시간',
+                      // ✅ SleepDashboard.build 안의 _InfoItem(onTap) 부분 교체
                       onTap: () async {
                         final updatedDuration = await Navigator.pushNamed(
                           context,
                           '/time-set',
                         );
                         if (updatedDuration is Duration) {
+                          // 내부 보관은 유지
                           setState(() {
                             goalSleepDuration = updatedDuration;
-                            goalText =
-                                '${updatedDuration.inHours}시간 ${updatedDuration.inMinutes % 60}분';
+                          });
+                          // 화면 표시 텍스트는 '오늘 선택 요일인지' 검사해서 갱신
+                          final newText =
+                              await _getGoalTextForTodayWithEnabledCheck();
+                          if (!mounted) return;
+                          setState(() {
+                            goalText = newText;
                           });
                         }
                       },

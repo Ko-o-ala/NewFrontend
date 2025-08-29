@@ -39,6 +39,10 @@ class _FAQPageState extends State<FAQPage> {
       'answer':
           '수면 관리 섹션의 "수면 목표 설정"에서 개인 맞춤 수면 목표를 설정할 수 있습니다. 나이와 생활 패턴에 따라 최적의 수면 시간을 추천받을 수 있습니다.',
     },
+    {
+      'question': '회원 탈퇴는 어디서 하나요?',
+      'answer': '프로필 수정 탭에 들어가서 맨 아래로 내려가면 계정 탈퇴하기 버튼이 있습니다.',
+    },
   ];
 
   List<bool> isExpanded = List.generate(6, (index) => false);

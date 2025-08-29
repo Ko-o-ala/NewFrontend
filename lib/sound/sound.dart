@@ -344,8 +344,10 @@ class _SoundScreenState extends State<SoundScreen> {
   @override
   void initState() {
     super.initState();
-    // 전역 사운드 상태 변경 시 화면 갱신
     sound.addListener(() => mounted ? setState(() {}) : null);
+
+    // 페이지 접속 시 자동으로 서버에서 추천 사운드 가져오기
+    _loadRecommendations();
 
     // 기본 사운드 목록이 있다면 자동재생 시도
     if (soundFiles.isNotEmpty) {
@@ -943,14 +945,11 @@ class _SoundScreenState extends State<SoundScreen> {
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1D1E33),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF6C63FF).withOpacity(0.3),
+                        width: 1,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -960,12 +959,12 @@ class _SoundScreenState extends State<SoundScreen> {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFD700).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
+                                color: const Color(0xFF6C63FF),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
                                 Icons.auto_awesome,
-                                color: Color(0xFFFFD700),
+                                color: Colors.white,
                                 size: 20,
                               ),
                             ),
@@ -975,7 +974,7 @@ class _SoundScreenState extends State<SoundScreen> {
                                 loadingRecommendations
                                     ? "추천 불러오는 중..."
                                     : (recommendationText ??
-                                        "아래 새로고침을 눌러 오늘의 추천을 받아보세요."),
+                                        "오늘의 추천 사운드를 받아보세요"),
                                 style: const TextStyle(
                                   fontSize: 16,
                                   color: Colors.white,
@@ -983,23 +982,12 @@ class _SoundScreenState extends State<SoundScreen> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              tooltip: '추천 새로고침',
-                              icon: const Icon(
-                                Icons.refresh,
-                                color: Color(0xFF6C63FF),
-                              ),
-                              onPressed:
-                                  loadingRecommendations
-                                      ? null
-                                      : _executeRecommendation,
-                            ),
                           ],
                         ),
 
                         const SizedBox(height: 12),
 
-                        // ✅ “왜 사운드를 추천하나요?” 버튼 (새 페이지로 이동해서 API 호출)
+                        // ✅ "왜 사운드를 추천하나요?" 버튼 (새 페이지로 이동해서 API 호출)
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
