@@ -95,40 +95,49 @@ class _SoundPageState extends State<SoundPage> {
             ],
           ),
           const SizedBox(height: 20),
-          ...options.map(
-            (option) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color:
-                    groupValue == option
-                        ? const Color(0xFF6C63FF).withOpacity(0.2)
-                        : const Color(0xFF0A0E21),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+
+          // ✅ 세로로 '한 줄씩'만 보이도록 ListView.separated 사용
+          ListView.separated(
+            shrinkWrap: true, // 부모 스크롤(SingleChildScrollView)에 맞춤
+            physics: const NeverScrollableScrollPhysics(), // 이 리스트 자체는 스크롤 금지
+            itemCount: options.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final option = options[index];
+              final selected = groupValue == option;
+              return Container(
+                decoration: BoxDecoration(
                   color:
-                      groupValue == option
-                          ? const Color(0xFF6C63FF)
-                          : Colors.white.withOpacity(0.1),
-                  width: 1,
-                ),
-              ),
-              child: RadioListTile(
-                title: Text(
-                  option,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight:
-                        groupValue == option
-                            ? FontWeight.w600
-                            : FontWeight.normal,
+                      selected
+                          ? const Color(0xFF6C63FF).withOpacity(0.2)
+                          : const Color(0xFF0A0E21),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color:
+                        selected
+                            ? const Color(0xFF6C63FF)
+                            : Colors.white.withOpacity(0.1),
+                    width: 1,
                   ),
                 ),
-                value: option,
-                groupValue: groupValue,
-                onChanged: onChanged,
-                activeColor: const Color(0xFF6C63FF),
-              ),
-            ),
+                child: RadioListTile<String>(
+                  title: Text(
+                    option,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                  value: option,
+                  groupValue: groupValue,
+                  onChanged: onChanged,
+                  activeColor: const Color(0xFF6C63FF),
+                  dense: true, // 높이 조금 더 컴팩트하게
+                  visualDensity: VisualDensity.compact,
+                ),
+              );
+            },
           ),
         ],
       ),

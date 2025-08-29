@@ -341,9 +341,6 @@ class _SoundScreenState extends State<SoundScreen> {
     },
   };
 
-  final PageController controller = PageController();
-  int currentPage = 0;
-
   @override
   void initState() {
     super.initState();
@@ -418,7 +415,6 @@ class _SoundScreenState extends State<SoundScreen> {
   void dispose() {
     _prefDebounce?.cancel();
     _execDebounce?.cancel();
-    controller.dispose();
     sound.removeListener(() {});
     super.dispose();
   }
@@ -592,11 +588,6 @@ class _SoundScreenState extends State<SoundScreen> {
           ..clear()
           ..addAll(filenames)
           ..addAll(rest);
-
-        currentPage = 0;
-        if (controller.hasClients) {
-          controller.jumpToPage(0);
-        }
       });
 
       // 맨 위에 있는 사운드 자동재생
@@ -681,11 +672,6 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
-  List<String> _getPageItems(int page, int perPage) {
-    final start = page * perPage;
-    return soundFiles.skip(start).take(perPage).toList();
-  }
-
   String _fmtDate(DateTime d) {
     final mm = d.month.toString().padLeft(2, '0');
     final dd = d.day.toString().padLeft(2, '0');
@@ -730,6 +716,42 @@ class _SoundScreenState extends State<SoundScreen> {
     throw Exception('userID 미존재');
   }
 
+  Future<void> _savePreferredSoundsRank() async {
+    try {
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/users/modify/preferred/sounds/rank',
+      );
+      final headers = await _authHeaders();
+
+      final preferred = <Map<String, dynamic>>[
+        for (int i = 0; i < soundFiles.length; i++)
+          {"filename": soundFiles[i], "rank": i + 1},
+      ];
+
+      final body = json.encode({"preferredSounds": preferred});
+
+      final resp = await http.patch(url, headers: headers, body: body);
+
+      debugPrint(
+        '[PATCH preferredSounds] status=${resp.statusCode} body=${resp.body}',
+      );
+      if (resp.statusCode == 401) {
+        await storage.delete(key: 'jwt');
+        throw Exception('Unauthorized (401)');
+      }
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('preferredSounds PATCH 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('정렬 저장 실패: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!authReady) {
@@ -740,9 +762,6 @@ class _SoundScreenState extends State<SoundScreen> {
         ),
       );
     }
-
-    const perPage = 6;
-    final pageCount = (soundFiles.length / perPage).ceil();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
@@ -1030,37 +1049,171 @@ class _SoundScreenState extends State<SoundScreen> {
 
                         if (topRecommended.isNotEmpty) ...[
                           const SizedBox(height: 16),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children:
-                                topRecommended.take(2).map((f) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
+
+                          // 추천 사운드 상위 3개 표시
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1D1E33),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF6C63FF).withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF6C63FF),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.star,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                                     ),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      '오늘의 추천 사운드 TOP 3',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+
+                                // 상위 3개 사운드 카드
+                                ...topRecommended.take(3).map((filename) {
+                                  final index =
+                                      topRecommended.indexOf(filename) + 1;
+                                  final name = filename
+                                      .replaceAll('.mp3', '')
+                                      .replaceAll('_', ' ');
+                                  final data = metadata[filename];
+
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFF6C63FF),
-                                          Color(0xFF4B47BD),
-                                        ],
+                                      gradient: LinearGradient(
+                                        colors:
+                                            index == 1
+                                                ? [
+                                                  const Color(0xFFFFD700),
+                                                  const Color(0xFFFFA500),
+                                                ] // 1위: 금색
+                                                : index == 2
+                                                ? [
+                                                  const Color(0xFFC0C0C0),
+                                                  const Color(0xFFA0A0A0),
+                                                ] // 2위: 은색
+                                                : [
+                                                  const Color(0xFFCD7F32),
+                                                  const Color(0xFFB8860B),
+                                                ], // 3위: 동색
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),
-                                      borderRadius: BorderRadius.circular(20),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (index == 1
+                                                  ? const Color(0xFFFFD700)
+                                                  : index == 2
+                                                  ? const Color(0xFFC0C0C0)
+                                                  : const Color(0xFFCD7F32))
+                                              .withOpacity(0.3),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 5),
+                                        ),
+                                      ],
                                     ),
-                                    child: Text(
-                                      '추천 • ${f.replaceAll(".mp3", "")}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    child: Row(
+                                      children: [
+                                        // 순위 배지
+                                        Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(
+                                              0.2,
+                                            ),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '$index',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                name,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              if (data != null) ...[
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  "• ${data["feature"]}",
+                                                  style: TextStyle(
+                                                    color: Colors.white
+                                                        .withOpacity(0.9),
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  "• ${data["effect"]}",
+                                                  style: TextStyle(
+                                                    color: Colors.white
+                                                        .withOpacity(0.9),
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        // 재생 버튼
+                                        IconButton(
+                                          icon: Icon(
+                                            sound.currentPlaying == filename &&
+                                                    sound.isPlaying
+                                                ? Icons.pause_circle
+                                                : Icons.play_circle,
+                                            color: Colors.white,
+                                            size: 32,
+                                          ),
+                                          onPressed: () => _playSound(filename),
+                                        ),
+                                      ],
                                     ),
                                   );
                                 }).toList(),
+                              ],
+                            ),
                           ),
                         ],
                       ],
@@ -1114,268 +1267,275 @@ class _SoundScreenState extends State<SoundScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        // 페이지 인디케이터
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(pageCount, (i) {
-                            return GestureDetector(
-                              onTap: () => controller.jumpToPage(i),
-                              child: Container(
-                                width: 12,
-                                height: 12,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color:
-                                      currentPage == i
-                                          ? const Color(0xFF6C63FF)
-                                          : Colors.white.withOpacity(0.3),
+                        // 드래그 앤 드롭 안내
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF6C63FF).withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.drag_handle,
+                                color: const Color(0xFF6C63FF),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  '사운드를 드래그해서 순서를 변경할 수 있습니다. 변경된 순서는 자동으로 저장됩니다.',
+                                  style: TextStyle(
+                                    color: const Color(0xFF6C63FF),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
-                            );
-                          }),
+                            ],
+                          ),
                         ),
 
                         const SizedBox(height: 20),
 
                         // 사운드 카드들
-                        SizedBox(
-                          height: 400,
-                          child: PageView.builder(
-                            controller: controller,
-                            onPageChanged:
-                                (idx) => setState(() => currentPage = idx),
-                            itemCount: pageCount,
-                            itemBuilder: (_, pageIndex) {
-                              const perPage = 6;
-                              final items = _getPageItems(pageIndex, perPage);
-                              return ListView.builder(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
-                                itemCount: items.length,
-                                itemBuilder: (context, i) {
-                                  final file = items[i];
-                                  final name = file
-                                      .replaceAll('.mp3', '')
-                                      .replaceAll('_', ' ');
-                                  final selected = sound.currentPlaying == file;
-                                  final data = metadata[file];
-                                  final isRecommended = topRecommended.contains(
-                                    file,
-                                  );
+                        ReorderableListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: soundFiles.length,
+                          onReorder: (oldIndex, newIndex) {
+                            setState(() {
+                              if (oldIndex < newIndex) {
+                                newIndex -= 1;
+                              }
+                              final item = soundFiles.removeAt(oldIndex);
+                              soundFiles.insert(newIndex, item);
+                            });
 
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          selected
-                                              ? const Color(
-                                                0xFF6C63FF,
-                                              ).withOpacity(0.2)
-                                              : const Color(0xFF0A0E21),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color:
-                                            selected
-                                                ? const Color(0xFF6C63FF)
-                                                : Colors.white.withOpacity(0.1),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(
-                                                  10,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      selected
-                                                          ? const Color(
-                                                            0xFF6C63FF,
-                                                          )
-                                                          : Colors.white
-                                                              .withOpacity(0.1),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                                child: Icon(
-                                                  selected && sound.isPlaying
-                                                      ? Icons.pause_circle
-                                                      : Icons.play_circle,
-                                                  color:
-                                                      selected
-                                                          ? Colors.white
-                                                          : const Color(
-                                                            0xFF6C63FF,
-                                                          ),
-                                                  size: 24,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 16),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Row(
-                                                      children: [
-                                                        Expanded(
-                                                          child: Text(
-                                                            name,
-                                                            style: TextStyle(
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  selected
-                                                                      ? FontWeight
-                                                                          .bold
-                                                                      : FontWeight
-                                                                          .w600,
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        if (isRecommended)
-                                                          Container(
-                                                            padding:
-                                                                const EdgeInsets.symmetric(
-                                                                  horizontal: 8,
-                                                                  vertical: 4,
-                                                                ),
-                                                            decoration: BoxDecoration(
-                                                              color:
-                                                                  const Color(
-                                                                    0xFFFFD700,
-                                                                  ).withOpacity(
-                                                                    0.2,
-                                                                  ),
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    12,
-                                                                  ),
-                                                            ),
-                                                            child: const Text(
-                                                              '추천',
-                                                              style: TextStyle(
-                                                                color: Color(
-                                                                  0xFFFFD700,
-                                                                ),
-                                                                fontSize: 11,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                      ],
+                            // 순서 변경 후 서버에 저장
+                            _savePreferredSoundsRank();
+                          },
+                          itemBuilder: (context, i) {
+                            final file = soundFiles[i];
+                            final name = file
+                                .replaceAll('.mp3', '')
+                                .replaceAll('_', ' ');
+                            final selected = sound.currentPlaying == file;
+                            final data = metadata[file];
+                            final isRecommended = topRecommended.contains(file);
+
+                            return Container(
+                              key: ValueKey(file),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color:
+                                    selected
+                                        ? const Color(
+                                          0xFF6C63FF,
+                                        ).withOpacity(0.2)
+                                        : const Color(0xFF0A0E21),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color:
+                                      selected
+                                          ? const Color(0xFF6C63FF)
+                                          : Colors.white.withOpacity(0.1),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        // 드래그 핸들 아이콘
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(
+                                              0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.drag_handle,
+                                            color: Colors.white70,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                selected
+                                                    ? const Color(0xFF6C63FF)
+                                                    : Colors.white.withOpacity(
+                                                      0.1,
                                                     ),
-                                                    if (data != null) ...[
-                                                      const SizedBox(height: 8),
-                                                      Text(
-                                                        "• ${data["feature"]}",
-                                                        style: const TextStyle(
-                                                          fontSize: 13,
-                                                          color: Colors.white70,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            selected && sound.isPlaying
+                                                ? Icons.pause_circle
+                                                : Icons.play_circle,
+                                            color:
+                                                selected
+                                                    ? Colors.white
+                                                    : const Color(0xFF6C63FF),
+                                            size: 24,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      name,
+                                                      style: TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            selected
+                                                                ? FontWeight
+                                                                    .bold
+                                                                : FontWeight
+                                                                    .w600,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (isRecommended)
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                          0xFFFFD700,
+                                                        ).withOpacity(0.2),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                      ),
+                                                      child: const Text(
+                                                        '추천',
+                                                        style: TextStyle(
+                                                          color: Color(
+                                                            0xFFFFD700,
+                                                          ),
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.w600,
                                                         ),
                                                       ),
-                                                      Text(
-                                                        "• ${data["effect"]}",
-                                                        style: const TextStyle(
-                                                          fontSize: 13,
-                                                          color: Colors.white70,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ],
-                                                ),
+                                                    ),
+                                                ],
                                               ),
-                                              IconButton(
-                                                icon: Icon(
-                                                  selected && sound.isPlaying
-                                                      ? Icons.pause_circle
-                                                      : Icons.play_circle,
-                                                  size: 32,
-                                                  color:
-                                                      selected
-                                                          ? const Color(
-                                                            0xFF6C63FF,
-                                                          )
-                                                          : Colors.white70,
+                                              if (data != null) ...[
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  "• ${data["feature"]}",
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.white70,
+                                                  ),
                                                 ),
-                                                onPressed:
-                                                    () => _playSound(file),
-                                              ),
+                                                Text(
+                                                  "• ${data["effect"]}",
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                              ],
                                             ],
                                           ),
-                                          if (data != null) ...[
-                                            const SizedBox(height: 12),
-                                            Wrap(
-                                              spacing: 6,
-                                              runSpacing: 6,
-                                              children:
-                                                  data["tags"]!
-                                                      .split(',')
-                                                      .map(
-                                                        (tag) => Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color: const Color(
-                                                              0xFF6C63FF,
-                                                            ).withOpacity(0.1),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  8,
-                                                                ),
-                                                            border: Border.all(
-                                                              color:
-                                                                  const Color(
-                                                                    0xFF6C63FF,
-                                                                  ).withOpacity(
-                                                                    0.3,
-                                                                  ),
-                                                              width: 1,
-                                                            ),
-                                                          ),
-                                                          child: Text(
-                                                            '#${tag.trim()}',
-                                                            style:
-                                                                const TextStyle(
-                                                                  color: Color(
-                                                                    0xFF6C63FF,
-                                                                  ),
-                                                                  fontSize: 12,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w500,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                      )
-                                                      .toList(),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            selected && sound.isPlaying
+                                                ? Icons.pause_circle
+                                                : Icons.play_circle,
+                                            size: 32,
+                                            color:
+                                                selected
+                                                    ? const Color(0xFF6C63FF)
+                                                    : Colors.white70,
+                                          ),
+                                          onPressed: () => _playSound(file),
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                },
-                              );
-                            },
-                          ),
+                                    if (data != null) ...[
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children:
+                                            data["tags"]!
+                                                .split(',')
+                                                .map(
+                                                  (tag) => Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(
+                                                        0xFF6C63FF,
+                                                      ).withOpacity(0.1),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: const Color(
+                                                          0xFF6C63FF,
+                                                        ).withOpacity(0.3),
+                                                        width: 1,
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      '#${tag.trim()}',
+                                                      style: const TextStyle(
+                                                        color: Color(
+                                                          0xFF6C63FF,
+                                                        ),
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                )
+                                                .toList(),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),

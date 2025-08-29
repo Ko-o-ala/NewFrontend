@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/user_model.dart';
-import 'package:my_app/mkhome/setting_page.dart'; // fetchUserInfo 함수 포함
+import 'package:my_app/mkhome/setting_page.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ManageAccountPage extends StatefulWidget {
   const ManageAccountPage({super.key});
@@ -11,36 +14,182 @@ class ManageAccountPage extends StatefulWidget {
 
 class _ManageAccountPageState extends State<ManageAccountPage> {
   late TextEditingController nameController;
-  late TextEditingController emailController;
+  late TextEditingController currentPasswordController;
+  late TextEditingController newPasswordController;
+  late TextEditingController confirmPasswordController;
+
+  bool isPasswordVisible = false;
+  bool isNewPasswordVisible = false;
+  bool isConfirmPasswordVisible = false;
+  bool isLoading = false;
+
+  final storage = const FlutterSecureStorage();
+  UserModel? user;
 
   @override
   void initState() {
     super.initState();
     nameController = TextEditingController();
-    emailController = TextEditingController();
+    currentPasswordController = TextEditingController();
+    newPasswordController = TextEditingController();
+    confirmPasswordController = TextEditingController();
+    _loadUserData();
+  }
+
+  // 서버에서 사용자 정보 가져오기
+  Future<void> _loadUserData() async {
+    try {
+      final userData = await fetchUserInfo();
+      setState(() {
+        nameController.text = userData.name;
+        // email 필드는 API에서 제공하지 않으므로 제거
+        user = userData;
+      });
+    } catch (e) {
+      _showSnackBar('사용자 정보를 불러오는데 실패했습니다.', false);
+    }
   }
 
   @override
   void dispose() {
     nameController.dispose();
-    emailController.dispose();
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
+  Future<UserModel> fetchUserInfo() async {
+    try {
+      final headers = await _getAuthHeaders();
+      debugPrint('[PROFILE] Fetching user info with headers: $headers');
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      debugPrint('[PROFILE] Response status: ${response.statusCode}');
+      debugPrint('[PROFILE] Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        debugPrint('[PROFILE] Parsed user data: $userData');
+
+        // API 응답 구조에 맞게 수정
+        if (userData['success'] == true && userData['data'] != null) {
+          return UserModel.fromJson(userData['data']);
+        } else {
+          throw Exception('Invalid API response structure: ${response.body}');
+        }
+      } else {
+        throw Exception(
+          'Failed to fetch user profile: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('[PROFILE] Error fetching user info: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, String>> _getAuthHeaders() async {
+    final token = await storage.read(key: 'jwt');
+    if (token == null) {
+      throw Exception('JWT 토큰이 없습니다.');
+    }
+
+    final cleanToken =
+        token.startsWith('Bearer ') ? token.split(' ').last : token;
+    return {
+      'Authorization': 'Bearer $cleanToken',
+      'Content-Type': 'application/json',
+    };
+  }
+
   Future<void> _saveChanges() async {
-    final updatedName = nameController.text;
-    final updatedEmail = emailController.text;
+    if (isLoading) return;
+    setState(() {
+      isLoading = true;
+    });
 
-    // TODO: 서버 전송 로직 추가
-    print("저장된 이름: $updatedName");
-    print("저장된 이메일: $updatedEmail");
+    try {
+      final headers = await _getAuthHeaders();
+      final profileData = {
+        'name': nameController.text.trim(),
+        // email 필드는 API에서 지원하지 않으므로 제거
+      };
 
+      // 비밀번호 변경이 요청된 경우
+      if (newPasswordController.text.isNotEmpty) {
+        if (newPasswordController.text != confirmPasswordController.text) {
+          _showSnackBar('새 비밀번호가 일치하지 않습니다.', false);
+          setState(() {
+            isLoading = false;
+          });
+          return;
+        }
+        if (newPasswordController.text.length < 8) {
+          _showSnackBar('비밀번호는 8자 이상이어야 합니다.', false);
+          setState(() {
+            isLoading = false;
+          });
+          return;
+        }
+
+        // 현재 비밀번호 확인
+        if (currentPasswordController.text.isEmpty) {
+          _showSnackBar('현재 비밀번호를 입력해주세요.', false);
+          setState(() {
+            isLoading = false;
+          });
+          return;
+        }
+
+        profileData['currentPassword'] = currentPasswordController.text;
+        profileData['password'] = newPasswordController.text;
+      }
+
+      final url = Uri.parse('https://kooala.tassoo.uk/users/profile');
+      final response = await http.patch(
+        url,
+        headers: headers,
+        body: json.encode(profileData),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 202) {
+        _showSnackBar('프로필이 성공적으로 업데이트되었습니다.', true);
+
+        // 비밀번호 필드 초기화
+        currentPasswordController.clear();
+        newPasswordController.clear();
+        confirmPasswordController.clear();
+
+        // 사용자 정보 다시 로드
+        await _loadUserData();
+      } else {
+        final errorData = json.decode(response.body);
+        final errorMessage = errorData['message'] ?? '프로필 업데이트에 실패했습니다.';
+        _showSnackBar(errorMessage, false);
+      }
+    } catch (e) {
+      _showSnackBar('오류가 발생했습니다: ${e.toString()}', false);
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  void _showSnackBar(String message, bool isSuccess) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text("정보가 저장되었습니다."),
-        backgroundColor: const Color(0xFF6C63FF),
+        content: Text(message),
+        backgroundColor:
+            isSuccess ? const Color(0xFF6C63FF) : Colors.red.shade400,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -132,7 +281,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
 
             final user = snapshot.data!;
             nameController.text = user.name;
-            emailController.text = user.email;
+            // emailController.text = user.email; // This line is removed
 
             return SafeArea(
               child: Padding(
@@ -209,99 +358,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
 
                     const SizedBox(height: 24),
 
-                    // 프로필 이미지 및 기본 정보 카드
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1D1E33),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Stack(
-                            alignment: Alignment.bottomRight,
-                            children: [
-                              Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: const Color(0xFF6C63FF),
-                                    width: 4,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF6C63FF,
-                                      ).withOpacity(0.3),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipOval(
-                                  child: Image.asset(
-                                    user.profileImage,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF6C63FF),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF6C63FF,
-                                      ).withOpacity(0.4),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: const Icon(
-                                  Icons.edit,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            user.name,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            user.email,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // 편집 가능한 필드들
+                    // 기본 정보 수정 카드
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(24),
@@ -335,7 +392,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                               ),
                               const SizedBox(width: 12),
                               const Text(
-                                '계정 정보 수정',
+                                '기본 정보',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
@@ -351,10 +408,119 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                             Icons.person,
                           ),
                           const SizedBox(height: 20),
-                          _buildEditableField(
-                            "이메일",
-                            emailController,
-                            Icons.email,
+                          _buildReadOnlyField(
+                            "생년월일",
+                            user?.birthdate ?? '불러오는 중...',
+                            Icons.calendar_today,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 비밀번호 변경 카드
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1D1E33),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6C63FF),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.lock,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                '비밀번호 변경',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          _buildPasswordField(
+                            "현재 비밀번호",
+                            currentPasswordController,
+                            Icons.lock_outline,
+                            isPasswordVisible,
+                            (value) =>
+                                setState(() => isPasswordVisible = value),
+                          ),
+                          const SizedBox(height: 20),
+                          _buildPasswordField(
+                            "새 비밀번호",
+                            newPasswordController,
+                            Icons.lock,
+                            isNewPasswordVisible,
+                            (value) =>
+                                setState(() => isNewPasswordVisible = value),
+                          ),
+                          const SizedBox(height: 20),
+                          _buildPasswordField(
+                            "새 비밀번호 확인",
+                            confirmPasswordController,
+                            Icons.lock_reset,
+                            isConfirmPasswordVisible,
+                            (value) => setState(
+                              () => isConfirmPasswordVisible = value,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0A0E21).withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF6C63FF).withOpacity(0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: const Color(0xFF6C63FF),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '비밀번호를 변경하려면 현재 비밀번호를 입력하고, 새 비밀번호를 두 번 입력해주세요.',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontSize: 13,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -382,7 +548,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                         ],
                       ),
                       child: ElevatedButton(
-                        onPressed: _saveChanges,
+                        onPressed: isLoading ? null : _saveChanges,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           shadowColor: Colors.transparent,
@@ -390,14 +556,24 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: const Text(
-                          "저장하기",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
+                        child:
+                            isLoading
+                                ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Text(
+                                  "변경사항 저장",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
                       ),
                     ),
 
@@ -540,6 +716,120 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
               hintStyle: TextStyle(
                 color: Colors.white.withOpacity(0.5),
                 fontSize: 16,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, String value, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: const Color(0xFF6C63FF), size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A0E21),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF6C63FF).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordField(
+    String label,
+    TextEditingController controller,
+    IconData icon,
+    bool isVisible,
+    Function(bool) onVisibilityChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: const Color(0xFF6C63FF), size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A0E21),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF6C63FF).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: !isVisible,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              hintText: label,
+              hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 16,
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  isVisible ? Icons.visibility : Icons.visibility_off,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+                onPressed: () => onVisibilityChanged(!isVisible),
               ),
             ),
           ),

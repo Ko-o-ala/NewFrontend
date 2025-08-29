@@ -88,7 +88,7 @@ class _GoalPageState extends State<GoalPage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '가장 이루고 싶은\n수면 목표를 선택해주세요',
+                      '수면 목표를 알려주세요',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white70,
@@ -177,7 +177,7 @@ class _GoalPageState extends State<GoalPage> {
                         ),
                         const SizedBox(width: 12),
                         const Text(
-                          "Q25. 가장 이루고 싶은 수면 목표가 무엇인가요?",
+                          "Q25. 수면 목표를 알려주세요",
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

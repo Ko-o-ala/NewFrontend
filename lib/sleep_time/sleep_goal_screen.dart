@@ -54,7 +54,9 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
     if (duration != null) {
       for (final day in selectedDays) {
         // day: 0(Sunday) ~ 6(Saturday)
-        prefs.setInt('sleepGoal_$day', duration.inMinutes);
+        // sleep_dashboard.dart에서 사용하는 키와 일치하도록 수정
+        final weekday = (day + 1) % 7; // 0=일요일을 7=일요일로 변환
+        prefs.setInt('sleep_goal_weekday_$weekday', duration.inMinutes);
       }
     }
 

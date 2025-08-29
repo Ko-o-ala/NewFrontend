@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Clipboard 복사용
 
 class FAQPage extends StatefulWidget {
   const FAQPage({super.key});
@@ -327,8 +328,54 @@ class _FAQPageState extends State<FAQPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          // 고객 지원 연락처나 이메일로 연결
+                        onPressed: () async {
+                          const email = 'kooalasleep@gmail.com';
+                          await showDialog(
+                            context: context,
+                            builder:
+                                (_) => AlertDialog(
+                                  backgroundColor: const Color(0xFF1D1E33),
+                                  title: const Text(
+                                    '고객 지원 이메일',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  content: const SelectableText(
+                                    'kooalasleep@gmail.com',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () {
+                                        Clipboard.setData(
+                                          const ClipboardData(text: email),
+                                        );
+                                        Navigator.of(context).pop();
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('이메일이 복사되었어요.'),
+                                          ),
+                                        );
+                                      },
+                                      child: const Text(
+                                        '복사',
+                                        style: TextStyle(
+                                          color: Color(0xFF6C63FF),
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed:
+                                          () => Navigator.of(context).pop(),
+                                      child: const Text(
+                                        '닫기',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                          );
                         },
                         icon: const Icon(Icons.email, color: Colors.white),
                         label: const Text(

@@ -226,7 +226,7 @@ class _DevicePageState extends State<DevicePage> {
                         ),
                         const SizedBox(width: 12),
                         const Text(
-                          "Q18. 평소에 어떤 기기를 사용하시나요?(모두 골라주세요)",
+                          "Q18. 어떤 기기를 사용하시나요?",
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

@@ -23,7 +23,8 @@ class SleepDashboard extends StatefulWidget {
   State<SleepDashboard> createState() => _SleepDashboardState();
 }
 
-class _SleepDashboardState extends State<SleepDashboard> {
+class _SleepDashboardState extends State<SleepDashboard>
+    with WidgetsBindingObserver {
   String formattedDuration = '불러오는 중...';
   String username = '사용자';
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
@@ -41,17 +42,53 @@ class _SleepDashboardState extends State<SleepDashboard> {
   List<HealthDataPoint> healthData = [];
   int sleepScore = 0;
 
+  // 요일별 목표 수면 시간 가져오기
+  Future<String> _getGoalTextForWeekday(DateTime date) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final weekday = date.weekday; // 1=월요일, 7=일요일
+
+      // 요일별 목표 시간 가져오기
+      final goalKey = 'sleep_goal_weekday_$weekday';
+      final goalMinutes = prefs.getInt(goalKey);
+
+      if (goalMinutes != null && goalMinutes > 0) {
+        final hours = goalMinutes ~/ 60;
+        final minutes = goalMinutes % 60;
+        return '${hours}시간 ${minutes}분';
+      } else {
+        return '시간 선택 안함';
+      }
+    } catch (e) {
+      return '시간 선택 안함';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _loadUsername();
     _fetchTodaySleep();
+
     _loadGoalText();
     _applyServerCacheIfAny();
     // HealthKit 윈도우/시작시각 계산 -> 끝난 직후 서버 GET으로 UI 갱신
     _fetchTodaySleep().then((_) {
       _refreshFromServerByRealStart(); // ✅ 항상 서버 값으로 덮어씀
+      WidgetsBinding.instance.addPostFrameCallback((_) => _tryUploadPending());
     });
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _tryUploadPending();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _applyServerCacheIfAny() async {
@@ -181,27 +218,12 @@ class _SleepDashboardState extends State<SleepDashboard> {
   }
 
   Future<void> _loadGoalText() async {
-    final goal = await _loadTodayGoalSleepDuration();
-    print('[goal] 불러온 수면 목표: ${goal?.inMinutes}분');
+    final today = DateTime.now();
+    final goalTextForToday = await _getGoalTextForWeekday(today);
 
     setState(() {
-      goalSleepDuration = goal ?? Duration(hours: 8);
-      goalText =
-          goal != null
-              ? '${goal.inHours}시간 ${goal.inMinutes % 60}분'
-              : '목표수면시간 없음';
+      goalText = goalTextForToday;
     });
-  }
-
-  Future<Duration?> _loadTodayGoalSleepDuration() async {
-    final prefs = await SharedPreferences.getInstance();
-    final weekday = DateTime.now().weekday % 7; // Sunday = 0
-    final minutes = prefs.getInt('sleepGoal_$weekday');
-
-    if (minutes != null) {
-      return Duration(minutes: minutes);
-    }
-    return null;
   }
 
   // 전역: 서버에서 하루 데이터 조회
@@ -261,7 +283,10 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
     // iOS: 정오 이후 처음 깨어났을 때 업로드
-    if (now.hour < 12) return;
+    if (now.hour < 15) {
+      debugPrint('[BG] skip: before 3PM');
+      return;
+    }
     if (lastSentDate == todayStr) return;
 
     try {
