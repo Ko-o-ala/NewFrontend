@@ -13,6 +13,7 @@ import 'package:hive/hive.dart';
 import 'package:my_app/models/message.dart';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
 
 final storage = FlutterSecureStorage();
 final apiClient = ApiClient(
@@ -683,12 +684,58 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   }
 
   Future<void> _loadUsername() async {
-    final name = await storage.read(key: 'username') ?? '';
-    setState(() {
-      _username = name;
-      _isLoggedIn = name.isNotEmpty;
-      _text = '';
-    });
+    try {
+      final token = await storage.read(key: 'jwt');
+      if (token == null) {
+        setState(() {
+          _username = '';
+          _isLoggedIn = false;
+          _text = '';
+        });
+        return;
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        if (userData['success'] == true && userData['data'] != null) {
+          final name = userData['data']['name'] ?? '';
+          setState(() {
+            _username = name;
+            _isLoggedIn = name.isNotEmpty;
+            _text = '';
+          });
+        } else {
+          setState(() {
+            _username = '';
+            _isLoggedIn = false;
+            _text = '';
+          });
+        }
+      } else {
+        setState(() {
+          _username = '';
+          _isLoggedIn = false;
+          _text = '';
+        });
+      }
+    } catch (e) {
+      debugPrint('[USERNAME] Error fetching username: $e');
+      setState(() {
+        _username = '';
+        _isLoggedIn = false;
+        _text = '';
+      });
+    }
   }
 
   Future<void> _enterMicMode() async {

@@ -33,11 +33,53 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
   }
 
   Future<void> _loadUsername() async {
-    final name = await storage.read(key: 'username');
-    setState(() {
-      username = name ?? '사용자';
-      _isLoggedIn = name != null;
-    });
+    try {
+      final token = await storage.read(key: 'jwt');
+      if (token == null) {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+        return;
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        if (userData['success'] == true && userData['data'] != null) {
+          final name = userData['data']['name'] ?? '사용자';
+          setState(() {
+            username = name;
+            _isLoggedIn = true;
+          });
+        } else {
+          setState(() {
+            username = '사용자';
+            _isLoggedIn = false;
+          });
+        }
+      } else {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[USERNAME] Error fetching username: $e');
+      setState(() {
+        username = '사용자';
+        _isLoggedIn = false;
+      });
+    }
   }
 
   Future<void> _loadTodayScore() async {

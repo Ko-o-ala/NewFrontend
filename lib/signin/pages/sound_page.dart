@@ -148,225 +148,145 @@ class _SoundPageState extends State<SoundPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
-      body: Container(
-        color: const Color(0xFF0A0E21), // SafeArea 위아래 흰색 방지
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // 헤더 섹션
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+      appBar: AppBar(
+        title: const Text(
+          '알라와 코잘라',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
                     ),
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF6C63FF).withOpacity(0.25),
-                        blurRadius: 20,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.music_note,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        '사운드 선호도',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '수면에 도움이 되는\n사운드 선호도를 알려주세요',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
-                          height: 1.4,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.music_note,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '사운드 선호도',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '수면에 도움이 되는\n사운드 선호도를 알려주세요',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
 
-                const SizedBox(height: 30),
+              const SizedBox(height: 30),
 
-                // 코알라 이미지
-                Container(
-                  padding: const EdgeInsets.all(20),
+              // 코알라 이미지
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: 130,
+                  height: 130,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1D1E33),
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white,
+                    shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                       ),
                     ],
                   ),
-                  child: Container(
-                    width: 130,
-                    height: 130,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'lib/assets/koala.png',
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.contain,
-                      ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'lib/assets/koala.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 30),
+              const SizedBox(height: 30),
 
-                // Q15 - 수면 시 듣고 싶은 소리
-                _buildQuestionCard(
-                  'Q15. 수면 시 듣고 싶은 소리는 어떤 것인가요?',
-                  preferredSleepSoundMap.keys.toList(),
-                  preferredSleepSoundLabel,
-                  (v) => setState(() => preferredSleepSoundLabel = v),
-                ),
+              // Q15 - 수면 시 듣고 싶은 소리
+              _buildQuestionCard(
+                'Q15. 수면 시 듣고 싶은 소리는 어떤 것인가요?',
+                preferredSleepSoundMap.keys.toList(),
+                preferredSleepSoundLabel,
+                (v) => setState(() => preferredSleepSoundLabel = v),
+              ),
 
-                // Q16 - 마음을 안정시키는 사운드
-                _buildQuestionCard(
-                  'Q16. 마음을 안정시키는 사운드는 어떤 것인가요?',
-                  calmingSoundTypeMap.keys.toList(),
-                  calmingSoundTypeLabel,
-                  (v) => setState(() => calmingSoundTypeLabel = v),
-                ),
+              // Q16 - 마음을 안정시키는 사운드
+              _buildQuestionCard(
+                'Q16. 마음을 안정시키는 사운드는 어떤 것인가요?',
+                calmingSoundTypeMap.keys.toList(),
+                calmingSoundTypeLabel,
+                (v) => setState(() => calmingSoundTypeLabel = v),
+              ),
 
-                // 기타 입력 필드
-                if (calmingSoundTypeLabel == '기타')
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1D1E33),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4CAF50).withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.edit,
-                                color: Color(0xFF4CAF50),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              "기타 사운드 입력",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        TextField(
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: '기타 사운드를 입력해주세요',
-                            hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
-                            ),
-                            filled: true,
-                            fillColor: const Color(0xFF0A0E21),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              borderSide: BorderSide(
-                                color: const Color(0xFF6C63FF).withOpacity(0.3),
-                                width: 1,
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              borderSide: BorderSide(
-                                color: const Color(0xFF6C63FF).withOpacity(0.3),
-                                width: 1,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF6C63FF),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          onChanged:
-                              (value) => setState(
-                                () => calmingSoundOtherInput = value.trim(),
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Q17 - 선호도 vs 알고리즘 추천
+              // 기타 입력 필드
+              if (calmingSoundTypeLabel == '기타')
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 20),
@@ -390,18 +310,18 @@ class _SoundPageState extends State<SoundPage> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6C63FF).withOpacity(0.2),
+                              color: const Color(0xFF4CAF50).withOpacity(0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
-                              Icons.balance,
-                              color: Color(0xFF6C63FF),
+                              Icons.edit,
+                              color: Color(0xFF4CAF50),
                               size: 20,
                             ),
                           ),
                           const SizedBox(width: 12),
                           const Text(
-                            "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
+                            "기타 사운드 입력",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -411,133 +331,217 @@ class _SoundPageState extends State<SoundPage> {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: const Color(0xFF6C63FF),
-                          inactiveTrackColor: Colors.white.withOpacity(0.2),
-                          thumbColor: const Color(0xFF6C63FF),
-                          overlayColor: const Color(
-                            0xFF6C63FF,
-                          ).withOpacity(0.2),
-                          valueIndicatorColor: const Color(0xFF6C63FF),
-                          valueIndicatorTextStyle: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                      TextField(
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '기타 사운드를 입력해주세요',
+                          hintStyle: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
                           ),
-                        ),
-                        child: Slider(
-                          min: 0.0,
-                          max: 1.0,
-                          divisions: 20,
-                          value: preferenceBalance,
-                          onChanged:
-                              (v) => setState(() => preferenceBalance = v),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '내가 좋아하는 소리를\n더 추천해주세요',
-                              textAlign: TextAlign.left,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white70,
-                                height: 1.3,
-                              ),
+                          filled: true,
+                          fillColor: const Color(0xFF0A0E21),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            borderSide: BorderSide(
+                              color: const Color(0xFF6C63FF).withOpacity(0.3),
+                              width: 1,
                             ),
                           ),
-                          Expanded(
-                            child: Text(
-                              '수면 데이터에 맞춰\n추천해주세요',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.white70,
-                                height: 1.3,
-                              ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            borderSide: BorderSide(
+                              color: const Color(0xFF6C63FF).withOpacity(0.3),
+                              width: 1,
                             ),
                           ),
-                        ],
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF6C63FF),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        onChanged:
+                            (value) => setState(
+                              () => calmingSoundOtherInput = value.trim(),
+                            ),
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 20),
-
-                // 다음 버튼
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed:
-                        isValid
-                            ? () async {
-                              final m = OnboardingData.answers;
-
-                              // 라벨 → enum 값 변환
-                              final preferredEnum =
-                                  preferredSleepSoundMap[preferredSleepSoundLabel]!;
-                              final calmingEnum =
-                                  calmingSoundTypeMap[calmingSoundTypeLabel]!;
-                              if (calmingSoundTypeLabel == '기타' &&
-                                  calmingSoundOtherInput != null &&
-                                  calmingSoundOtherInput!.isNotEmpty) {
-                                m['calmingSoundTypeOther'] =
-                                    calmingSoundOtherInput;
-                              }
-
-                              // 서버 스펙에 맞게 저장
-                              m['preferredSleepSound'] =
-                                  preferredEnum; // ex) 'nature'
-                              m['calmingSoundType'] = calmingEnum; // ex) 'rain'
-                              m['preferenceBalance'] = preferenceBalance;
-                              // 만약 서버가 0~100 정수를 요구한다면:
-                              // m['preferenceBalance'] = (preferenceBalance * 100).round();
-
-                              // 보조 저장
-                              await storage.write(
-                                key: 'preferredSleepSound',
-                                value: preferredEnum,
-                              );
-                              await storage.write(
-                                key: 'calmingSoundType',
-                                value: calmingEnum,
-                              );
-                              await storage.write(
-                                key: 'preferenceBalance',
-                                value: preferenceBalance.toString(),
-                              );
-
-                              widget.onNext();
-                            }
-                            : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
-                      minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 8,
-                      shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+              // Q17 - 선호도 vs 알고리즘 추천
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
                     ),
-                    child: Text(
-                      '다음',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color:
-                            isValid
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.5),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6C63FF).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.balance,
+                            color: Color(0xFF6C63FF),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: const Color(0xFF6C63FF),
+                        inactiveTrackColor: Colors.white.withOpacity(0.2),
+                        thumbColor: const Color(0xFF6C63FF),
+                        overlayColor: const Color(0xFF6C63FF).withOpacity(0.2),
+                        valueIndicatorColor: const Color(0xFF6C63FF),
+                        valueIndicatorTextStyle: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
+                      child: Slider(
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 20,
+                        value: preferenceBalance,
+                        onChanged: (v) => setState(() => preferenceBalance = v),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '내가 좋아하는 소리를\n더 추천해주세요',
+                            textAlign: TextAlign.left,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white70,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '수면 데이터에 맞춰\n추천해주세요',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white70,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // 다음 버튼
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed:
+                      isValid
+                          ? () async {
+                            final m = OnboardingData.answers;
+
+                            // 라벨 → enum 값 변환
+                            final preferredEnum =
+                                preferredSleepSoundMap[preferredSleepSoundLabel]!;
+                            final calmingEnum =
+                                calmingSoundTypeMap[calmingSoundTypeLabel]!;
+                            if (calmingSoundTypeLabel == '기타' &&
+                                calmingSoundOtherInput != null &&
+                                calmingSoundOtherInput!.isNotEmpty) {
+                              m['calmingSoundTypeOther'] =
+                                  calmingSoundOtherInput;
+                            }
+
+                            // 서버 스펙에 맞게 저장
+                            m['preferredSleepSound'] =
+                                preferredEnum; // ex) 'nature'
+                            m['calmingSoundType'] = calmingEnum; // ex) 'rain'
+                            m['preferenceBalance'] = preferenceBalance;
+                            // 만약 서버가 0~100 정수를 요구한다면:
+                            // m['preferenceBalance'] = (preferenceBalance * 100).round();
+
+                            // 보조 저장
+                            await storage.write(
+                              key: 'preferredSleepSound',
+                              value: preferredEnum,
+                            );
+                            await storage.write(
+                              key: 'calmingSoundType',
+                              value: calmingEnum,
+                            );
+                            await storage.write(
+                              key: 'preferenceBalance',
+                              value: preferenceBalance.toString(),
+                            );
+
+                            widget.onNext();
+                          }
+                          : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+                  ),
+                  child: Text(
+                    '다음',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          isValid
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.5),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

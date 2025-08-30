@@ -467,7 +467,33 @@ class SleepScreen extends StatelessWidget {
   final storage = FlutterSecureStorage();
 
   Future<String> _loadUsername() async {
-    return await storage.read(key: 'username') ?? '사용자';
+    try {
+      final token = await storage.read(key: 'jwt');
+      if (token == null) {
+        return '사용자';
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        if (userData['success'] == true && userData['data'] != null) {
+          return userData['data']['name'] ?? '사용자';
+        }
+      }
+      return '사용자';
+    } catch (e) {
+      debugPrint('[USERNAME] Error fetching username: $e');
+      return '사용자';
+    }
   }
 
   @override

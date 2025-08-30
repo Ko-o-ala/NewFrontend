@@ -410,7 +410,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                           const SizedBox(height: 20),
                           _buildReadOnlyField(
                             "생년월일",
-                            user?.birthdate ?? '불러오는 중...',
+                            _formatBirthdate(user.birthdate) ?? '불러오는 중...',
                             Icons.calendar_today,
                           ),
                         ],
@@ -836,5 +836,13 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
         ),
       ],
     );
+  }
+
+  String? _formatBirthdate(String? birthdate) {
+    if (birthdate == null) {
+      return null;
+    }
+    final dateTime = DateTime.parse(birthdate);
+    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 }

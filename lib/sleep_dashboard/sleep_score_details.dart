@@ -172,6 +172,11 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage> {
         centerTitle: true,
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
+        // 방법 1: 기본 뒤로가기 아이콘
+        leading: BackButton(
+          color: Colors.white,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

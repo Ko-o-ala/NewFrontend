@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 /// 모델 & 유틸
 /// =======================
 
-enum SleepStage { deep, rem, light, core, awake }
+enum SleepStage { deep, rem, light, awake }
 
 class SleepLog {
   final DateTime start;
@@ -88,7 +88,7 @@ SleepStage _parseStage(dynamic v) {
   if (s.contains('DEEP')) return SleepStage.deep;
   if (s.contains('REM')) return SleepStage.rem;
   if (s.contains('AWAKE') || s == 'WAKE') return SleepStage.awake;
-  if (s.contains('CORE')) return SleepStage.core;
+
   // HealthDataType.SLEEP_LIGHT / SLEEP_ASLEEP / LIGHT 등은 light로
   return SleepStage.light;
 }
@@ -101,8 +101,7 @@ Color stageColor(SleepStage s) {
       return const Color(0xFF29B6F6);
     case SleepStage.light:
       return const Color(0xFF42A5F5);
-    case SleepStage.core:
-      return const Color(0xFF66BB6A);
+
     case SleepStage.awake:
       return const Color(0xFFEF5350);
   }
@@ -531,15 +530,20 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
         title: const Text(
-          '수면 분석',
-          style: TextStyle(fontWeight: FontWeight.w600),
+          '수면차트',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loading ? null : _fetch,
             tooltip: '새로고침',
           ),
@@ -977,8 +981,7 @@ class _Legend extends StatelessWidget {
     final items = const [
       {'name': '깊은 수면', 'stage': SleepStage.deep},
       {'name': 'REM 수면', 'stage': SleepStage.rem},
-      {'name': '얕은 수면', 'stage': SleepStage.light},
-      {'name': '코어 수면', 'stage': SleepStage.core},
+      {'name': '코어 수면', 'stage': SleepStage.light},
       {'name': '깨어있음', 'stage': SleepStage.awake},
     ];
 
@@ -1184,9 +1187,8 @@ class _StageBreakdown extends StatelessWidget {
       case SleepStage.rem:
         return 'REM 수면';
       case SleepStage.light:
-        return '얕은 수면';
-      case SleepStage.core:
         return '코어 수면';
+
       case SleepStage.awake:
         return '깨어있음';
     }

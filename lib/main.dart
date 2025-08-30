@@ -461,6 +461,36 @@ class MyApp extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 24),
+                              // 전 버튼 추가
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF6C63FF),
+                                    minimumSize: const Size(
+                                      double.infinity,
+                                      56,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    elevation: 8,
+                                    shadowColor: const Color(
+                                      0xFF6C63FF,
+                                    ).withOpacity(0.3),
+                                  ),
+                                  child: const Text(
+                                    '전',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),

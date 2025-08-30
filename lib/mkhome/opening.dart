@@ -20,7 +20,9 @@ class opening extends StatelessWidget {
             child: SafeArea(
               child: Column(
                 children: [
-                  SizedBox(height: screenHeight * 0.75), // 🔸 버튼 위치 조정
+                  SizedBox(
+                    height: screenHeight * 0.65,
+                  ), // 🔸 버튼 위치 조정 (0.75 → 0.65)
                   // 🔸 홈으로 버튼
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -39,7 +41,26 @@ class opening extends StatelessWidget {
                       child: const Text("홈으로"),
                     ),
                   ),
-                  const SizedBox(height: 16), // 🔸 버튼 간격
+                  const SizedBox(height: 12), // 🔸 버튼 간격 (16 → 12)
+                  // 🔸 이미 계정이 있나요? 링크
+                  Center(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pushNamed(context, '/login');
+                      },
+                      child: Text(
+                        '이미 계정이 있나요?',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12), // 🔸 링크와 버튼 간격 (16 → 12)
                   // 🔸 시작하기 버튼
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -58,6 +79,7 @@ class opening extends StatelessWidget {
                       child: const Text("시작하기"),
                     ),
                   ),
+                  const SizedBox(height: 20), // 🔸 하단 여백 추가
                 ],
               ),
             ),
