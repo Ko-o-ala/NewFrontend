@@ -1078,7 +1078,33 @@ class _SleepDashboardState extends State<SleepDashboard>
 
                         TextButton(
                           onPressed: () {
-                            Navigator.pushNamed(context, '/score-explain');
+                            print('=== 수면점수 상세 페이지로 이동 ===');
+                            print('현재 목표 수면시간: $goalSleepDuration');
+                            if (goalSleepDuration != null) {
+                              print(
+                                '현재 목표 수면시간 (시간): ${goalSleepDuration!.inHours}시간 ${goalSleepDuration!.inMinutes % 60}분',
+                              );
+                              print(
+                                '현재 목표 수면시간 (분): ${goalSleepDuration!.inMinutes}분',
+                              );
+                            } else {
+                              print('목표 수면시간이 설정되지 않음');
+                            }
+                            print('현재 수면점수: $sleepScore');
+
+                            Navigator.pushNamed(
+                              context,
+                              '/score-explain',
+                              arguments: {
+                                'data': healthData,
+                                'sleepStart': sleepStartReal ?? sleepStart!,
+                                'sleepEnd': sleepEndReal ?? sleepEnd!,
+                                'goalSleepDuration':
+                                    goalSleepDuration ??
+                                    const Duration(hours: 8),
+                                'finalScore': sleepScore,
+                              },
+                            );
                           },
                           child: const Text('더 알아보기 >'),
                         ),
