@@ -163,7 +163,7 @@ class _SoundPageState extends State<SoundPage> {
           style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1D1E33),
+        backgroundColor: const Color(0xFF0A0E21),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),

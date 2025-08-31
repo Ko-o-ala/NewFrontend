@@ -45,12 +45,68 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   // 입력하면 이전 중복 에러/메시지 지우기만
-  void _onIdChanged(String _) {
+  void _onIdChanged(String value) {
     if (_isIdAvailable == false || _idHelperText != null) {
       setState(() {
         _isIdAvailable = null;
         _idHelperText = null;
       });
+    }
+  }
+
+  // 아이디 중복 확인
+  Future<void> _checkIdAvailability(String id) async {
+    // 확인 중 상태로 설정
+    setState(() {
+      _isIdAvailable = null;
+      _idHelperText = '확인 중...';
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/all'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final List<dynamic> users = data['data'];
+
+          // 입력된 아이디와 중복되는지 확인
+          final bool isDuplicate = users.any(
+            (user) =>
+                user['userID'] != null &&
+                user['userID'].toString().toLowerCase() == id.toLowerCase(),
+          );
+
+          setState(() {
+            _isIdAvailable = !isDuplicate;
+            if (isDuplicate) {
+              _idHelperText = '이미 존재하는 아이디입니다';
+            } else {
+              _idHelperText = '사용 가능한 아이디입니다';
+            }
+          });
+        } else {
+          setState(() {
+            _isIdAvailable = null;
+            _idHelperText = '확인 실패';
+          });
+        }
+      } else {
+        setState(() {
+          _isIdAvailable = null;
+          _idHelperText = '확인 실패';
+        });
+      }
+    } catch (e) {
+      // 에러 발생 시 중복 확인 실패로 처리
+      setState(() {
+        _isIdAvailable = null;
+        _idHelperText = '확인 실패';
+      });
+      print('아이디 중복 확인 실패: $e');
     }
   }
 
@@ -73,7 +129,13 @@ class _SignInScreenState extends State<SignInScreen> {
       if (value.isEmpty) {
         _birthdateError = null;
       } else if (!_isBirthdateValid(value)) {
-        _birthdateError = '올바른 생년월일 형식으로 입력해주세요';
+        if (value.length == 10 && !_birthdateRegex.hasMatch(value)) {
+          _birthdateError = '####-##-## 형식 맞춰주세요';
+        } else if (value.length < 10) {
+          _birthdateError = '####-##-## 형식 맞춰주세요';
+        } else {
+          _birthdateError = '올바른 생년월일을 입력해주세요';
+        }
       } else {
         _birthdateError = null;
       }
@@ -85,6 +147,12 @@ class _SignInScreenState extends State<SignInScreen> {
     // 아이디 검사
     if (idController.text.trim().isEmpty) {
       return '아이디를 입력해주세요';
+    }
+    if (_isIdAvailable == false) {
+      return '이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요.';
+    }
+    if (_isIdAvailable == null) {
+      return '아이디 중복 확인 중입니다. 잠시 후 다시 시도해주세요.';
     }
 
     // 생년월일 검사
@@ -398,6 +466,8 @@ class _SignInScreenState extends State<SignInScreen> {
                       isValid: _isBirthdateValid(birthdateController.text),
                       icon: Icons.calendar_today,
                       errorMessage: _birthdateError,
+                      helperText: 'YYYY-MM-DD 형식으로 입력해주세요',
+                      onChanged: _onBirthdateChanged,
                     ),
                     const SizedBox(height: 16),
 
@@ -405,7 +475,6 @@ class _SignInScreenState extends State<SignInScreen> {
                     _buildInputField(
                       controller: genderController,
                       hint: '성별 선택',
-                      isValid: selectedGender != null,
                       icon: Icons.person_outline,
                       errorMessage: null,
                       isReadOnly: true,
@@ -414,72 +483,25 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 16),
 
                     // 비밀번호 입력
-                    TextField(
+                    _buildInputField(
                       controller: passwordController,
+                      hint: '비밀번호',
+                      isValid: passwordController.text.length >= 6,
+                      icon: Icons.lock,
+                      errorMessage: _passwordError,
                       obscureText: !isPasswordVisible,
                       onChanged: _onPasswordChanged,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      decoration: InputDecoration(
-                        hintText: '비밀번호',
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          isPasswordVisible
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.white54,
                         ),
-                        helperText: _passwordError ?? '6글자 이상 입력해주세요',
-                        helperStyle: TextStyle(
-                          color:
-                              _passwordError != null
-                                  ? Colors.red
-                                  : Colors.white54,
-                          fontSize: 12,
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF0A0E21),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color:
-                                _passwordError != null
-                                    ? Colors.red.withOpacity(0.5)
-                                    : const Color(0xFF6C63FF).withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color:
-                                _passwordError != null
-                                    ? Colors.red.withOpacity(0.5)
-                                    : const Color(0xFF6C63FF).withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide(
-                            color:
-                                _passwordError != null
-                                    ? Colors.red
-                                    : const Color(0xFF6C63FF),
-                            width: 2,
-                          ),
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.lock,
-                          color: Color(0xFF6C63FF),
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            isPasswordVisible
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                            color: Colors.white54,
-                          ),
-                          onPressed:
-                              () => setState(() {
-                                isPasswordVisible = !isPasswordVisible;
-                              }),
-                        ),
+                        onPressed:
+                            () => setState(() {
+                              isPasswordVisible = !isPasswordVisible;
+                            }),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -607,100 +629,81 @@ class _SignInScreenState extends State<SignInScreen> {
   Widget _buildInputField({
     required TextEditingController controller,
     required String hint,
-    required bool isValid,
     required IconData icon,
     String? errorMessage,
     bool isReadOnly = false,
     VoidCallback? onTap,
+    String? helperText,
+    bool? isValid,
+    bool obscureText = false,
+    Function(String)? onChanged,
+    Widget? suffixIcon,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: onTap,
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  errorMessage != null && errorMessage.isNotEmpty
+                      ? Colors.red
+                      : isValid == false
+                      ? Colors.red
+                      : isValid == true
+                      ? Colors.green
+                      : const Color(0xFF6C63FF),
+              width: 2,
+            ),
+          ),
           child: TextField(
             controller: controller,
             readOnly: isReadOnly,
             onTap: onTap,
-            showCursor: !isReadOnly ? null : false,
-            enableInteractiveSelection: !isReadOnly,
+            obscureText: obscureText,
+            onChanged: onChanged,
             style: const TextStyle(color: Colors.white, fontSize: 16),
             decoration: InputDecoration(
+              prefixIcon: Icon(icon, color: Colors.white70),
+              suffixIcon:
+                  suffixIcon ??
+                  (isReadOnly
+                      ? const Icon(Icons.arrow_drop_down, color: Colors.white70)
+                      : isValid == true
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : null),
               hintText: hint,
               hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
               filled: true,
               fillColor: const Color(0xFF0A0E21),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(
-                  color:
-                      errorMessage != null
-                          ? Colors.red.withOpacity(0.5)
-                          : const Color(0xFF6C63FF).withOpacity(0.3),
-                  width: 1,
-                ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(
-                  color:
-                      errorMessage != null
-                          ? Colors.red.withOpacity(0.5)
-                          : const Color(0xFF6C63FF).withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(
-                  color:
-                      errorMessage != null
-                          ? Colors.red
-                          : const Color(0xFF6C63FF),
-                  width: 2,
-                ),
-              ),
-              prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
-              suffixIcon:
-                  isValid
-                      ? Container(
-                        margin: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF4CAF50),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      )
-                      : errorMessage != null && errorMessage.isNotEmpty
-                      ? Container(
-                        margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.red,
-                          size: 16,
-                        ),
-                      )
-                      : isReadOnly
-                      ? const Icon(
-                        Icons.arrow_drop_down,
-                        color: Color(0xFF6C63FF),
-                        size: 24,
-                      )
-                      : const SizedBox(width: 0),
             ),
           ),
         ),
+        if (helperText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 16),
+            child: Text(
+              helperText,
+              style: TextStyle(
+                color:
+                    errorMessage != null && errorMessage.isNotEmpty
+                        ? Colors.red
+                        : isValid == false
+                        ? Colors.red
+                        : Colors.white54,
+                fontSize: 12,
+              ),
+            ),
+          ),
         if (errorMessage != null && errorMessage.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 8, left: 12),
+            padding: const EdgeInsets.only(top: 8, left: 16),
             child: Text(
               errorMessage,
               style: const TextStyle(color: Colors.red, fontSize: 12),
@@ -711,62 +714,64 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Widget _buildIdField() {
-    final bool duplicated = (_isIdAvailable == false);
+    // 상태에 따른 스타일 결정
+    bool? isValid;
+    String? errorMessage;
 
-    return TextField(
-      controller: idController,
-      onChanged: _onIdChanged,
-      style: const TextStyle(color: Colors.white, fontSize: 16),
-      decoration: InputDecoration(
-        hintText: '아이디',
-        helperText: _idHelperText,
-        helperStyle: TextStyle(
-          color: duplicated ? Colors.red : Colors.white54,
-          fontSize: 12,
+    if (_isIdAvailable == true) {
+      // 사용 가능한 경우
+      isValid = true;
+      errorMessage = null;
+    } else if (_isIdAvailable == false) {
+      // 중복인 경우
+      isValid = false;
+      errorMessage = _idHelperText;
+    } else {
+      // 확인 중이거나 null인 경우
+      isValid = null;
+      errorMessage = _idHelperText;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildInputField(
+                controller: idController,
+                hint: '아이디',
+                isValid: isValid,
+                icon: Icons.person,
+                errorMessage: errorMessage,
+                onChanged: _onIdChanged,
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed:
+                  idController.text.trim().isNotEmpty
+                      ? () => _checkIdAvailability(idController.text.trim())
+                      : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                '중복 확인하기',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
         ),
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-        filled: true,
-        fillColor: const Color(0xFF0A0E21),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color:
-                duplicated
-                    ? Colors.red.withOpacity(0.5)
-                    : const Color(0xFF6C63FF).withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color:
-                duplicated
-                    ? Colors.red.withOpacity(0.5)
-                    : const Color(0xFF6C63FF).withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color: duplicated ? Colors.red : const Color(0xFF6C63FF),
-            width: 2,
-          ),
-        ),
-        prefixIcon: const Icon(Icons.person, color: Color(0xFF6C63FF)),
-        suffixIcon:
-            duplicated
-                ? Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.close, color: Colors.red, size: 16),
-                )
-                : null,
-      ),
+      ],
     );
   }
 
@@ -793,7 +798,7 @@ class _SignInScreenState extends State<SignInScreen> {
               for (final e in const [
                 {'v': 1, 't': '남자'},
                 {'v': 2, 't': '여자'},
-                {'v': 0, 't': '선택 안함'},
+                {'v': 0, 't': '성별을 선택하고 싶지 않음'},
               ])
                 ListTile(
                   leading: const Icon(
