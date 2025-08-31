@@ -82,9 +82,9 @@ class _SleepDashboardState extends State<SleepDashboard>
       final diffHours = diffMinutes ~/ 60;
       final diffMins = diffMinutes % 60;
       if (diffHours > 0) {
-        return '😴 목표 초과 ${diffHours}시간 ${diffMins}분';
+        return '🎉 목표 달성! ${diffHours}시간 ${diffMins}분 더 잘 잤어요!';
       } else {
-        return '😴 목표 초과 ${diffMins}분';
+        return '🎉 목표 달성! ${diffMins}분 더 잘 잤어요!';
       }
     }
   }
@@ -129,22 +129,35 @@ class _SleepDashboardState extends State<SleepDashboard>
 
     _loadGoalText();
 
-    // HealthKit 윈도우/시작시각 계산 -> 끝난 직후 서버 GET으로 UI 갱신
-    _fetchTodaySleep().then((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _tryUploadPending());
-    });
+    // HealthKit 윈도우/시작시각 계산
+    _fetchTodaySleep();
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _tryUploadPending();
+    // 앱 생명주기 상태 변경 시 추가 작업이 필요하면 여기에 추가
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _recalcScore() {
+    if (sleepStart == null || sleepEnd == null || healthData.isEmpty) return;
+    final newScore = calculateSleepScore(
+      data: healthData,
+      sleepStart: (sleepStartReal ?? sleepStart!),
+      sleepEnd: (sleepEndReal ?? sleepEnd!),
+      goalSleepDuration:
+          (goalSleepDuration ??
+              widget.goalSleepDuration ??
+              const Duration(hours: 8)),
+    );
+    setState(() => sleepScore = newScore);
+    _savePendingPayload();
   }
 
   Future<void> _applyServerCacheIfAny() async {
@@ -748,7 +761,10 @@ class _SleepDashboardState extends State<SleepDashboard>
         // 가능하면 “실제” 수면시작/종료를 쓰면 시간감점 왜곡이 줄어요:
         sleepStart: (sleepStartReal ?? sleepStart!),
         sleepEnd: (sleepEndReal ?? sleepEnd!),
-        goalSleepDuration: widget.goalSleepDuration ?? Duration(hours: 8),
+        goalSleepDuration:
+            (goalSleepDuration ??
+                widget.goalSleepDuration ??
+                const Duration(hours: 8)),
       );
 
       setState(() {
@@ -935,17 +951,16 @@ class _SleepDashboardState extends State<SleepDashboard>
                           '/time-set',
                         );
                         if (updatedDuration is Duration) {
-                          // 내부 보관은 유지
                           setState(() {
-                            goalSleepDuration = updatedDuration;
+                            goalSleepDuration = updatedDuration; // ← State 업데이트
                           });
-                          // 화면 표시 텍스트는 '오늘 선택 요일인지' 검사해서 갱신
                           final newText =
                               await _getGoalTextForTodayWithEnabledCheck();
                           if (!mounted) return;
                           setState(() {
                             goalText = newText;
                           });
+                          _recalcScore();
                         }
                       },
                     ),
@@ -1102,7 +1117,7 @@ class _SleepDashboardState extends State<SleepDashboard>
                                 'goalSleepDuration':
                                     goalSleepDuration ??
                                     const Duration(hours: 8),
-                                'finalScore': sleepScore,
+                                // finalScore 제거 - sleep_score_details.dart에서 새로 계산
                               },
                             );
                           },
@@ -1158,7 +1173,7 @@ class _SleepDashboardState extends State<SleepDashboard>
                     _buildActionTile(
                       icon: Icons.psychology,
                       title: '내 수면 자세히 알아보기',
-                      subtitle: '전문가의 수면 개선 팁',
+                      subtitle: '수면 차트 보러가기',
                       onTap: () => Navigator.pushNamed(context, '/sleep-chart'),
                     ),
                   ],
@@ -1172,7 +1187,9 @@ class _SleepDashboardState extends State<SleepDashboard>
   }
 
   Widget _buildTab(BuildContext context, String label, bool selected) {
-    Widget to = SleepDashboard(goalSleepDuration: widget.goalSleepDuration);
+    Widget to = SleepDashboard(
+      goalSleepDuration: goalSleepDuration ?? widget.goalSleepDuration,
+    );
     if (label == 'Weeks') to = WeeklySleepScreen();
     if (label == 'Months') to = MonthlySleepScreen();
     return GestureDetector(

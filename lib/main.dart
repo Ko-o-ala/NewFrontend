@@ -145,7 +145,6 @@ class MyApp extends StatelessWidget {
                       sleepEnd: args['sleepEnd'] ?? DateTime.now(),
                       goalSleepDuration:
                           args['goalSleepDuration'] ?? const Duration(hours: 8),
-                      finalScore: args['finalScore'] ?? 0,
                     ),
               );
             } else {
@@ -158,23 +157,36 @@ class MyApp extends StatelessWidget {
                       sleepStart: now,
                       sleepEnd: now,
                       goalSleepDuration: const Duration(hours: 8),
-                      finalScore: 0,
                     ),
               );
             }
 
           case '/sleep-score':
-            final args = settings.arguments as SleepScoreArgs;
-            return MaterialPageRoute(
-              builder:
-                  (_) => SleepScoreDetailsPage(
-                    data: args.data,
-                    sleepStart: args.sleepStart,
-                    sleepEnd: args.sleepEnd,
-                    goalSleepDuration: args.goalSleepDuration,
-                    finalScore: args.finalScore,
-                  ),
-            );
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: args['data'] ?? [],
+                      sleepStart: args['sleepStart'] ?? DateTime.now(),
+                      sleepEnd: args['sleepEnd'] ?? DateTime.now(),
+                      goalSleepDuration:
+                          args['goalSleepDuration'] ?? const Duration(hours: 8),
+                    ),
+              );
+            } else {
+              // arguments가 없는 경우 기본값으로 페이지 생성
+              final now = DateTime.now();
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: [],
+                      sleepStart: now,
+                      sleepEnd: now,
+                      goalSleepDuration: const Duration(hours: 8),
+                    ),
+              );
+            }
 
           case '/complete':
             return MaterialPageRoute(

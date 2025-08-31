@@ -778,6 +778,25 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     );
   }
 
+  // ===== 수면데이터 서버 전송 관련 함수들 =====
+
+  // 수면데이터 서버 전송 시도
+  Future<void> _tryUploadPendingSleepData() async {
+    // 수면데이터 전송 관련 로직 제거
+  }
+
+  // 서버에서 수면데이터 가져오기
+  Future<Map<String, dynamic>?> _getSleepDataFromServer({
+    required String userId,
+    required String token,
+    required String date,
+  }) async {
+    // 수면데이터 전송 관련 로직 제거
+    return null;
+  }
+
+  // ===== 기존 함수들 =====
+
   @override
   void dispose() {
     _serverDiscSub?.cancel();
