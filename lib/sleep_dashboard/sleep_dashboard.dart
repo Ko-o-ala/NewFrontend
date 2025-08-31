@@ -409,11 +409,11 @@ class _SleepDashboardState extends State<SleepDashboard>
     final now = DateTime.now();
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    // iOS: 정오 이후 처음 깨어났을 때 업로드
-    if (now.hour < 15) {
-      debugPrint('[BG] skip: before 3PM');
-      return;
-    }
+    // 시간 조건 제거: 앱 접속 시마다 데이터 전송
+    // if (now.hour < 15) {
+    //   debugPrint('[BG] skip: before 3PM');
+    //   return;
+    // }
     if (lastSentDate == todayStr) return;
 
     try {

@@ -412,8 +412,13 @@ class _SleepChartScreenState extends State<SleepChartScreen>
             if (durationBlock != null) {
               final totalMinutes =
                   durationBlock['totalSleepDuration'] as int? ?? 0;
-              totalSleepDuration = Duration(minutes: totalMinutes);
-              debugPrint('[SLEEP] totalSleepDuration: $totalMinutes분');
+              final awakeMinutes = durationBlock['awakeDuration'] as int? ?? 0;
+              // 수면분석과 동일하게: 실제 수면시간 + 깨어있는 시간
+              final inBedMinutes = totalMinutes + awakeMinutes;
+              totalSleepDuration = Duration(minutes: inBedMinutes);
+              debugPrint(
+                '[SLEEP] totalSleepDuration: $totalMinutes분, awakeDuration: $awakeMinutes분, inBedTotal: $inBedMinutes분',
+              );
             }
           }
 

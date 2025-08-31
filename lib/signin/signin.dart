@@ -14,12 +14,12 @@ class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController idController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController birthdateController = TextEditingController();
-
+  final TextEditingController genderController = TextEditingController();
   // 실시간 체크는 제거. 중복 결과만 표시하기 위해 아래 두 개만 유지
   bool? _isIdAvailable; // null: 모름, false: 중복
   String? _idHelperText; // 메시지
 
-  int? selectedGender = 0;
+  int? selectedGender;
   bool isPasswordVisible = false;
   bool agreedToPrivacy = false;
   bool isLoading = false;
@@ -87,6 +87,13 @@ class _SignInScreenState extends State<SignInScreen> {
       return '아이디를 입력해주세요';
     }
 
+    // 생년월일 검사
+    if (birthdateController.text.trim().isEmpty) {
+      return '생년월일을 입력해주세요';
+    }
+    if (!_isBirthdateValid(birthdateController.text)) {
+      return '올바른 생년월일 형식으로 입력해주세요 (예: 1995-08-07)';
+    }
     // 비밀번호 검사
     if (passwordController.text.isEmpty) {
       return '비밀번호를 입력해주세요';
@@ -94,13 +101,8 @@ class _SignInScreenState extends State<SignInScreen> {
     if (passwordController.text.length < 6) {
       return '비밀번호는 6글자 이상 입력해주세요';
     }
-
-    // 생년월일 검사
-    if (birthdateController.text.trim().isEmpty) {
-      return '생년월일을 입력해주세요';
-    }
-    if (!_isBirthdateValid(birthdateController.text)) {
-      return '올바른 생년월일 형식으로 입력해주세요 (예: 1995-08-07)';
+    if (selectedGender == null) {
+      return '성별을 선택해주세요';
     }
 
     // 개인정보 동의 검사
@@ -136,6 +138,7 @@ class _SignInScreenState extends State<SignInScreen> {
     idController.dispose();
     passwordController.dispose();
     birthdateController.dispose();
+    genderController.dispose();
     super.dispose();
   }
 
@@ -399,44 +402,14 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 16),
 
                     // 성별 선택
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0A0E21),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: const Color(0xFF6C63FF).withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: DropdownButtonFormField<int>(
-                        value: selectedGender,
-                        dropdownColor: const Color(0xFF0A0E21),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 0, child: Text('선택 안함')),
-                          DropdownMenuItem(value: 1, child: Text('남자')),
-                          DropdownMenuItem(value: 2, child: Text('여자')),
-                        ],
-                        onChanged:
-                            (value) =>
-                                setState(() => selectedGender = value ?? 0),
-                        decoration: const InputDecoration(
-                          hintText: '성별 선택',
-                          hintStyle: TextStyle(color: Colors.white54),
-                          border: InputBorder.none,
-                          prefixIcon: Icon(
-                            Icons.person_outline,
-                            color: Color(0xFF6C63FF),
-                          ),
-                        ),
-                      ),
+                    _buildInputField(
+                      controller: genderController,
+                      hint: '성별 선택',
+                      isValid: selectedGender != null,
+                      icon: Icons.person_outline,
+                      errorMessage: null,
+                      isReadOnly: true,
+                      onTap: _showGenderPicker,
                     ),
                     const SizedBox(height: 16),
 
@@ -637,76 +610,92 @@ class _SignInScreenState extends State<SignInScreen> {
     required bool isValid,
     required IconData icon,
     String? errorMessage,
+    bool isReadOnly = false,
+    VoidCallback? onTap,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextField(
-          controller: controller,
-          onChanged: _onBirthdateChanged,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-            filled: true,
-            fillColor: const Color(0xFF0A0E21),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide(
-                color:
-                    errorMessage != null
-                        ? Colors.red.withOpacity(0.5)
-                        : const Color(0xFF6C63FF).withOpacity(0.3),
-                width: 1,
+        GestureDetector(
+          onTap: onTap,
+          child: TextField(
+            controller: controller,
+            readOnly: isReadOnly,
+            onTap: onTap,
+            showCursor: !isReadOnly ? null : false,
+            enableInteractiveSelection: !isReadOnly,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+              filled: true,
+              fillColor: const Color(0xFF0A0E21),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(
+                  color:
+                      errorMessage != null
+                          ? Colors.red.withOpacity(0.5)
+                          : const Color(0xFF6C63FF).withOpacity(0.3),
+                  width: 1,
+                ),
               ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide(
-                color:
-                    errorMessage != null
-                        ? Colors.red.withOpacity(0.5)
-                        : const Color(0xFF6C63FF).withOpacity(0.3),
-                width: 1,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(
+                  color:
+                      errorMessage != null
+                          ? Colors.red.withOpacity(0.5)
+                          : const Color(0xFF6C63FF).withOpacity(0.3),
+                  width: 1,
+                ),
               ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide(
-                color:
-                    errorMessage != null ? Colors.red : const Color(0xFF6C63FF),
-                width: 2,
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(
+                  color:
+                      errorMessage != null
+                          ? Colors.red
+                          : const Color(0xFF6C63FF),
+                  width: 2,
+                ),
               ),
+              prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
+              suffixIcon:
+                  isValid
+                      ? Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF4CAF50),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      )
+                      : errorMessage != null && errorMessage.isNotEmpty
+                      ? Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.red,
+                          size: 16,
+                        ),
+                      )
+                      : isReadOnly
+                      ? const Icon(
+                        Icons.arrow_drop_down,
+                        color: Color(0xFF6C63FF),
+                        size: 24,
+                      )
+                      : const SizedBox(width: 0),
             ),
-            prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
-            suffixIcon:
-                isValid
-                    ? Container(
-                      margin: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF4CAF50),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    )
-                    : errorMessage != null && errorMessage.isNotEmpty
-                    ? Container(
-                      margin: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.red,
-                        size: 16,
-                      ),
-                    )
-                    : const SizedBox(width: 0),
           ),
         ),
         if (errorMessage != null && errorMessage.isNotEmpty)
@@ -778,6 +767,55 @@ class _SignInScreenState extends State<SignInScreen> {
                 )
                 : null,
       ),
+    );
+  }
+
+  String _getGenderText() {
+    switch (selectedGender) {
+      case 1:
+        return '남자';
+      case 2:
+        return '여자';
+      default:
+        return '성별을 선택하고 싶지 않음';
+    }
+  }
+
+  void _showGenderPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1D1E33), // (선택) 다크 테마 맞춤
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final e in const [
+                {'v': 1, 't': '남자'},
+                {'v': 2, 't': '여자'},
+                {'v': 0, 't': '선택 안함'},
+              ])
+                ListTile(
+                  leading: const Icon(
+                    Icons.person_outline,
+                    color: Color(0xFF6C63FF),
+                  ),
+                  title: Text(
+                    e['t'] as String,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() {
+                      selectedGender = e['v'] as int;
+                      genderController.text = _getGenderText(); // ⬅️ 표시값 갱신
+                    });
+                    Navigator.pop(context);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -246,12 +246,14 @@ class _DevicePageState extends State<DevicePage> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Text(
-                          "Q18. 어떤 기기를 사용하시나요?",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        Expanded(
+                          child: const Text(
+                            "Q18. 어떤 기기를 사용하시나요? (모두 고르시오)",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],

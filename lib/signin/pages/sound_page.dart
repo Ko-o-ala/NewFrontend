@@ -134,8 +134,6 @@ class _SoundPageState extends State<SoundPage> {
                   groupValue: groupValue,
                   onChanged: onChanged,
                   activeColor: const Color(0xFF6C63FF),
-                  dense: true, // 높이 조금 더 컴팩트하게
-                  visualDensity: VisualDensity.compact,
                 ),
               );
             },
@@ -419,12 +417,14 @@ class _SoundPageState extends State<SoundPage> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Text(
-                          "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        Expanded(
+                          child: const Text(
+                            "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],
