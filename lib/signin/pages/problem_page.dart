@@ -1,5 +1,6 @@
 // lib/onboarding/problem_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../onboarding_data.dart';
 
 List<String> _normalizeNone(List<String> arr) {
@@ -236,6 +237,16 @@ class _ProblemPageState extends State<ProblemPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 시스템 UI 스타일 설정 (상태바, 네비게이션바 색상)
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      ),
+    );
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(

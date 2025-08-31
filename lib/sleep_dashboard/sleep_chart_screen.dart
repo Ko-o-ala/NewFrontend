@@ -113,13 +113,15 @@ Color stageColor(SleepStage s) {
 
 class SleepTimelinePainter extends CustomPainter {
   final List<SleepSegment> segments;
-  final double totalWidth; // px 기준 전체 가로폭 (예: 1080)
+  final double totalWidth; // px
   final double trackHeight;
+  final int windowMinutes; // 👈 추가 (예: 1080분 = 18시간)
 
   SleepTimelinePainter({
     required this.segments,
     required this.totalWidth,
     this.trackHeight = 20,
+    this.windowMinutes = 1080, // 기본값 18시간
   });
 
   @override
@@ -136,10 +138,13 @@ class SleepTimelinePainter extends CustomPainter {
           ..style = PaintingStyle.fill;
     canvas.drawRRect(trackRect, basePaint);
 
+    // 분→픽셀 스케일
+    final double scale = totalWidth / windowMinutes;
+
     // 구간 칠하기
     for (final seg in segments) {
-      final left = max(0.0, seg.startMinute / (60 * 12) * totalWidth);
-      final right = min(totalWidth, seg.endMinute / (60 * 12) * totalWidth);
+      final left = (seg.startMinute * scale).clamp(0.0, totalWidth);
+      final right = (seg.endMinute * scale).clamp(0.0, totalWidth);
       if (right <= left) continue;
 
       final rrect = RRect.fromRectAndRadius(
@@ -150,7 +155,7 @@ class SleepTimelinePainter extends CustomPainter {
       canvas.drawRRect(rrect, paint);
     }
 
-    // 격자/눈금선 (3시간 간격)
+    // 격자/눈금선 (3시간 간격 → 6등분)
     final gridPaint =
         Paint()
           ..color = Colors.white10
@@ -162,11 +167,11 @@ class SleepTimelinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant SleepTimelinePainter oldDelegate) {
-    return oldDelegate.segments != segments ||
-        oldDelegate.totalWidth != totalWidth ||
-        oldDelegate.trackHeight != trackHeight;
-  }
+  bool shouldRepaint(covariant SleepTimelinePainter old) =>
+      old.segments != segments ||
+      old.totalWidth != totalWidth ||
+      old.trackHeight != trackHeight ||
+      old.windowMinutes != windowMinutes;
 }
 
 /// =======================
@@ -245,6 +250,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   String? _error;
   List<SleepLog> _logs = [];
   String? _userId;
+  Duration? _totalSleepDuration; // 서버의 totalSleepDuration 저장
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -392,11 +398,24 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       debugPrint('[SLEEP] 데이터 개수: ${dataList.length}');
 
       final List<SleepLog> logs = [];
+      Duration? totalSleepDuration; // 서버의 totalSleepDuration 저장
 
       for (int i = 0; i < dataList.length; i++) {
         try {
           final sleepData = dataList[i] as Map<String, dynamic>;
           debugPrint('[SLEEP] 수면 데이터 $i: $sleepData');
+
+          // totalSleepDuration 가져오기 (수면분석과 동일한 값 사용)
+          if (totalSleepDuration == null) {
+            final durationBlock =
+                sleepData['Duration'] as Map<String, dynamic>?;
+            if (durationBlock != null) {
+              final totalMinutes =
+                  durationBlock['totalSleepDuration'] as int? ?? 0;
+              totalSleepDuration = Duration(minutes: totalMinutes);
+              debugPrint('[SLEEP] totalSleepDuration: $totalMinutes분');
+            }
+          }
 
           // segments 배열에서 각 수면 단계별 정보 파싱
           final segments = sleepData['segments'] as List? ?? [];
@@ -464,6 +483,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       if (!mounted) return;
       setState(() {
         _logs = logs..sort((a, b) => a.start.compareTo(b.start));
+        _totalSleepDuration = totalSleepDuration;
         _loading = false;
       });
 
@@ -493,8 +513,19 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     }).toList();
   }
 
-  Duration get _totalSleep =>
-      _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
+  Duration get _totalSleep {
+    // 서버의 totalSleepDuration을 우선 사용 (수면분석과 동일한 값)
+    if (_totalSleepDuration != null) {
+      debugPrint(
+        '[SLEEP] totalSleepDuration 사용: ${_totalSleepDuration!.inMinutes}분',
+      );
+      return _totalSleepDuration!;
+    }
+    // fallback: segments 기반 계산
+    final calculated = _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
+    debugPrint('[SLEEP] segments 기반 계산 사용: ${calculated.inMinutes}분');
+    return calculated;
+  }
 
   Map<SleepStage, Duration> get _byStage {
     final Map<SleepStage, Duration> m = {};

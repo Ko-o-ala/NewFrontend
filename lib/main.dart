@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:my_app/connect_settings/delete_account.dart';
 import 'package:my_app/connect_settings/faq.dart';
 import 'package:my_app/connect_settings/manage_account.dart';
@@ -36,6 +37,17 @@ late final ApiClient apiClient;
 void main() async {
   await dotenv.load();
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 전역 시스템 UI 스타일 설정
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+      statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+      systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+      systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+    ),
+  );
+
   apiClient = ApiClient(baseUrl: dotenv.env['API_BASE_URL']!);
   //Hive 초기화
   await Hive.initFlutter();
@@ -60,6 +72,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 앱 전체 시스템 UI 스타일 설정
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      ),
+    );
+
     return MaterialApp(
       title: 'Sleep App',
       debugShowCheckedModeBanner: false,

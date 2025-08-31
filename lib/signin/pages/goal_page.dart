@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../onboarding_data.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -32,19 +33,31 @@ class _GoalPageState extends State<GoalPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
+      extendBodyBehindAppBar: true, // AppBar 뒤로 body 확장
+      extendBody: true, // 하단까지 body 확장
       appBar: AppBar(
         title: const Text(
           '알라와 코잘라',
           style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         centerTitle: true,
-        backgroundColor: const Color(0xFF1D1E33),
+        backgroundColor: Colors.transparent, // AppBar 배경을 투명하게
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+        ),
       ),
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(color: Color(0xFF0A0E21)),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + 80, // 상태바 높이 + AppBar 높이
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(context).padding.bottom + 20, // 하단 안전 영역 + 여백
+          ),
           child: Column(
             children: [
               // 헤더 섹션

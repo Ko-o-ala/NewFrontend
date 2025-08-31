@@ -31,6 +31,64 @@ class _SleepDashboardState extends State<SleepDashboard>
   String goalText = '미설정';
   String _fmtMin(int m) => '${m ~/ 60}시간 ${m % 60}분';
 
+  // 목표 수면시간과 실제 수면시간을 비교하는 함수
+  String _getSleepComparisonText() {
+    if (goalText == '미설정' || goalText == '시간 없음') {
+      return 'You have slept $formattedDuration today.';
+    }
+
+    if (formattedDuration == '불러오는 중...') {
+      return 'You have slept $formattedDuration today.';
+    }
+
+    // 목표 시간을 분 단위로 변환
+    final goalRegex = RegExp(r'(\d+)시간\s*(\d+)분');
+    final goalMatch = goalRegex.firstMatch(goalText);
+    if (goalMatch == null) {
+      return 'You have slept $formattedDuration today.';
+    }
+
+    final goalHours = int.parse(goalMatch.group(1)!);
+    final goalMinutes = int.parse(goalMatch.group(2)!);
+    final goalTotalMinutes = goalHours * 60 + goalMinutes;
+
+    // 실제 수면시간을 분 단위로 변환
+    final actualRegex = RegExp(r'(\d+)시간\s*(\d+)분');
+    final actualMatch = actualRegex.firstMatch(formattedDuration);
+    if (actualMatch == null) {
+      return 'You have slept $formattedDuration today.';
+    }
+
+    final actualHours = int.parse(actualMatch.group(1)!);
+    final actualMinutes = int.parse(actualMatch.group(2)!);
+    final actualTotalMinutes = actualHours * 60 + actualMinutes;
+
+    // 목표 대비 달성률 계산 (90-110% 범위를 목표 달성으로 간주)
+    final percentage = (actualTotalMinutes / goalTotalMinutes * 100).round();
+
+    if (percentage >= 90 && percentage <= 110) {
+      return '🎉 목표 달성! $formattedDuration 수면 완료';
+    } else if (percentage < 90) {
+      final diffMinutes = goalTotalMinutes - actualTotalMinutes;
+      final diffHours = diffMinutes ~/ 60;
+      final diffMins = diffMinutes % 60;
+      if (diffHours > 0) {
+        return '⏰ 목표까지 ${diffHours}시간 ${diffMins}분 부족';
+      } else {
+        return '⏰ 목표까지 ${diffMins}분 부족';
+      }
+    } else {
+      final diffMinutes = actualTotalMinutes - goalTotalMinutes;
+      final diffHours = diffMinutes ~/ 60;
+      final diffMins = diffMinutes % 60;
+      if (diffHours > 0) {
+        return '😴 목표 초과 ${diffHours}시간 ${diffMins}분';
+      } else {
+        return '😴 목표 초과 ${diffMins}분';
+      }
+    }
+  }
+
   Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
@@ -68,13 +126,11 @@ class _SleepDashboardState extends State<SleepDashboard>
   void initState() {
     super.initState();
     _loadUsername();
-    _fetchTodaySleep();
 
     _loadGoalText();
-    _applyServerCacheIfAny();
+
     // HealthKit 윈도우/시작시각 계산 -> 끝난 직후 서버 GET으로 UI 갱신
     _fetchTodaySleep().then((_) {
-      _refreshFromServerByRealStart(); // ✅ 항상 서버 값으로 덮어씀
       WidgetsBinding.instance.addPostFrameCallback((_) => _tryUploadPending());
     });
     WidgetsBinding.instance.addObserver(this);
@@ -101,11 +157,11 @@ class _SleepDashboardState extends State<SleepDashboard>
       final hrs = durationMin ~/ 60;
       final mins = durationMin % 60;
       final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
-      final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
-      setState(() {
-        formattedDuration = '${hrs}시간 ${mins}분';
-        sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
-      });
+      //final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
+      // setState(() {
+      //     formattedDuration = '${hrs}시간 ${mins}분';
+      // sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
+      //  });
     } catch (_) {}
   }
 
@@ -668,7 +724,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       Duration total = Duration.zero;
       for (var d in data) {
         final dur = d.dateTo.difference(d.dateFrom);
-        total += dur;
         switch (d.type) {
           case HealthDataType.SLEEP_DEEP:
             deepMin += dur.inMinutes;
@@ -687,19 +742,21 @@ class _SleepDashboardState extends State<SleepDashboard>
             break;
         }
       }
-
-      todaySleep = total;
-      //formattedDuration = '${total.inHours}시간 ${total.inMinutes % 60}분';
-
-      sleepScore = calculateSleepScore(
+      final inBedMin = deepMin + remMin + lightMin + awakeMin; // ✅ 깨어있음 포함
+      final score = calculateSleepScore(
         data: data,
-        sleepStart: sleepStart!,
-        sleepEnd: sleepEnd!,
+        // 가능하면 “실제” 수면시작/종료를 쓰면 시간감점 왜곡이 줄어요:
+        sleepStart: (sleepStartReal ?? sleepStart!),
+        sleepEnd: (sleepEndReal ?? sleepEnd!),
         goalSleepDuration: widget.goalSleepDuration ?? Duration(hours: 8),
       );
 
-      setState(() {});
-      await _savePendingPayload(); // ← 정오 자동 업로드용 페이로드 캐시
+      setState(() {
+        todaySleep = Duration(minutes: inBedMin);
+        formattedDuration = _fmtMin(inBedMin);
+        sleepScore = score;
+      });
+      await _savePendingPayload(); // ✅ 업로드용 페이로드는 계속 저장// ← 정오 자동 업로드용 페이로드 캐시
     } catch (e) {
       setState(() => formattedDuration = '⚠️ 오류 발생');
       print('⚠️ 오류: $e');
@@ -843,21 +900,14 @@ class _SleepDashboardState extends State<SleepDashboard>
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          const TextSpan(text: 'You have slept '),
-                          TextSpan(
-                            text: formattedDuration,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                          const TextSpan(text: ' today.'),
-                        ],
+                    Text(
+                      _getSleepComparisonText(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
                       ),
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],
                 ),
