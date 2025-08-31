@@ -24,6 +24,11 @@ class _SignInScreenState extends State<SignInScreen> {
   bool agreedToPrivacy = false;
   bool isLoading = false;
 
+  // 오류 메시지 추가
+  String? _passwordError;
+  String? _birthdateError;
+  String? _generalError;
+
   final storage = const FlutterSecureStorage();
 
   // "YYYY-MM-DD" 형식 + 실제 존재 날짜 검사
@@ -46,6 +51,83 @@ class _SignInScreenState extends State<SignInScreen> {
         _isIdAvailable = null;
         _idHelperText = null;
       });
+    }
+  }
+
+  // 비밀번호 변경 시 오류 메시지 지우기
+  void _onPasswordChanged(String value) {
+    setState(() {
+      if (value.isEmpty) {
+        _passwordError = null;
+      } else if (value.length < 6) {
+        _passwordError = '비밀번호는 6글자 이상 입력해주세요';
+      } else {
+        _passwordError = null;
+      }
+    });
+  }
+
+  // 생년월일 변경 시 오류 메시지 지우기
+  void _onBirthdateChanged(String value) {
+    setState(() {
+      if (value.isEmpty) {
+        _birthdateError = null;
+      } else if (!_isBirthdateValid(value)) {
+        _birthdateError = '올바른 생년월일 형식으로 입력해주세요';
+      } else {
+        _birthdateError = null;
+      }
+    });
+  }
+
+  // 폼 유효성 검사 및 오류 메시지 생성
+  String? _validateForm() {
+    // 아이디 검사
+    if (idController.text.trim().isEmpty) {
+      return '아이디를 입력해주세요';
+    }
+
+    // 비밀번호 검사
+    if (passwordController.text.isEmpty) {
+      return '비밀번호를 입력해주세요';
+    }
+    if (passwordController.text.length < 6) {
+      return '비밀번호는 6글자 이상 입력해주세요';
+    }
+
+    // 생년월일 검사
+    if (birthdateController.text.trim().isEmpty) {
+      return '생년월일을 입력해주세요';
+    }
+    if (!_isBirthdateValid(birthdateController.text)) {
+      return '올바른 생년월일 형식으로 입력해주세요 (예: 1995-08-07)';
+    }
+
+    // 개인정보 동의 검사
+    if (!agreedToPrivacy) {
+      return '개인정보 처리방침에 동의해주세요';
+    }
+
+    return null;
+  }
+
+  // 시작하기 버튼 클릭 시 유효성 검사
+  void _onStartButtonPressed() {
+    final errorMessage = _validateForm();
+    if (errorMessage != null) {
+      setState(() {
+        _generalError = errorMessage;
+      });
+      // 3초 후 오류 메시지 자동 제거
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _generalError = null;
+          });
+        }
+      });
+    } else {
+      _handleSignUp();
     }
   }
 
@@ -312,6 +394,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       hint: '생년월일 (예: 1995-08-07)',
                       isValid: _isBirthdateValid(birthdateController.text),
                       icon: Icons.calendar_today,
+                      errorMessage: _birthdateError,
                     ),
                     const SizedBox(height: 16),
 
@@ -361,33 +444,50 @@ class _SignInScreenState extends State<SignInScreen> {
                     TextField(
                       controller: passwordController,
                       obscureText: !isPasswordVisible,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: _onPasswordChanged,
                       style: const TextStyle(color: Colors.white, fontSize: 16),
                       decoration: InputDecoration(
                         hintText: '비밀번호',
                         hintStyle: TextStyle(
                           color: Colors.white.withOpacity(0.5),
                         ),
+                        helperText: _passwordError ?? '6글자 이상 입력해주세요',
+                        helperStyle: TextStyle(
+                          color:
+                              _passwordError != null
+                                  ? Colors.red
+                                  : Colors.white54,
+                          fontSize: 12,
+                        ),
                         filled: true,
                         fillColor: const Color(0xFF0A0E21),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
                           borderSide: BorderSide(
-                            color: const Color(0xFF6C63FF).withOpacity(0.3),
+                            color:
+                                _passwordError != null
+                                    ? Colors.red.withOpacity(0.5)
+                                    : const Color(0xFF6C63FF).withOpacity(0.3),
                             width: 1,
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
                           borderSide: BorderSide(
-                            color: const Color(0xFF6C63FF).withOpacity(0.3),
+                            color:
+                                _passwordError != null
+                                    ? Colors.red.withOpacity(0.5)
+                                    : const Color(0xFF6C63FF).withOpacity(0.3),
                             width: 1,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
-                          borderSide: const BorderSide(
-                            color: Color(0xFF6C63FF),
+                          borderSide: BorderSide(
+                            color:
+                                _passwordError != null
+                                    ? Colors.red
+                                    : const Color(0xFF6C63FF),
                             width: 2,
                           ),
                         ),
@@ -457,16 +557,46 @@ class _SignInScreenState extends State<SignInScreen> {
 
               const SizedBox(height: 30),
 
+              // 오류 메시지 표시
+              if (_generalError != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _generalError!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (_generalError != null) const SizedBox(height: 20),
+
               // 시작하기 버튼
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isFormValid && !isLoading ? _handleSignUp : null,
+                  onPressed: !isLoading ? _onStartButtonPressed : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        isFormValid
-                            ? const Color(0xFF6C63FF)
-                            : const Color(0xFF6C63FF).withOpacity(0.3),
+                    backgroundColor: const Color(0xFF6C63FF),
                     minimumSize: const Size(double.infinity, 56),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -506,47 +636,88 @@ class _SignInScreenState extends State<SignInScreen> {
     required String hint,
     required bool isValid,
     required IconData icon,
+    String? errorMessage,
   }) {
-    return TextField(
-      controller: controller,
-      onChanged: (_) => setState(() {}),
-      style: const TextStyle(color: Colors.white, fontSize: 16),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-        filled: true,
-        fillColor: const Color(0xFF0A0E21),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color: const Color(0xFF6C63FF).withOpacity(0.3),
-            width: 1,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          onChanged: _onBirthdateChanged,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            filled: true,
+            fillColor: const Color(0xFF0A0E21),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(
+                color:
+                    errorMessage != null
+                        ? Colors.red.withOpacity(0.5)
+                        : const Color(0xFF6C63FF).withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(
+                color:
+                    errorMessage != null
+                        ? Colors.red.withOpacity(0.5)
+                        : const Color(0xFF6C63FF).withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(
+                color:
+                    errorMessage != null ? Colors.red : const Color(0xFF6C63FF),
+                width: 2,
+              ),
+            ),
+            prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
+            suffixIcon:
+                isValid
+                    ? Container(
+                      margin: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF4CAF50),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    )
+                    : errorMessage != null && errorMessage.isNotEmpty
+                    ? Container(
+                      margin: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.red,
+                        size: 16,
+                      ),
+                    )
+                    : const SizedBox(width: 0),
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(
-            color: const Color(0xFF6C63FF).withOpacity(0.3),
-            width: 1,
+        if (errorMessage != null && errorMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 12),
+            child: Text(
+              errorMessage,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
           ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Color(0xFF6C63FF), width: 2),
-        ),
-        prefixIcon: Icon(icon, color: const Color(0xFF6C63FF)),
-        suffixIcon:
-            isValid
-                ? Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF4CAF50),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.check, color: Colors.white, size: 16),
-                )
-                : const SizedBox(width: 0),
-      ),
+      ],
     );
   }
 
