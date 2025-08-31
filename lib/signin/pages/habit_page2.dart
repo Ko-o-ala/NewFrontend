@@ -6,8 +6,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 final storage = FlutterSecureStorage();
 const Map<String, String> napFrequencyMap = {
   '매일': 'daily',
-  '주3~4': '3to4perWeek',
-  '1~2회': '1to2perWeek',
+  '주 3~4회': '3to4perWeek',
+  '주 1~2회': '1to2perWeek',
   '거의 안 잠': 'rarely',
 };
 
@@ -281,7 +281,7 @@ class _HabitPage2State extends State<HabitPage2> {
               // 질문들
               _buildQuestionCard(
                 'Q9. 낮잠 빈도는 어떻게 되시나요?',
-                ['매일', '주3~4', '1~2회', '거의 안 잠'],
+                ['매일', '주 3~4회', '주 1~2회', '거의 안 잠'],
                 napFrequency,
                 (v) => setState(() => napFrequency = v),
               ),

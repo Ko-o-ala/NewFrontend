@@ -312,8 +312,10 @@ class CompletePage extends StatelessWidget {
 
                     if (resp.statusCode == 200) {
                       debugPrint('✅ 설문 저장 성공');
+
+                      // 설문 완료 후 로그인 화면으로 이동
                       // ignore: use_build_context_synchronously
-                      Navigator.pushReplacementNamed(context, '/home');
+                      Navigator.pushReplacementNamed(context, '/login');
                     } else {
                       debugPrint('❌ 설문 저장 실패: ${resp.statusCode}');
                       debugPrint(resp.body);

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // 수면데이터 
 import 'package:intl/intl.dart'; // 날짜 포맷팅을 위해 추가
 import 'dart:convert'; // JSON 처리를 위해 추가
 import 'package:http/http.dart' as http; // HTTP 요청을 위해 추가
+import 'package:my_app/services/jwt_utils.dart'; // JWT 유틸리티 추가
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,14 +23,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _checkLoginStatus();
 
-    // 기존 잘못된 데이터 정리
-    _cleanupInvalidData();
+    // 기존 잘못된 데이터 정리 후 수면데이터 전송
+    _initializeData();
 
-    // 홈페이지 진입 시 수면데이터 자동 전송
-    _tryUploadPendingSleepData();
-
-    // 테스트용: 임시 수면데이터 생성 (실제로는 sleep_dashboard.dart에서 생성됨)
+    // 테스트용 수면데이터 생성 (개발/테스트 환경에서만)
     _createTestSleepData();
+  }
+
+  // 데이터 초기화 및 수면데이터 전송
+  Future<void> _initializeData() async {
+    // 기존 잘못된 데이터 정리 (먼저 실행)
+    await _cleanupInvalidData();
+
+    // 데이터 정리 완료 후 수면데이터 전송 시도
+    _tryUploadPendingSleepData();
   }
 
   // 기존 잘못된 데이터 정리
@@ -52,10 +59,40 @@ class _HomePageState extends State<HomePage> {
         debugPrint('[홈페이지] 데이터 정리 중 오류: $e');
       }
     }
+
+    // 추가: Postman에서 데이터가 없다면 lastSentDate도 정리
+    if (lastSentDate != null) {
+      final token = await storage.read(key: 'jwt');
+      // JWT 토큰에서 userID 추출
+      final userId =
+          token != null ? JwtUtils.extractUserIdFromToken(token) : null;
+
+      if (token != null && userId != null) {
+        // 서버에서 실제 데이터 존재 여부 확인
+        final serverData = await _getSleepDataFromServer(
+          userId: userId,
+          token: token,
+          date: lastSentDate,
+        );
+
+        // 서버에 데이터가 없으면 lastSentDate 정리
+        if (serverData == null) {
+          await prefs.remove('lastSentDate');
+          debugPrint('[홈페이지] 서버에 데이터가 없어서 lastSentDate 정리: $lastSentDate');
+        }
+      }
+    }
   }
 
-  // 테스트용: 임시 수면데이터 생성
+  // 테스트용: 임시 수면데이터 생성 (개발/테스트 환경에서만)
   Future<void> _createTestSleepData() async {
+    // 실제 사용자에게는 테스트 데이터를 생성하지 않음
+    final username = await storage.read(key: 'username');
+    if (username != null && username != 'test') {
+      debugPrint('[홈페이지] 실제 사용자이므로 테스트 데이터 생성 건너뜀');
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
 
     // 이미 테스트 데이터가 있으면 건너뛰기
@@ -102,7 +139,9 @@ class _HomePageState extends State<HomePage> {
     debugPrint('[홈페이지] SharedPreferences 초기화 완료');
 
     final token = await storage.read(key: 'jwt');
-    final userId = await storage.read(key: 'userID');
+    // JWT 토큰에서 userID 추출
+    final userId =
+        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
     final payloadJson = prefs.getString('pendingSleepPayload');
     final lastSentDate = prefs.getString('lastSentDate'); // yyyy-MM-dd
 
@@ -155,8 +194,6 @@ class _HomePageState extends State<HomePage> {
       debugPrint('[홈페이지] 서버 응답: ${resp.statusCode}');
 
       if (resp.statusCode == 200 || resp.statusCode == 201) {
-        // 수정: 데이터의 실제 날짜로 lastSentDate 업데이트
-        await prefs.setString('lastSentDate', date);
         debugPrint('[홈페이지] 수면데이터 전송 성공: $date');
 
         // 업로드 성공 → 서버 데이터로 캐시 갱신
@@ -165,9 +202,36 @@ class _HomePageState extends State<HomePage> {
           token: token,
           date: date,
         );
+
+        // 서버에서 실제로 데이터가 확인된 경우에만 lastSentDate 업데이트
         if (server != null) {
+          await prefs.setString('lastSentDate', date);
           await prefs.setString('latestServerSleepData', jsonEncode(server));
-          debugPrint('[홈페이지] 서버 수면데이터 캐시 갱신 완료');
+          debugPrint('[홈페이지] 서버 수면데이터 캐시 갱신 완료 및 lastSentDate 업데이트: $date');
+        } else {
+          debugPrint('[홈페이지] 서버에서 데이터 확인 실패 - 3초 후 재시도');
+
+          // 3초 후 재시도
+          Future.delayed(const Duration(seconds: 3), () async {
+            final retryServer = await _getSleepDataFromServer(
+              userId: userId,
+              token: token,
+              date: date,
+            );
+
+            if (retryServer != null) {
+              await prefs.setString('lastSentDate', date);
+              await prefs.setString(
+                'latestServerSleepData',
+                jsonEncode(retryServer),
+              );
+              debugPrint('[홈페이지] 재시도 성공: 서버 수면데이터 캐시 갱신 완료');
+            } else {
+              debugPrint('[홈페이지] 재시도 실패: 서버에 데이터가 아직 준비되지 않음');
+              // 재시도 실패 시에도 lastSentDate는 업데이트 (POST는 성공했으므로)
+              await prefs.setString('lastSentDate', date);
+            }
+          });
         }
       } else {
         debugPrint('[홈페이지] 수면데이터 전송 실패: ${resp.statusCode} ${resp.body}');
