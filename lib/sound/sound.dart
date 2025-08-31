@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/sound/why_recommended_page.dart';
+import 'package:my_app/services/jwt_utils.dart';
 
 /// ==============================
 /// 전역 사운드 서비스 (화면 이동해도 유지)
@@ -423,21 +424,35 @@ class _SoundScreenState extends State<SoundScreen> {
 
   Future<Map<String, String>> _authHeaders() async {
     debugPrint('[AUTH] preparing headers, userId=$userId');
-    String? raw = await storage.read(key: 'jwt');
-    if (raw == null || raw.trim().isEmpty) {
-      throw Exception('JWT가 없습니다. 다시 로그인해주세요.');
+
+    try {
+      // JWT 토큰 유효성 확인
+      final isLoggedIn = await JwtUtils.isLoggedIn();
+      if (!isLoggedIn) {
+        throw Exception('JWT 토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+      }
+
+      String? raw = await storage.read(key: 'jwt');
+      if (raw == null || raw.trim().isEmpty) {
+        throw Exception('JWT가 없습니다. 다시 로그인해주세요.');
+      }
+
+      final tokenOnly =
+          raw.startsWith(RegExp(r'Bearer\s', caseSensitive: false))
+              ? raw.split(' ').last
+              : raw;
+      final bearer = 'Bearer $tokenOnly';
+
+      return {
+        'Authorization': bearer,
+        HttpHeaders.authorizationHeader: bearer,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
+    } catch (e) {
+      debugPrint('[AUTH] _authHeaders 오류: $e');
+      throw Exception('인증 헤더 생성 실패: $e');
     }
-    final tokenOnly =
-        raw.startsWith(RegExp(r'Bearer\s', caseSensitive: false))
-            ? raw.split(' ').last
-            : raw;
-    final bearer = 'Bearer $tokenOnly';
-    return {
-      'Authorization': bearer,
-      HttpHeaders.authorizationHeader: bearer,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
   }
 
   Future<void> _patchPreferredSoundsRank() async {
@@ -506,8 +521,20 @@ class _SoundScreenState extends State<SoundScreen> {
         throw Exception('Unauthorized (401)');
       }
       if (resp.statusCode == 200 ||
+          resp.statusCode == 201 ||
           resp.statusCode == 202 ||
           resp.statusCode == 204) {
+        // 성공 메시지 표시
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('추천 실행 성공! (${resp.statusCode})'),
+              backgroundColor: const Color(0xFF4CAF50),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
         await _loadRecommendations();
 
         // 추천 실행 후 자동재생 시도
@@ -526,9 +553,31 @@ class _SoundScreenState extends State<SoundScreen> {
     } catch (e) {
       debugPrint('execute 에러: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('추천 실행 오류: $e')));
+        String errorMessage = '추천 실행 오류';
+
+        // HTTP 201은 성공이므로 특별 처리
+        if (e.toString().contains('HTTP 201')) {
+          errorMessage = '추천 실행 성공! (201 Created)';
+        } else if (e.toString().contains('HTTP 200')) {
+          errorMessage = '추천 실행 성공! (200 OK)';
+        } else if (e.toString().contains('HTTP 202')) {
+          errorMessage = '추천 실행 성공! (202 Accepted)';
+        } else if (e.toString().contains('HTTP 204')) {
+          errorMessage = '추천 실행 성공! (204 No Content)';
+        } else {
+          errorMessage = '추천 실행 오류: $e';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor:
+                errorMessage.contains('성공')
+                    ? const Color(0xFF4CAF50)
+                    : const Color(0xFFF44336),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => executing = false);
@@ -681,41 +730,37 @@ class _SoundScreenState extends State<SoundScreen> {
   }
 
   Future<String> _ensureUserId() async {
-    final raw = await storage.read(key: 'jwt');
-    String? fromJwt;
-    if (raw != null && raw.trim().isNotEmpty) {
-      try {
-        final tokenOnly =
-            raw.startsWith(RegExp(r'Bearer\s', caseSensitive: false))
-                ? raw.split(' ').last
-                : raw;
-        final parts = tokenOnly.split('.');
-        if (parts.length == 3) {
-          final payloadJson = utf8.decode(
-            base64Url.decode(base64Url.normalize(parts[1])),
-          );
-          final payload = json.decode(payloadJson) as Map<String, dynamic>;
-          fromJwt =
-              (payload['userId'] ?? payload['userID'] ?? payload['sub'])
-                  ?.toString();
-          debugPrint('[USER] recovered from JWT: $fromJwt');
-        }
-      } catch (_) {}
-    }
+    try {
+      // JWT 토큰 유효성 먼저 확인
+      final isLoggedIn = await JwtUtils.isLoggedIn();
+      if (!isLoggedIn) {
+        throw Exception('JWT 토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+      }
 
-    String? fromStorage =
-        await storage.read(key: 'userID') ?? await storage.read(key: 'userId');
+      // JWT 토큰에서 userID 추출
+      final fromJwt = await JwtUtils.getCurrentUserId();
+      if (fromJwt != null && fromJwt.isNotEmpty) {
+        // storage에 userID 저장 (동기화)
+        await storage.write(key: 'userID', value: fromJwt);
+        await storage.write(key: 'userId', value: fromJwt);
+        debugPrint('[USER] JWT에서 userID 추출: $fromJwt');
+        return fromJwt.trim();
+      }
 
-    if (fromJwt != null && fromJwt.isNotEmpty && fromStorage != fromJwt) {
-      await storage.write(key: 'userID', value: fromJwt);
-      await storage.write(key: 'userId', value: fromJwt);
-      fromStorage = fromJwt;
-    }
+      // JWT에서 추출할 수 없는 경우 storage에서 확인
+      String? fromStorage =
+          await storage.read(key: 'userID') ??
+          await storage.read(key: 'userId');
 
-    if (fromStorage != null && fromStorage.trim().isNotEmpty) {
-      return fromStorage.trim();
+      if (fromStorage != null && fromStorage.trim().isNotEmpty) {
+        return fromStorage.trim();
+      }
+
+      throw Exception('userID를 찾을 수 없습니다. 다시 로그인해주세요.');
+    } catch (e) {
+      debugPrint('[USER] _ensureUserId 오류: $e');
+      throw Exception('사용자 인증에 실패했습니다: $e');
     }
-    throw Exception('userID 미존재');
   }
 
   Future<void> _savePreferredSoundsRank() async {
@@ -973,8 +1018,7 @@ class _SoundScreenState extends State<SoundScreen> {
                               child: Text(
                                 loadingRecommendations
                                     ? "추천 불러오는 중..."
-                                    : (recommendationText ??
-                                        "오늘의 추천 사운드를 받아보세요"),
+                                    : "오늘의 추천 사운드를 받아보세요",
                                 style: const TextStyle(
                                   fontSize: 16,
                                   color: Colors.white,
@@ -1135,15 +1179,28 @@ class _SoundScreenState extends State<SoundScreen> {
                                             color: Colors.white.withOpacity(
                                               0.2,
                                             ),
-                                            shape: BoxShape.circle,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                           ),
                                           child: Center(
                                             child: Text(
                                               '$index',
-                                              style: const TextStyle(
-                                                color: Colors.white,
+                                              style: TextStyle(
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
+                                                color:
+                                                    index == 1
+                                                        ? const Color(
+                                                          0xFFFFD700,
+                                                        )
+                                                        : index == 2
+                                                        ? const Color(
+                                                          0xFFC0C0C0,
+                                                        )
+                                                        : const Color(
+                                                          0xFFCD7F32,
+                                                        ),
                                               ),
                                             ),
                                           ),
@@ -1157,34 +1214,31 @@ class _SoundScreenState extends State<SoundScreen> {
                                               Text(
                                                 name,
                                                 style: const TextStyle(
-                                                  color: Colors.white,
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
                                                 ),
                                               ),
                                               if (data != null) ...[
                                                 const SizedBox(height: 8),
                                                 Text(
                                                   "• ${data["feature"]}",
-                                                  style: TextStyle(
-                                                    color: Colors.white
-                                                        .withOpacity(0.9),
+                                                  style: const TextStyle(
                                                     fontSize: 13,
+                                                    color: Colors.white70,
                                                   ),
                                                 ),
                                                 Text(
                                                   "• ${data["effect"]}",
-                                                  style: TextStyle(
-                                                    color: Colors.white
-                                                        .withOpacity(0.9),
+                                                  style: const TextStyle(
                                                     fontSize: 13,
+                                                    color: Colors.white70,
                                                   ),
                                                 ),
                                               ],
                                             ],
                                           ),
                                         ),
-                                        // 재생 버튼
                                         IconButton(
                                           icon: Icon(
                                             sound.currentPlaying == filename &&
@@ -1200,6 +1254,50 @@ class _SoundScreenState extends State<SoundScreen> {
                                     ),
                                   );
                                 }).toList(),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          // 추천 사운드가 로드되기 전까지 안내 메시지
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1D1E33).withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF6C63FF).withOpacity(0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF6C63FF,
+                                    ).withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.hourglass_empty,
+                                    color: Color(0xFF6C63FF),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '오늘의 추천사운드 TOP3가 준비중입니다! 조금만 기다려주세요:)',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -1276,7 +1374,7 @@ class _SoundScreenState extends State<SoundScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  '사운드를 드래그해서 순서를 변경할 수 있습니다. 변경된 순서는 자동으로 저장됩니다.',
+                                  '사운드를 드래그해서 순서를 변경할 수 있습니다. 변경된 순서는 자동으로 사용자 선호도 데이터로 사용됩니다.',
                                   style: TextStyle(
                                     color: const Color(0xFF6C63FF),
                                     fontSize: 14,
@@ -1358,31 +1456,6 @@ class _SoundScreenState extends State<SoundScreen> {
                                             Icons.drag_handle,
                                             color: Colors.white70,
                                             size: 20,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                selected
-                                                    ? const Color(0xFF6C63FF)
-                                                    : Colors.white.withOpacity(
-                                                      0.1,
-                                                    ),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          child: Icon(
-                                            selected && sound.isPlaying
-                                                ? Icons.pause_circle
-                                                : Icons.play_circle,
-                                            color:
-                                                selected
-                                                    ? Colors.white
-                                                    : const Color(0xFF6C63FF),
-                                            size: 24,
                                           ),
                                         ),
                                         const SizedBox(width: 16),

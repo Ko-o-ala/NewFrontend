@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_app/sleep_dashboard/sleep_score_details.dart'
     show SleepScoreArgs;
+import 'package:my_app/services/jwt_utils.dart';
 
 final storage = FlutterSecureStorage();
 
@@ -464,6 +465,27 @@ class _SleepDashboardState extends State<SleepDashboard>
 
   Future<void> _loadUsername() async {
     try {
+      // JWT 토큰 유효성 먼저 확인
+      final isLoggedIn = await JwtUtils.isLoggedIn();
+      if (!isLoggedIn) {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+        return;
+      }
+
+      // 토큰에서 사용자명 추출 시도
+      final usernameFromToken = await JwtUtils.getCurrentUsername();
+      if (usernameFromToken != null) {
+        setState(() {
+          username = usernameFromToken;
+          _isLoggedIn = true;
+        });
+        return;
+      }
+
+      // 토큰에서 사용자명을 가져올 수 없는 경우 서버에서 프로필 정보 가져오기
       final token = await storage.read(key: 'jwt');
       if (token == null) {
         setState(() {
@@ -513,13 +535,27 @@ class _SleepDashboardState extends State<SleepDashboard>
   }
 
   Future<void> _handleLogout() async {
-    await storage.delete(key: 'username');
-    await storage.delete(key: 'jwt');
-    await storage.delete(key: 'userID');
-    setState(() {
-      username = '사용자';
-      _isLoggedIn = false;
-    });
+    try {
+      // 모든 관련 데이터 정리
+      await storage.delete(key: 'username');
+      await storage.delete(key: 'jwt');
+      await storage.delete(key: 'userID');
+
+      // SharedPreferences 데이터도 정리
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lastSentDate');
+      await prefs.remove('pendingSleepPayload');
+      await prefs.remove('latestServerSleepData');
+
+      setState(() {
+        username = '사용자';
+        _isLoggedIn = false;
+      });
+
+      debugPrint('[LOGOUT] 모든 데이터 정리 완료');
+    } catch (e) {
+      debugPrint('[LOGOUT] 로그아웃 중 오류: $e');
+    }
   }
 
   Future<void> sendSleepData({
@@ -538,7 +574,7 @@ class _SleepDashboardState extends State<SleepDashboard>
     final url = Uri.parse('https://kooala.tassoo.uk/sleep-data');
 
     final realStart = sleepStartReal ?? sleepStart;
-    final sleepDate = realStart.subtract(Duration(hours: 6));
+    final sleepDate = realStart.subtract(const Duration(hours: 6));
     final date = DateFormat('yyyy-MM-dd').format(sleepDate);
 
     print('🕒 sleepStartReal: $realStart');
@@ -555,7 +591,7 @@ class _SleepDashboardState extends State<SleepDashboard>
         "lightSleepDuration": lightSleep,
         "awakeDuration": awakeDuration,
       },
-      "segments": segments, // 👈 segment 추가는 선택적으로
+      "segments": segments,
       "sleepScore": sleepScore,
     };
 
@@ -568,12 +604,23 @@ class _SleepDashboardState extends State<SleepDashboard>
       body: jsonEncode(body),
     );
 
-    if (resp.statusCode == 200 || resp.statusCode == 201) {
-      print('✅ 수면 데이터 전송 성공');
+    final isOk = resp.statusCode >= 200 && resp.statusCode < 300;
+
+    if (isOk) {
+      // 201은 바디가 비어있을 수 있으니 파싱은 방어적으로
+      final text = resp.body.trim();
+      final _ = text.isEmpty ? null : jsonDecode(text);
+      // 성공 시 별도 UX가 필요하면 여기서 처리
+      return;
     } else {
-      print('❌ 전송 실패: ${resp.statusCode} / ${resp.body}');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('HTTP ${resp.statusCode}: ${resp.reasonPhrase ?? ''}'),
+        ),
+      );
     }
-  }
+  } // ← 이 닫는 중괄호가 꼭 필요합니다!
 
   int calculateSleepScore({
     required List<HealthDataPoint> data,

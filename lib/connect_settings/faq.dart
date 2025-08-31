@@ -45,7 +45,13 @@ class _FAQPageState extends State<FAQPage> {
     },
   ];
 
-  List<bool> isExpanded = List.generate(6, (index) => false);
+  List<bool> isExpanded = [];
+
+  @override
+  void initState() {
+    super.initState();
+    isExpanded = List.generate(faqs.length, (index) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
