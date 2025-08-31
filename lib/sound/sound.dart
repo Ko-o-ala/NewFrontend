@@ -1176,11 +1176,26 @@ class _SoundScreenState extends State<SoundScreen> {
                                           width: 32,
                                           height: 32,
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(
-                                              0.2,
-                                            ),
+                                            color:
+                                                index == 1
+                                                    ? const Color(
+                                                      0xFFFFD700,
+                                                    ).withOpacity(0.9)
+                                                    : index == 2
+                                                    ? const Color(
+                                                      0xFFC0C0C0,
+                                                    ).withOpacity(0.9)
+                                                    : const Color(
+                                                      0xFFCD7F32,
+                                                    ).withOpacity(0.9),
                                             borderRadius: BorderRadius.circular(
                                               8,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(
+                                                0.3,
+                                              ),
+                                              width: 1,
                                             ),
                                           ),
                                           child: Center(
@@ -1189,18 +1204,7 @@ class _SoundScreenState extends State<SoundScreen> {
                                               style: TextStyle(
                                                 fontSize: 16,
                                                 fontWeight: FontWeight.bold,
-                                                color:
-                                                    index == 1
-                                                        ? const Color(
-                                                          0xFFFFD700,
-                                                        )
-                                                        : index == 2
-                                                        ? const Color(
-                                                          0xFFC0C0C0,
-                                                        )
-                                                        : const Color(
-                                                          0xFFCD7F32,
-                                                        ),
+                                                color: Colors.white,
                                               ),
                                             ),
                                           ),
@@ -1481,34 +1485,7 @@ class _SoundScreenState extends State<SoundScreen> {
                                                       ),
                                                     ),
                                                   ),
-                                                  if (isRecommended)
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 4,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(
-                                                          0xFFFFD700,
-                                                        ).withOpacity(0.2),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              12,
-                                                            ),
-                                                      ),
-                                                      child: const Text(
-                                                        '추천',
-                                                        style: TextStyle(
-                                                          color: Color(
-                                                            0xFFFFD700,
-                                                          ),
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ),
+                                                  // 추천 라벨 제거 - 모든 곡에 표시되어 의미 없음
                                                 ],
                                               ),
                                               if (data != null) ...[
