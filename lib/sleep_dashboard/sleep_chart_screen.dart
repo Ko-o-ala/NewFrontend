@@ -20,18 +20,6 @@ class SleepLog {
   Duration get duration => end.difference(start);
 }
 
-class SleepSegment {
-  final double startMinute; // baseTime으로부터 분
-  final double endMinute;
-  final SleepStage stage;
-
-  SleepSegment({
-    required this.startMinute,
-    required this.endMinute,
-    required this.stage,
-  });
-}
-
 String _ymd(DateTime d) {
   final mm = d.month.toString().padLeft(2, '0');
   final dd = d.day.toString().padLeft(2, '0');
@@ -49,9 +37,13 @@ DateTime _parseTimeWithDate(String timeStr, DateTime date) {
   // 12시 이후(12:00~23:59)는 그 날짜 그대로, 12시 이전(00:00~11:59)은 다음 날짜로
   if (hour < 12) {
     // 00:00~11:59는 다음 날로 처리
+    debugPrint(
+      '[TIME] $timeStr -> 다음 날로 처리: ${dt.add(const Duration(days: 1))}',
+    );
     return dt.add(const Duration(days: 1));
   } else {
     // 12:00~23:59는 그 날 그대로
+    debugPrint('[TIME] $timeStr -> 그 날 그대로: $dt');
     return dt;
   }
 }
@@ -108,81 +100,6 @@ Color stageColor(SleepStage s) {
     case SleepStage.awake:
       return const Color(0xFFEF5350); // 깨어있음 - 빨간색
   }
-}
-
-/// =======================
-/// 차트 Painter
-/// =======================
-
-class SleepTimelinePainter extends CustomPainter {
-  final List<SleepSegment> segments;
-  final double totalWidth; // px
-  final double trackHeight;
-  final int windowMinutes; // 👈 추가 (예: 1080분 = 18시간)
-
-  SleepTimelinePainter({
-    required this.segments,
-    required this.totalWidth,
-    this.trackHeight = 20,
-    this.windowMinutes = 1080, // 기본값 18시간
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    debugPrint('[PAINTER] SleepTimelinePainter.paint 호출:');
-    debugPrint('[PAINTER] segments 개수: ${segments.length}');
-    debugPrint('[PAINTER] totalWidth: $totalWidth, trackHeight: $trackHeight');
-
-    final trackRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, totalWidth, trackHeight),
-      const Radius.circular(8),
-    );
-
-    // 바탕 트랙
-    final basePaint =
-        Paint()
-          ..color = const Color(0xFF12152A)
-          ..style = PaintingStyle.fill;
-    canvas.drawRRect(trackRect, basePaint);
-
-    // 분→픽셀 스케일
-    final double scale = totalWidth / windowMinutes;
-
-    // 구간 칠하기
-    for (final seg in segments) {
-      final left = (seg.startMinute * scale).clamp(0.0, totalWidth);
-      final right = (seg.endMinute * scale).clamp(0.0, totalWidth);
-      if (right <= left) continue;
-
-      debugPrint(
-        '[PAINTER] 그리기: ${seg.stage} - ${seg.startMinute}분~${seg.endMinute}분 -> ${left}px~${right}px',
-      );
-
-      final rrect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, 0, right - left, trackHeight),
-        const Radius.circular(6),
-      );
-      final paint = Paint()..color = stageColor(seg.stage);
-      canvas.drawRRect(rrect, paint);
-    }
-
-    // 격자/눈금선 (3시간 간격 → 6등분)
-    final gridPaint =
-        Paint()
-          ..color = Colors.white10
-          ..strokeWidth = 1;
-    for (int i = 0; i <= 6; i++) {
-      final x = (i / 6) * totalWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, trackHeight), gridPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant SleepTimelinePainter old) =>
-      old.segments != segments ||
-      old.totalWidth != totalWidth ||
-      old.trackHeight != trackHeight ||
-      old.windowMinutes != windowMinutes;
 }
 
 /// =======================
@@ -510,29 +427,6 @@ class _SleepChartScreenState extends State<SleepChartScreen>
 
   /// baseTime = 선택 날짜의 00:00 - 6시간 (전날 18시) ~ 다음날 12:00 까지 18시간 윈도우
   /// 예: 21일을 선택하면 20일 18시 ~ 22일 12시까지의 수면 데이터를 표시
-  /// 이렇게 하면 21일 새벽 2시에 잠든 수면도 21일 데이터로 올바르게 표시됨
-  DateTime _baseTime(DateTime d) =>
-      DateTime(d.year, d.month, d.day).subtract(const Duration(hours: 6));
-
-  List<SleepSegment> _toSegments(List<SleepLog> logs, DateTime base) {
-    debugPrint('[SEGMENTS] _toSegments 호출:');
-    debugPrint('[SEGMENTS] logs 개수: ${logs.length}');
-    debugPrint('[SEGMENTS] base: $base');
-
-    final segments =
-        logs.map((e) {
-          final s = e.start.difference(base).inMinutes.toDouble();
-          final ed = e.end.difference(base).inMinutes.toDouble();
-          debugPrint(
-            '[SEGMENTS] 변환: ${e.start} ~ ${e.end} (${e.stage}) -> ${s}분 ~ ${ed}분',
-          );
-          return SleepSegment(startMinute: s, endMinute: ed, stage: e.stage);
-        }).toList();
-
-    debugPrint('[SEGMENTS] 생성된 segments 개수: ${segments.length}');
-    return segments;
-  }
-
   Duration get _totalSleep {
     // 서버의 totalSleepDuration을 우선 사용 (수면분석과 동일한 값)
     if (_totalSleepDuration != null) {
@@ -574,14 +468,10 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     final d = widget.selectedDate;
     // 수면이 시작된 시간을 기준으로 -6시간을 해서 그 날짜로 데이터 가져오기
     final adjustedDate = d.subtract(const Duration(hours: 6));
-    final base = _baseTime(d);
-    final segments = _toSegments(_logs, base);
 
     // 디버그 로그 추가
     debugPrint('[SLEEP] 빌드 시 데이터 상태:');
     debugPrint('[SLEEP] _logs 개수: ${_logs.length}');
-    debugPrint('[SLEEP] segments 개수: ${segments.length}');
-    debugPrint('[SLEEP] base: $base');
     debugPrint('[SLEEP] _loading: $_loading');
     debugPrint('[SLEEP] _error: $_error');
 
@@ -654,8 +544,6 @@ class _SleepChartScreenState extends State<SleepChartScreen>
                               byStage: _byStage,
                               total: _totalSleep,
                             ),
-                            const SizedBox(height: 24),
-                            _TimelineCard(segments: segments, baseTime: base),
                             const SizedBox(height: 24),
                             _StageBreakdown(byStage: _byStage),
                             const SizedBox(height: 24),
@@ -929,116 +817,6 @@ class _PieChartCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           _Legend(),
-        ],
-      ),
-    );
-  }
-}
-
-class _TimelineCard extends StatelessWidget {
-  final List<SleepSegment> segments;
-  final DateTime baseTime;
-
-  const _TimelineCard({required this.segments, required this.baseTime});
-
-  @override
-  Widget build(BuildContext context) {
-    const width = 1080.0; // 가로 스크롤 기준 총 폭(픽셀)
-
-    // 디버그 로그 추가
-    debugPrint('[TIMELINE] _TimelineCard 빌드:');
-    debugPrint('[TIMELINE] segments 개수: ${segments.length}');
-    debugPrint('[TIMELINE] baseTime: $baseTime');
-    if (segments.isNotEmpty) {
-      debugPrint(
-        '[TIMELINE] 첫 번째 segment: ${segments.first.startMinute} ~ ${segments.first.endMinute} (${segments.first.stage})',
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(Icons.timeline, color: Colors.white70, size: 24),
-              SizedBox(width: 8),
-              Text(
-                '수면 단계 타임라인',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              color: const Color(0xFF0A0E21),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: width,
-                        height: 24,
-                        child: CustomPaint(
-                          painter: SleepTimelinePainter(
-                            segments: segments,
-                            totalWidth: width,
-                            trackHeight: 20,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: width,
-                        height: 24,
-                        child: Stack(
-                          children: List.generate(7, (i) {
-                            // 18시 기준 3시간 간격
-                            final hour = (18 + i * 3) % 24;
-                            final label =
-                                '${hour.toString().padLeft(2, '0')}:00';
-                            final left = (i / 6) * width;
-                            return Positioned(
-                              left: left - 18,
-                              top: 0,
-                              child: Text(
-                                label,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

@@ -35,18 +35,18 @@ class _SleepDashboardState extends State<SleepDashboard>
   // 목표 수면시간과 실제 수면시간을 비교하는 함수
   String _getSleepComparisonText() {
     if (goalText == '미설정' || goalText == '시간 없음') {
-      return 'You have slept $formattedDuration today.';
+      return '오늘 $formattedDuration 수면하셨네요.';
     }
 
     if (formattedDuration == '불러오는 중...') {
-      return 'You have slept $formattedDuration today.';
+      return '오늘 $formattedDuration 수면하셨네요.';
     }
 
     // 목표 시간을 분 단위로 변환
     final goalRegex = RegExp(r'(\d+)시간\s*(\d+)분');
     final goalMatch = goalRegex.firstMatch(goalText);
     if (goalMatch == null) {
-      return 'You have slept $formattedDuration today.';
+      return '오늘 $formattedDuration 수면하셨네요.';
     }
 
     final goalHours = int.parse(goalMatch.group(1)!);
@@ -57,35 +57,37 @@ class _SleepDashboardState extends State<SleepDashboard>
     final actualRegex = RegExp(r'(\d+)시간\s*(\d+)분');
     final actualMatch = actualRegex.firstMatch(formattedDuration);
     if (actualMatch == null) {
-      return 'You have slept $formattedDuration today.';
+      return '오늘 $formattedDuration 수면하셨네요.';
     }
 
     final actualHours = int.parse(actualMatch.group(1)!);
     final actualMinutes = int.parse(actualMatch.group(2)!);
     final actualTotalMinutes = actualHours * 60 + actualMinutes;
 
-    // 목표 대비 달성률 계산 (90-110% 범위를 목표 달성으로 간주)
+    // 목표 대비 달성률 계산 (100% 이상이면 목표 달성)
     final percentage = (actualTotalMinutes / goalTotalMinutes * 100).round();
 
-    if (percentage >= 90 && percentage <= 110) {
-      return '🎉 목표 달성! $formattedDuration 수면 완료';
-    } else if (percentage < 90) {
+    if (percentage >= 100) {
+      if (percentage > 100) {
+        final diffMinutes = actualTotalMinutes - goalTotalMinutes;
+        final diffHours = diffMinutes ~/ 60;
+        final diffMins = diffMinutes % 60;
+        if (diffHours > 0) {
+          return '🎉 목표달성! ${diffHours}시간 ${diffMins}분 더 잘 잤어요!';
+        } else {
+          return '🎉 목표달성! ${diffMins}분 더 잘 잤어요!';
+        }
+      } else {
+        return '🎉 목표달성! $formattedDuration 수면 완료';
+      }
+    } else {
       final diffMinutes = goalTotalMinutes - actualTotalMinutes;
       final diffHours = diffMinutes ~/ 60;
       final diffMins = diffMinutes % 60;
       if (diffHours > 0) {
-        return '⏰ 목표까지 ${diffHours}시간 ${diffMins}분 부족';
+        return '😔 아쉽네요. 목표까지 ${diffHours}시간 ${diffMins}분 부족';
       } else {
-        return '⏰ 목표까지 ${diffMins}분 부족';
-      }
-    } else {
-      final diffMinutes = actualTotalMinutes - goalTotalMinutes;
-      final diffHours = diffMinutes ~/ 60;
-      final diffMins = diffMinutes % 60;
-      if (diffHours > 0) {
-        return '🎉 목표 달성! ${diffHours}시간 ${diffMins}분 더 잘 잤어요!';
-      } else {
-        return '🎉 목표 달성! ${diffMins}분 더 잘 잤어요!';
+        return '😔 아쉽네요. 목표까지 ${diffMins}분 부족';
       }
     }
   }
@@ -702,21 +704,24 @@ class _SleepDashboardState extends State<SleepDashboard>
 
     int score = 100;
 
-    // 1. 수면 시간 감점
+    // 1. 수면 시간 감점 (더 관대하게)
     if (totalMinutes < goalMinutes) {
       final hourDiff = ((goalMinutes - totalMinutes) / 60).ceil();
-      score -= (hourDiff * 20).clamp(0, 40);
+      score -= (hourDiff * 5).clamp(0, 15); // 10 → 5, 25 → 15
     }
 
-    // 2. 수면 구조 감점 (깊/REM/얕은 수면 비율 기준)
+    // 2. 수면 구조 감점 (더 관대하게)
     final deepPct = totalSleepMin > 0 ? deepMin / totalSleepMin : 0;
     final remPct = totalSleepMin > 0 ? remMin / totalSleepMin : 0;
     final lightPct = totalSleepMin > 0 ? lightMin / totalSleepMin : 0;
     final diffSum =
         (deepPct - 0.2).abs() + (remPct - 0.2).abs() + (lightPct - 0.6).abs();
-    score -= ((diffSum / 0.1).round() * 10).clamp(0, 30);
+    score -= ((diffSum / 0.3).round() * 3).clamp(
+      0,
+      10,
+    ); // 0.2 → 0.3, 5 → 3, 15 → 10
 
-    // 3. 심층 수면 분포 감점 (전반부 집중도)
+    // 3. 심층 수면 분포 감점 (더 관대하게)
     final sleepDuration = sleepEnd.difference(sleepStart);
     final earlyEnd = sleepStart.add(sleepDuration * 0.4);
     final earlyDeepMin = data
@@ -730,16 +735,16 @@ class _SleepDashboardState extends State<SleepDashboard>
           (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
         );
     final earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0;
-    if (earlyDeepRatio < 0.8) score -= 8;
+    if (earlyDeepRatio < 0.4) score -= 3; // 0.6 → 0.4, 5 → 3
 
-    // 4. 깸 횟수 감점
-    score -= (wakeEpisodes * 5).clamp(0, 10);
+    // 4. 깸 횟수 감점 (더 관대하게)
+    score -= (wakeEpisodes * 2).clamp(0, 6); // 3 → 2, 8 → 6
 
-    // 5. 수면 통합성 감점
+    // 5. 수면 통합성 감점 (더 관대하게)
     final hours = totalSleepMin / 60;
     final transitionRate = hours > 0 ? transitions / hours : 0;
-    if (transitionRate >= 5) score -= 5;
-    if (longDeepSegments == 0) score -= 10;
+    if (transitionRate >= 10) score -= 2; // 8 → 10, 3 → 2
+    if (longDeepSegments == 0) score -= 3; // 5 → 3
 
     final finalScore = score.clamp(0, 100);
 

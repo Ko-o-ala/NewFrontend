@@ -64,18 +64,7 @@ class GlobalSoundService extends ChangeNotifier {
     // NEW: 현재 인덱스 추적 (플레이리스트용)
     player.currentIndexStream.listen((i) {
       _currentIndex = i;
-      // 현재 재생 중 파일명 업데이트 (playlist일 때)
-      if (i != null &&
-          _playlistSource != null &&
-          i >= 0 &&
-          i < _playlistSource!.length) {
-        // children은 AudioSource, asset 경로에서 파일명만 추출
-        final src = _playlistSource!.children[i];
-        if (src is AudioSource) {
-          // asset 경로는 "assets/sounds/파일" 형식
-          final tag = (src as dynamic).sequence; // 안전장치
-        }
-      }
+      // (참고) _currentPlaying 업데이트는 화면쪽에서 안전하게 처리합니다.
       notifyListeners();
     });
 
@@ -197,46 +186,58 @@ class GlobalSoundService extends ChangeNotifier {
 /// ==============================
 /// 전역 미니 플레이어 (하단 고정)
 /// ==============================
-class GlobalMiniPlayer extends StatelessWidget {
-  final GlobalSoundService service = GlobalSoundService();
+class GlobalMiniPlayer extends StatefulWidget {
+  const GlobalMiniPlayer({super.key});
 
-  GlobalMiniPlayer({super.key});
+  @override
+  State<GlobalMiniPlayer> createState() => _GlobalMiniPlayerState();
+}
+
+class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
+  final GlobalSoundService service = GlobalSoundService();
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: service,
-      builder: (_, __) {
-        if (service.currentPlaying == null && !service.isPlaying) {
-          return const SizedBox.shrink();
-        }
-        final title = (service.currentPlaying ?? '')
-            .replaceAll('.mp3', '')
-            .replaceAll('_', ' ');
-        return Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF6C63FF).withOpacity(0.3),
-                  blurRadius: 14,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+    if (service.currentPlaying == null && !service.isPlaying) {
+      return const SizedBox.shrink();
+    }
+    final title = (service.currentPlaying ?? '')
+        .replaceAll('.mp3', '')
+        .replaceAll('_', ' ');
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6C63FF).withOpacity(0.3),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
             ),
-            child: Material(
-              color: Colors.transparent,
-              child: Padding(
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 진행바 (터치 가능한 슬라이더) - 스트림 기반으로 부드럽게
+              Container(
+                height: 8,
+                margin: const EdgeInsets.only(top: 8, left: 8, right: 8),
+                child: _MiniSeekBar(player: service.player),
+              ),
+              // 메인 컨텐츠
+              Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 12,
@@ -253,13 +254,37 @@ class GlobalMiniPlayer extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        title.isEmpty ? '재생 중' : title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title.isEmpty ? '재생 중' : title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          // 시간 표시 - 스트림으로 자연스럽게 갱신
+                          StreamBuilder<Duration>(
+                            stream: service.player.positionStream,
+                            initialData: service.player.position,
+                            builder: (_, snap) {
+                              final current = snap.data ?? Duration.zero;
+                              final total = service.player.duration;
+                              return Text(
+                                _formatTime(current, total),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 11,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -289,11 +314,22 @@ class GlobalMiniPlayer extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
+  }
+
+  String _formatTime(Duration? current, Duration? total) {
+    String f(Duration d) {
+      final m = d.inMinutes;
+      final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+      return '$m:$s';
+    }
+
+    if (current == null || total == null) return '0:00 / 0:00';
+    return '${f(current)} / ${f(total)}';
   }
 }
 
@@ -1253,12 +1289,6 @@ class _SoundScreenState extends State<SoundScreen> {
 
                   const SizedBox(height: 24),
 
-                  // 진행사항 바 (재생 중일 때만 표시)
-                  if (sound.currentPlaying != null || sound.isPlaying) ...[
-                    _ProgressBar(soundService: sound),
-                    const SizedBox(height: 24),
-                  ],
-
                   // 추천 결과 카드
                   Container(
                     width: double.infinity,
@@ -1555,17 +1585,17 @@ class _SoundScreenState extends State<SoundScreen> {
                                         colors:
                                             index == 1
                                                 ? [
-                                                  const Color(0xFFFFD700),
-                                                  const Color(0xFFFFA500),
+                                                  Color(0xFFFFD700),
+                                                  Color(0xFFFFA500),
                                                 ]
                                                 : index == 2
                                                 ? [
-                                                  const Color(0xFFC0C0C0),
-                                                  const Color(0xFFA0A0A0),
+                                                  Color(0xFFC0C0C0),
+                                                  Color(0xFFA0A0A0),
                                                 ]
                                                 : [
-                                                  const Color(0xFFCD7F32),
-                                                  const Color(0xFFB8860B),
+                                                  Color(0xFFCD7F32),
+                                                  Color(0xFFB8860B),
                                                 ],
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
@@ -2024,160 +2054,62 @@ class _SoundScreenState extends State<SoundScreen> {
 }
 
 /// ==============================
-/// 진행사항 바 위젯
+/// 진행바(미니) 위젯: 스트림 기반, 드래그 종료 시에만 seek
 /// ==============================
-class _ProgressBar extends StatefulWidget {
-  final GlobalSoundService soundService;
-
-  const _ProgressBar({required this.soundService});
+class _MiniSeekBar extends StatefulWidget {
+  final AudioPlayer player;
+  const _MiniSeekBar({required this.player});
 
   @override
-  State<_ProgressBar> createState() => _ProgressBarState();
+  State<_MiniSeekBar> createState() => _MiniSeekBarState();
 }
 
-class _ProgressBarState extends State<_ProgressBar> {
-  Timer? _timer;
+class _MiniSeekBarState extends State<_MiniSeekBar> {
   bool _isDragging = false;
   double _dragValue = 0.0;
 
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (mounted && !_isDragging) {
-        setState(() {});
-      }
-    });
-  }
-
-  String _formatDuration(Duration? duration) {
-    if (duration == null) return '0:00';
-    final minutes = duration.inMinutes;
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+  double _ratio(Duration pos, Duration? dur) {
+    if (dur == null || dur.inMilliseconds <= 0) return 0.0;
+    final r = pos.inMilliseconds / dur.inMilliseconds;
+    if (r.isNaN || r.isInfinite) return 0.0;
+    return r.clamp(0.0, 1.0);
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentPosition = widget.soundService.currentPosition;
-    final duration = widget.soundService.duration;
-    final progress = _isDragging ? _dragValue : widget.soundService.progress;
+    return StreamBuilder<Duration>(
+      stream: widget.player.positionStream,
+      initialData: widget.player.position,
+      builder: (context, snap) {
+        final pos = snap.data ?? Duration.zero;
+        final dur = widget.player.duration;
+        final value = _isDragging ? _dragValue : _ratio(pos, dur);
 
-    if (widget.soundService.currentPlaying == null &&
-        !widget.soundService.isPlaying) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+        return SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: Colors.white,
+            inactiveTrackColor: Colors.white.withOpacity(0.3),
+            thumbColor: Colors.white,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            trackHeight: 4,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (widget.soundService.currentPlaying != null) ...[
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C63FF).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.music_note,
-                    color: Color(0xFF6C63FF),
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    widget.soundService.currentPlaying!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: const Color(0xFF6C63FF),
-              inactiveTrackColor: Colors.white.withOpacity(0.2),
-              thumbColor: const Color(0xFF6C63FF),
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-              trackHeight: 4,
-            ),
-            child: Slider(
-              value: progress,
-              onChanged: (value) {
-                setState(() {
-                  _isDragging = true;
-                  _dragValue = value;
-                });
-              },
-              onChangeEnd: (value) async {
-                setState(() {
-                  _isDragging = false;
-                });
-
-                if (duration != null) {
-                  final newPosition = Duration(
-                    milliseconds: (value * duration.inMilliseconds).round(),
-                  );
-                  await widget.soundService.seekTo(newPosition);
-                }
-              },
-            ),
+          child: Slider(
+            value: value,
+            onChangeStart: (_) => setState(() => _isDragging = true),
+            onChanged: (v) => setState(() => _dragValue = v),
+            onChangeEnd: (v) async {
+              setState(() => _isDragging = false);
+              if (dur != null) {
+                final target = Duration(
+                  milliseconds: (v * dur.inMilliseconds).round(),
+                );
+                await widget.player.seek(target);
+              }
+            },
           ),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _formatDuration(currentPosition),
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 14,
-                ),
-              ),
-              Text(
-                _formatDuration(duration),
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

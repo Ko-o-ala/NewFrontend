@@ -138,30 +138,33 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
 
     int score = 100;
 
-    // 1. 수면 시간 감점
+    // 1. 수면 시간 감점 (더 관대하게)
     if (totalMinutes < goalMinutes) {
       final hourDiff = ((goalMinutes - totalMinutes) / 60).ceil();
-      timePenalty = (hourDiff * 20).clamp(0, 40);
+      timePenalty = (hourDiff * 5).clamp(0, 15); // 10 → 5, 25 → 15
       score -= timePenalty;
     } else {
       timePenalty = 0;
     }
 
-    // 2. 수면 구조 감점
+    // 2. 수면 구조 감점 (더 관대하게)
     if (totalSleepMin > 0) {
       deepPct = deepMin / totalSleepMin;
       remPct = remMin / totalSleepMin;
       lightPct = lightMin / totalSleepMin;
       final diffSum =
           (deepPct - 0.2).abs() + (remPct - 0.2).abs() + (lightPct - 0.6).abs();
-      structurePenalty = ((diffSum / 0.1).round() * 10).clamp(0, 30);
+      structurePenalty = ((diffSum / 0.3).round() * 3).clamp(
+        0,
+        10,
+      ); // 0.2 → 0.3, 5 → 3, 15 → 10
       score -= structurePenalty;
     } else {
-      structurePenalty = 30;
+      structurePenalty = 10; // 15 → 10
       score -= structurePenalty;
     }
 
-    // 3. 초반 deep 분포 감점
+    // 3. 초반 deep 분포 감점 (더 관대하게)
     final sleepDuration = widget.sleepEnd.difference(widget.sleepStart);
     final earlyEnd = widget.sleepStart.add(sleepDuration * 0.4);
     final earlyDeepMin = data
@@ -176,30 +179,32 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
         );
 
     earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0;
-    if (earlyDeepRatio < 0.8) {
-      earlyDeepPenalty = 8;
-      score -= 8;
+    if (earlyDeepRatio < 0.4) {
+      // 0.6 → 0.4
+      earlyDeepPenalty = 3; // 5 → 3
+      score -= 3;
     } else {
       earlyDeepPenalty = 0;
     }
 
-    // 4. 깸 횟수 감점
-    wakePenalty = (wakeEpisodes * 5).clamp(0, 10);
+    // 4. 깸 횟수 감점 (더 관대하게)
+    wakePenalty = (wakeEpisodes * 2).clamp(0, 6); // 3 → 2, 8 → 6
     score -= wakePenalty;
 
-    // 5. 수면 통합성 감점
+    // 5. 수면 통합성 감점 (더 관대하게)
     final hours = totalSleepMin / 60;
     transitionRate = hours > 0 ? transitions / hours : 0;
-    if (transitionRate >= 5) {
-      transitionPenalty = 5;
-      score -= 5;
+    if (transitionRate >= 10) {
+      // 8 → 10
+      transitionPenalty = 2; // 3 → 2
+      score -= 2;
     } else {
       transitionPenalty = 0;
     }
 
     if (longDeepSegments == 0) {
-      deepSegPenalty = 10;
-      score -= 10;
+      deepSegPenalty = 3; // 5 → 3
+      score -= 3;
     } else {
       deepSegPenalty = 0;
     }
@@ -393,7 +398,7 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               ),
               Expanded(
                 child: _buildSummaryItem(
-                  '얕은수면',
+                  '코어수면',
                   '${(lightPct * 100).toStringAsFixed(1)}%',
                   Colors.teal,
                 ),
@@ -463,7 +468,7 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
           ),
           const SizedBox(height: 20),
           _buildPenaltyItem('시간', timePenalty, '목표 수면시간 달성 여부'),
-          _buildPenaltyItem('수면 구조', structurePenalty, '깊은수면, REM, 얕은수면 비율'),
+          _buildPenaltyItem('수면 구조', structurePenalty, '깊은수면, REM, 코어수면 비율'),
           _buildPenaltyItem('초반 deep', earlyDeepPenalty, '수면 초반 깊은수면 분포'),
           _buildPenaltyItem('깸 횟수', wakePenalty, '수면 중 깨어난 횟수'),
           _buildPenaltyItem('전환율', transitionPenalty, '수면 단계 전환 빈도'),
@@ -664,23 +669,23 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   }
 
   Color _getScoreColor(int score) {
-    if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.orange;
-    if (score >= 40) return Colors.deepOrange;
+    if (score >= 70) return Colors.green; // 80 → 70
+    if (score >= 50) return Colors.orange; // 60 → 50
+    if (score >= 30) return Colors.deepOrange; // 40 → 30
     return Colors.red;
   }
 
   String _getScoreMessage(int score) {
-    if (score >= 80) return '훌륭한 수면!';
-    if (score >= 60) return '좋은 수면';
-    if (score >= 40) return '개선이 필요해요';
+    if (score >= 70) return '훌륭한 수면!'; // 80 → 70
+    if (score >= 50) return '좋은 수면'; // 60 → 50
+    if (score >= 30) return '개선이 필요해요'; // 40 → 30
     return '수면 관리가 필요해요';
   }
 
   String _getScoreDescription(int score) {
-    if (score >= 80) return '전문가 수준의 수면';
-    if (score >= 60) return '일반적인 수면 품질';
-    if (score >= 40) return '수면 패턴 개선 필요';
+    if (score >= 70) return '전문가 수준의 수면'; // 80 → 70
+    if (score >= 50) return '일반적인 수면 품질'; // 60 → 50
+    if (score >= 30) return '수면 패턴 개선 필요'; // 40 → 30
     return '수면 전문의 상담 권장';
   }
 }
