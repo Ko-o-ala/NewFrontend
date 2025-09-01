@@ -3,13 +3,16 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
-import 'package:my_app/TopNav.dart';
+import 'package:my_app/Top_Nav.dart';
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:my_app/sleep_dashboard/sleep_score_details.dart'
+    show SleepScoreArgs;
+import 'package:my_app/services/jwt_utils.dart';
 
 final storage = FlutterSecureStorage();
 
@@ -21,11 +24,74 @@ class SleepDashboard extends StatefulWidget {
   State<SleepDashboard> createState() => _SleepDashboardState();
 }
 
-class _SleepDashboardState extends State<SleepDashboard> {
+class _SleepDashboardState extends State<SleepDashboard>
+    with WidgetsBindingObserver {
   String formattedDuration = '불러오는 중...';
   String username = '사용자';
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
   String goalText = '미설정';
+  String _fmtMin(int m) => '${m ~/ 60}시간 ${m % 60}분';
+
+  // 목표 수면시간과 실제 수면시간을 비교하는 함수
+  String _getSleepComparisonText() {
+    if (goalText == '미설정' || goalText == '시간 없음') {
+      return '오늘 $formattedDuration 수면하셨네요.';
+    }
+
+    if (formattedDuration == '불러오는 중...') {
+      return '오늘 $formattedDuration 수면하셨네요.';
+    }
+
+    // 목표 시간을 분 단위로 변환
+    final goalRegex = RegExp(r'(\d+)시간\s*(\d+)분');
+    final goalMatch = goalRegex.firstMatch(goalText);
+    if (goalMatch == null) {
+      return '오늘 $formattedDuration 수면하셨네요.';
+    }
+
+    final goalHours = int.parse(goalMatch.group(1)!);
+    final goalMinutes = int.parse(goalMatch.group(2)!);
+    final goalTotalMinutes = goalHours * 60 + goalMinutes;
+
+    // 실제 수면시간을 분 단위로 변환
+    final actualRegex = RegExp(r'(\d+)시간\s*(\d+)분');
+    final actualMatch = actualRegex.firstMatch(formattedDuration);
+    if (actualMatch == null) {
+      return '오늘 $formattedDuration 수면하셨네요.';
+    }
+
+    final actualHours = int.parse(actualMatch.group(1)!);
+    final actualMinutes = int.parse(actualMatch.group(2)!);
+    final actualTotalMinutes = actualHours * 60 + actualMinutes;
+
+    // 목표 대비 달성률 계산 (100% 이상이면 목표 달성)
+    final percentage = (actualTotalMinutes / goalTotalMinutes * 100).round();
+
+    if (percentage >= 100) {
+      if (percentage > 100) {
+        final diffMinutes = actualTotalMinutes - goalTotalMinutes;
+        final diffHours = diffMinutes ~/ 60;
+        final diffMins = diffMinutes % 60;
+        if (diffHours > 0) {
+          return '🎉 목표달성! ${diffHours}시간 ${diffMins}분 더 잘 잤어요!';
+        } else {
+          return '🎉 목표달성! ${diffMins}분 더 잘 잤어요!';
+        }
+      } else {
+        return '🎉 목표달성! $formattedDuration 수면 완료';
+      }
+    } else {
+      final diffMinutes = goalTotalMinutes - actualTotalMinutes;
+      final diffHours = diffMinutes ~/ 60;
+      final diffMins = diffMinutes % 60;
+      if (diffHours > 0) {
+        return '😔 아쉽네요. 목표까지 ${diffHours}시간 ${diffMins}분 부족';
+      } else {
+        return '😔 아쉽네요. 목표까지 ${diffMins}분 부족';
+      }
+    }
+  }
+
   Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
@@ -37,17 +103,64 @@ class _SleepDashboardState extends State<SleepDashboard> {
   List<HealthDataPoint> healthData = [];
   int sleepScore = 0;
 
+  // 요일별 목표 수면 시간 가져오기
+  Future<String> _getGoalTextForWeekday(DateTime date) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final weekday = date.weekday; // 1=월요일, 7=일요일
+
+      // 요일별 목표 시간 가져오기
+      final goalKey = 'sleep_goal_weekday_$weekday';
+      final goalMinutes = prefs.getInt(goalKey);
+
+      if (goalMinutes != null && goalMinutes > 0) {
+        final hours = goalMinutes ~/ 60;
+        final minutes = goalMinutes % 60;
+        return '${hours}시간 ${minutes}분';
+      } else {
+        return '시간 없음';
+      }
+    } catch (e) {
+      return '시간 없음';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _loadUsername();
-    _fetchTodaySleep();
+
     _loadGoalText();
-    _applyServerCacheIfAny();
-    // HealthKit 윈도우/시작시각 계산 -> 끝난 직후 서버 GET으로 UI 갱신
-    _fetchTodaySleep().then((_) {
-      _refreshFromServerByRealStart(); // ✅ 항상 서버 값으로 덮어씀
-    });
+
+    // HealthKit 윈도우/시작시각 계산
+    _fetchTodaySleep();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 앱 생명주기 상태 변경 시 추가 작업이 필요하면 여기에 추가
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _recalcScore() {
+    if (sleepStart == null || sleepEnd == null || healthData.isEmpty) return;
+    final newScore = calculateSleepScore(
+      data: healthData,
+      sleepStart: (sleepStartReal ?? sleepStart!),
+      sleepEnd: (sleepEndReal ?? sleepEnd!),
+      goalSleepDuration:
+          (goalSleepDuration ??
+              widget.goalSleepDuration ??
+              const Duration(hours: 8)),
+    );
+    setState(() => sleepScore = newScore);
+    _savePendingPayload();
   }
 
   Future<void> _applyServerCacheIfAny() async {
@@ -59,10 +172,12 @@ class _SleepDashboardState extends State<SleepDashboard> {
       final durationMin = (m['Duration']?['totalSleepDuration'] ?? 0) as int;
       final hrs = durationMin ~/ 60;
       final mins = durationMin % 60;
-      setState(() {
-        formattedDuration = '${hrs}시간 ${mins}분';
-        sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
-      });
+      final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
+      //final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
+      // setState(() {
+      //     formattedDuration = '${hrs}시간 ${mins}분';
+      // sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
+      //  });
     } catch (_) {}
   }
 
@@ -111,9 +226,17 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final base = sleepStartReal ?? sleepStart;
     if (token == null || userId == null || base == null) return;
 
-    final date = DateFormat(
-      'yyyy-MM-dd',
-    ).format(base.subtract(const Duration(hours: 6)));
+    // 수정된 날짜 계산: 잠든 시간 기준으로 날짜 결정
+    // 잠든 시간이 자정 전이면 그 날짜, 자정 이후면 전날로 처리
+    DateTime targetDate;
+    if (base.hour < 12) {
+      // 자정 이후(00:00~11:59)에 잠들었다면 전날
+      targetDate = base.subtract(const Duration(days: 1));
+    } else {
+      // 자정 이전(12:00~23:59)에 잠들었다면 그 날
+      targetDate = base;
+    }
+    final date = DateFormat('yyyy-MM-dd').format(targetDate);
 
     final server = await _getSleepDataFromServer(
       userId: userId,
@@ -125,9 +248,11 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final durationMin = (server['Duration']?['totalSleepDuration'] ?? 0) as int;
     final hrs = durationMin ~/ 60;
     final mins = durationMin % 60;
+    final awakeMin = (server['Duration']?['awakeDuration'] ?? 0) as int;
+    final inBedMin = durationMin + awakeMin; // ✅ 포함
 
     setState(() {
-      formattedDuration = '${hrs}시간 ${mins}분';
+      formattedDuration = '${inBedMin ~/ 60}시간 ${inBedMin % 60}분';
       sleepScore = (server['sleepScore'] as int?) ?? sleepScore;
     });
 
@@ -145,10 +270,20 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
     final uid = await storage.read(key: 'userID');
     if (uid == null) return; // ← 추가 (로그인 전에 저장 방지)
-    // 서버 규칙: 시작시각 -6시간을 해당 날짜로 사용
-    final date = DateFormat(
-      'yyyy-MM-dd',
-    ).format(realStart.subtract(const Duration(hours: 6)));
+
+    // 수정된 날짜 계산: 잠든 시간 기준으로 날짜 결정
+    // 잠든 시간이 자정 전이면 그 날짜, 자정 이후면 전날로 처리
+    // 예: 8월 31일 오후 11시에 잠들면 → 8월 31일 데이터 (자정 전)
+    // 예: 9월 1일 새벽 2시에 잠들면 → 8월 31일 데이터 (자정 이후이므로 전날)
+    DateTime targetDate;
+    if (realStart.hour < 12) {
+      // 자정 이후(00:00~11:59)에 잠들었다면 전날
+      targetDate = realStart.subtract(const Duration(days: 1));
+    } else {
+      // 자정 이전(12:00~23:59)에 잠들었다면 그 날
+      targetDate = realStart;
+    }
+    final date = DateFormat('yyyy-MM-dd').format(targetDate);
 
     final segments = _buildSegments();
 
@@ -173,27 +308,83 @@ class _SleepDashboardState extends State<SleepDashboard> {
   }
 
   Future<void> _loadGoalText() async {
-    final goal = await _loadTodayGoalSleepDuration();
-    print('[goal] 불러온 수면 목표: ${goal?.inMinutes}분');
-
+    final text = await _getGoalTextForTodayWithEnabledCheck();
+    if (!mounted) return;
     setState(() {
-      goalSleepDuration = goal ?? Duration(hours: 8);
-      goalText =
-          goal != null
-              ? '${goal.inHours}시간 ${goal.inMinutes % 60}분'
-              : '목표수면시간 없음';
+      goalText = text;
     });
   }
 
-  Future<Duration?> _loadTodayGoalSleepDuration() async {
-    final prefs = await SharedPreferences.getInstance();
-    final weekday = DateTime.now().weekday % 7; // Sunday = 0
-    final minutes = prefs.getInt('sleepGoal_$weekday');
+  // ✅ SleepDashboard 내 _getGoalTextForTodayWithEnabledCheck 보강
+  Future<String> _getGoalTextForTodayWithEnabledCheck() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final weekday = DateTime.now().weekday; // 1=월 .. 7=일
+      bool enabledToday = true;
 
-    if (minutes != null) {
-      return Duration(minutes: minutes);
+      // A) sleep_goal_enabled_days : JSON 또는 CSV
+      final enabledStr = prefs.getString('sleep_goal_enabled_days');
+      if (enabledStr != null) {
+        Set<int> enabled = {};
+        try {
+          final decoded = json.decode(enabledStr);
+          if (decoded is List) {
+            enabled =
+                decoded
+                    .map((e) => int.tryParse(e.toString()) ?? -1)
+                    .where((v) => v >= 1 && v <= 7)
+                    .toSet();
+          } else {
+            enabled =
+                enabledStr
+                    .split(RegExp(r'[^\d]+'))
+                    .where((s) => s.isNotEmpty)
+                    .map(int.parse)
+                    .toSet();
+          }
+        } catch (_) {
+          enabled =
+              enabledStr
+                  .split(RegExp(r'[^\d]+'))
+                  .where((s) => s.isNotEmpty)
+                  .map(int.parse)
+                  .toSet();
+        }
+        if (enabled.isNotEmpty) enabledToday = enabled.contains(weekday);
+      } else {
+        // B) 개별 플래그: sleep_goal_enabled_{weekday}
+        final flag = prefs.getBool('sleep_goal_enabled_$weekday');
+        if (flag != null) enabledToday = flag;
+      }
+
+      // C) ✅ SleepGoalScreen이 저장한 selectedDays(0=일~6=토)도 지원
+      if (enabledStr == null) {
+        // 위 키가 없을 때만 보조로 사용
+        final selected = prefs.getStringList('selectedDays');
+        if (selected != null && selected.isNotEmpty) {
+          final selectedWeekdays =
+              selected
+                  .map((s) => int.tryParse(s) ?? -1)
+                  .where((d) => d >= 0 && d <= 6)
+                  .map((d) => d == 0 ? 7 : d) // 0(일) → 7(일)
+                  .toSet();
+          enabledToday = selectedWeekdays.contains(weekday);
+        }
+      }
+
+      if (!enabledToday) return '시간 없음';
+
+      final goalKey = 'sleep_goal_weekday_$weekday';
+      final goalMinutes = prefs.getInt(goalKey);
+      if (goalMinutes != null && goalMinutes > 0) {
+        final hours = goalMinutes ~/ 60;
+        final minutes = goalMinutes % 60;
+        return '${hours}시간 ${minutes}분';
+      }
+      return '시간 없음';
+    } catch (_) {
+      return '시간 없음';
     }
-    return null;
   }
 
   // 전역: 서버에서 하루 데이터 조회
@@ -252,8 +443,11 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final now = DateTime.now();
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    // iOS: 정오 이후 처음 깨어났을 때 업로드
-    if (now.hour < 12) return;
+    // 시간 조건 제거: 앱 접속 시마다 데이터 전송
+    // if (now.hour < 15) {
+    //   debugPrint('[BG] skip: before 3PM');
+    //   return;
+    // }
     if (lastSentDate == todayStr) return;
 
     try {
@@ -290,21 +484,109 @@ class _SleepDashboardState extends State<SleepDashboard> {
   }
 
   Future<void> _loadUsername() async {
-    final name = await storage.read(key: 'username');
-    setState(() {
-      username = name ?? '사용자';
-      _isLoggedIn = name != null;
-    });
+    try {
+      // JWT 토큰 유효성 먼저 확인
+      final isLoggedIn = await JwtUtils.isLoggedIn();
+      if (!isLoggedIn) {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+        return;
+      }
+
+      // SharedPreferences에서 사용자명 확인 (프로필 수정 후 즉시 반영)
+      final prefs = await SharedPreferences.getInstance();
+      final userNameFromPrefs = prefs.getString('userName');
+      if (userNameFromPrefs != null && userNameFromPrefs.isNotEmpty) {
+        setState(() {
+          username = userNameFromPrefs;
+          _isLoggedIn = true;
+        });
+        return;
+      }
+
+      // 토큰에서 사용자명 추출 시도
+      final usernameFromToken = await JwtUtils.getCurrentUsername();
+      if (usernameFromToken != null) {
+        setState(() {
+          username = usernameFromToken;
+          _isLoggedIn = true;
+        });
+        return;
+      }
+
+      // 토큰에서 사용자명을 가져올 수 없는 경우 서버에서 프로필 정보 가져오기
+      final token = await storage.read(key: 'jwt');
+      if (token == null) {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+        return;
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        if (userData['success'] == true && userData['data'] != null) {
+          final name = userData['data']['name'] ?? '사용자';
+          setState(() {
+            username = name;
+            _isLoggedIn = true;
+          });
+        } else {
+          setState(() {
+            username = '사용자';
+            _isLoggedIn = false;
+          });
+        }
+      } else {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[USERNAME] Error fetching username: $e');
+      setState(() {
+        username = '사용자';
+        _isLoggedIn = false;
+      });
+    }
   }
 
   Future<void> _handleLogout() async {
-    await storage.delete(key: 'username');
-    await storage.delete(key: 'jwt');
-    await storage.delete(key: 'userID');
-    setState(() {
-      username = '사용자';
-      _isLoggedIn = false;
-    });
+    try {
+      // 모든 관련 데이터 정리
+      await storage.delete(key: 'username');
+      await storage.delete(key: 'jwt');
+      await storage.delete(key: 'userID');
+
+      // SharedPreferences 데이터도 정리
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lastSentDate');
+      await prefs.remove('pendingSleepPayload');
+      await prefs.remove('latestServerSleepData');
+
+      setState(() {
+        username = '사용자';
+        _isLoggedIn = false;
+      });
+
+      debugPrint('[LOGOUT] 모든 데이터 정리 완료');
+    } catch (e) {
+      debugPrint('[LOGOUT] 로그아웃 중 오류: $e');
+    }
   }
 
   Future<void> sendSleepData({
@@ -323,7 +605,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
     final url = Uri.parse('https://kooala.tassoo.uk/sleep-data');
 
     final realStart = sleepStartReal ?? sleepStart;
-    final sleepDate = realStart.subtract(Duration(hours: 6));
+    final sleepDate = realStart.subtract(const Duration(hours: 6));
     final date = DateFormat('yyyy-MM-dd').format(sleepDate);
 
     print('🕒 sleepStartReal: $realStart');
@@ -340,7 +622,7 @@ class _SleepDashboardState extends State<SleepDashboard> {
         "lightSleepDuration": lightSleep,
         "awakeDuration": awakeDuration,
       },
-      "segments": segments, // 👈 segment 추가는 선택적으로
+      "segments": segments,
       "sleepScore": sleepScore,
     };
 
@@ -353,12 +635,23 @@ class _SleepDashboardState extends State<SleepDashboard> {
       body: jsonEncode(body),
     );
 
-    if (resp.statusCode == 200 || resp.statusCode == 201) {
-      print('✅ 수면 데이터 전송 성공');
+    final isOk = resp.statusCode >= 200 && resp.statusCode < 300;
+
+    if (isOk) {
+      // 201은 바디가 비어있을 수 있으니 파싱은 방어적으로
+      final text = resp.body.trim();
+      final _ = text.isEmpty ? null : jsonDecode(text);
+      // 성공 시 별도 UX가 필요하면 여기서 처리
+      return;
     } else {
-      print('❌ 전송 실패: ${resp.statusCode} / ${resp.body}');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('HTTP ${resp.statusCode}: ${resp.reasonPhrase ?? ''}'),
+        ),
+      );
     }
-  }
+  } // ← 이 닫는 중괄호가 꼭 필요합니다!
 
   int calculateSleepScore({
     required List<HealthDataPoint> data,
@@ -411,21 +704,24 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
     int score = 100;
 
-    // 1. 수면 시간 감점
+    // 1. 수면 시간 감점 (더 관대하게)
     if (totalMinutes < goalMinutes) {
       final hourDiff = ((goalMinutes - totalMinutes) / 60).ceil();
-      score -= (hourDiff * 20).clamp(0, 40);
+      score -= (hourDiff * 5).clamp(0, 15); // 10 → 5, 25 → 15
     }
 
-    // 2. 수면 구조 감점 (깊/REM/얕은 수면 비율 기준)
+    // 2. 수면 구조 감점 (더 관대하게)
     final deepPct = totalSleepMin > 0 ? deepMin / totalSleepMin : 0;
     final remPct = totalSleepMin > 0 ? remMin / totalSleepMin : 0;
     final lightPct = totalSleepMin > 0 ? lightMin / totalSleepMin : 0;
     final diffSum =
         (deepPct - 0.2).abs() + (remPct - 0.2).abs() + (lightPct - 0.6).abs();
-    score -= ((diffSum / 0.1).round() * 10).clamp(0, 30);
+    score -= ((diffSum / 0.3).round() * 3).clamp(
+      0,
+      10,
+    ); // 0.2 → 0.3, 5 → 3, 15 → 10
 
-    // 3. 심층 수면 분포 감점 (전반부 집중도)
+    // 3. 심층 수면 분포 감점 (더 관대하게)
     final sleepDuration = sleepEnd.difference(sleepStart);
     final earlyEnd = sleepStart.add(sleepDuration * 0.4);
     final earlyDeepMin = data
@@ -439,16 +735,16 @@ class _SleepDashboardState extends State<SleepDashboard> {
           (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
         );
     final earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0;
-    if (earlyDeepRatio < 0.8) score -= 8;
+    if (earlyDeepRatio < 0.4) score -= 3; // 0.6 → 0.4, 5 → 3
 
-    // 4. 깸 횟수 감점
-    score -= (wakeEpisodes * 5).clamp(0, 10);
+    // 4. 깸 횟수 감점 (더 관대하게)
+    score -= (wakeEpisodes * 2).clamp(0, 6); // 3 → 2, 8 → 6
 
-    // 5. 수면 통합성 감점
+    // 5. 수면 통합성 감점 (더 관대하게)
     final hours = totalSleepMin / 60;
     final transitionRate = hours > 0 ? transitions / hours : 0;
-    if (transitionRate >= 5) score -= 5;
-    if (longDeepSegments == 0) score -= 10;
+    if (transitionRate >= 10) score -= 2; // 8 → 10, 3 → 2
+    if (longDeepSegments == 0) score -= 3; // 5 → 3
 
     final finalScore = score.clamp(0, 100);
 
@@ -484,7 +780,10 @@ class _SleepDashboardState extends State<SleepDashboard> {
 
     sleepStart = DateTime(now.year, now.month, now.day - 1, 18);
     sleepEnd = DateTime(now.year, now.month, now.day, 12);
-
+    final inBedMin = deepMin + remMin + lightMin + awakeMin; // ✅ 포함
+    setState(() {
+      formattedDuration = _fmtMin(inBedMin);
+    });
     final authorized = await health.requestAuthorization(types);
     if (!authorized) {
       setState(() => formattedDuration = '❌ 건강 앱 접근 거부됨');
@@ -519,7 +818,6 @@ class _SleepDashboardState extends State<SleepDashboard> {
       Duration total = Duration.zero;
       for (var d in data) {
         final dur = d.dateTo.difference(d.dateFrom);
-        total += dur;
         switch (d.type) {
           case HealthDataType.SLEEP_DEEP:
             deepMin += dur.inMinutes;
@@ -538,19 +836,24 @@ class _SleepDashboardState extends State<SleepDashboard> {
             break;
         }
       }
-
-      todaySleep = total;
-      //formattedDuration = '${total.inHours}시간 ${total.inMinutes % 60}분';
-
-      sleepScore = calculateSleepScore(
+      final inBedMin = deepMin + remMin + lightMin + awakeMin; // ✅ 깨어있음 포함
+      final score = calculateSleepScore(
         data: data,
-        sleepStart: sleepStart!,
-        sleepEnd: sleepEnd!,
-        goalSleepDuration: widget.goalSleepDuration ?? Duration(hours: 8),
+        // 가능하면 “실제” 수면시작/종료를 쓰면 시간감점 왜곡이 줄어요:
+        sleepStart: (sleepStartReal ?? sleepStart!),
+        sleepEnd: (sleepEndReal ?? sleepEnd!),
+        goalSleepDuration:
+            (goalSleepDuration ??
+                widget.goalSleepDuration ??
+                const Duration(hours: 8)),
       );
 
-      setState(() {});
-      await _savePendingPayload(); // ← 정오 자동 업로드용 페이로드 캐시
+      setState(() {
+        todaySleep = Duration(minutes: inBedMin);
+        formattedDuration = _fmtMin(inBedMin);
+        sleepScore = score;
+      });
+      await _savePendingPayload(); // ✅ 업로드용 페이로드는 계속 저장// ← 정오 자동 업로드용 페이로드 캐시
     } catch (e) {
       setState(() => formattedDuration = '⚠️ 오류 발생');
       print('⚠️ 오류: $e');
@@ -560,11 +863,16 @@ class _SleepDashboardState extends State<SleepDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: TopNav(
-        isLoggedIn: _isLoggedIn,
-        onLogin: () => Navigator.pushNamed(context, '/login'),
-        onLogout: _handleLogout,
+      appBar: const TopNav(
+        title: '수면 분석',
+        showBackButton: true, // 홈은 루트이므로 숨김
+        // gradient: LinearGradient( // 필요시 그라디언트 켜기
+        //   colors: [Color(0xFF1D1E33), Color(0xFF141527)],
+        //   begin: Alignment.topLeft,
+        //   end: Alignment.bottomRight,
+        // ),
       ),
+
       backgroundColor: const Color(0xFF0A0E21),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -689,21 +997,14 @@ class _SleepDashboardState extends State<SleepDashboard> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          const TextSpan(text: 'You have slept '),
-                          TextSpan(
-                            text: formattedDuration,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                          const TextSpan(text: ' today.'),
-                        ],
+                    Text(
+                      _getSleepComparisonText(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
                       ),
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   ],
                 ),
@@ -715,15 +1016,16 @@ class _SleepDashboardState extends State<SleepDashboard> {
                     child: _InfoItem(
                       icon: Icons.nights_stay,
                       time: formattedDuration,
-                      label: '오늘 총 수면 시간',
+                      label: '오늘 총 수면시간',
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 20),
                   Expanded(
                     child: _InfoItem(
                       icon: Icons.access_time,
                       time: goalText,
                       label: '목표 수면 시간',
+                      // ✅ SleepDashboard.build 안의 _InfoItem(onTap) 부분 교체
                       onTap: () async {
                         final updatedDuration = await Navigator.pushNamed(
                           context,
@@ -731,10 +1033,15 @@ class _SleepDashboardState extends State<SleepDashboard> {
                         );
                         if (updatedDuration is Duration) {
                           setState(() {
-                            goalSleepDuration = updatedDuration;
-                            goalText =
-                                '${updatedDuration.inHours}시간 ${updatedDuration.inMinutes % 60}분';
+                            goalSleepDuration = updatedDuration; // ← State 업데이트
                           });
+                          final newText =
+                              await _getGoalTextForTodayWithEnabledCheck();
+                          if (!mounted) return;
+                          setState(() {
+                            goalText = newText;
+                          });
+                          _recalcScore();
                         }
                       },
                     ),
@@ -742,93 +1049,93 @@ class _SleepDashboardState extends State<SleepDashboard> {
                 ],
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  if (sleepScore == 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("수면점수 계산 중입니다. 잠시 후 다시 시도해주세요."),
-                      ),
-                    );
-                    return;
-                  }
-                  final token = await storage.read(key: 'jwt');
-                  final userId = await storage.read(key: 'userID');
-                  if (token == null ||
-                      userId == null ||
-                      todaySleep == null ||
-                      sleepStart == null ||
-                      sleepEnd == null) {
-                    print('❌ 유저/토큰/수면데이터 부족');
-                    return;
-                  }
-                  print('📤 sleepScore 전송 전 확인: $sleepScore');
-                  print('🕒 sleepStartReal: $sleepStartReal');
-                  final segments =
-                      healthData
-                          .where(
-                            (d) =>
-                                _isSleepType(d.type) ||
-                                d.type == HealthDataType.SLEEP_AWAKE,
-                          )
-                          .map((d) {
-                            String stage;
-                            switch (d.type) {
-                              case HealthDataType.SLEEP_DEEP:
-                                stage = "deep";
-                                break;
-                              case HealthDataType.SLEEP_REM:
-                                stage = "rem";
-                                break;
-                              case HealthDataType.SLEEP_LIGHT:
-                              case HealthDataType.SLEEP_ASLEEP:
-                                stage = "light";
-                                break;
-                              case HealthDataType.SLEEP_AWAKE:
-                                stage = "awake";
-                                break;
-                              default:
-                                stage = "unknown";
-                            }
+              // ElevatedButton(
+              //   onPressed: () async {
+              //     if (sleepScore == 0) {
+              //       ScaffoldMessenger.of(context).showSnackBar(
+              //         const SnackBar(
+              //           content: Text("수면점수 계산 중입니다. 잠시 후 다시 시도해주세요."),
+              //         ),
+              //       );
+              //       return;
+              //     }
+              //     final token = await storage.read(key: 'jwt');
+              //     final userId = await storage.read(key: 'userID');
+              //     if (token == null ||
+              //         userId == null ||
+              //         todaySleep == null ||
+              //         sleepStart == null ||
+              //         sleepEnd == null) {
+              //       print('❌ 유저/토큰/수면데이터 부족');
+              //       return;
+              //     }
+              //     print('📤 sleepScore 전송 전 확인: $sleepScore');
+              //     print('🕒 sleepStartReal: $sleepStartReal');
+              //     final segments =
+              //         healthData
+              //             .where(
+              //               (d) =>
+              //                   _isSleepType(d.type) ||
+              //                   d.type == HealthDataType.SLEEP_AWAKE,
+              //             )
+              //             .map((d) {
+              //               String stage;
+              //               switch (d.type) {
+              //               case HealthDataType.SLEEP_DEEP:
+              //     stage = "deep";
+              //     break;
+              //   case HealthDataType.SLEEP_REM:
+              //     stage = "rem";
+              //     break;
+              //   case HealthDataType.SLEEP_LIGHT:
+              //   case HealthDataType.SLEEP_ASLEEP:
+              //     stage = "light";
+              //     break;
+              //   case HealthDataType.SLEEP_AWAKE:
+              //     stage = "awake";
+              //     break;
+              //   default:
+              //     stage = "unknown";
+              // }
 
-                            return {
-                              "startTime": d.dateFrom
-                                  .toIso8601String()
-                                  .substring(11, 16),
-                              "endTime": d.dateTo.toIso8601String().substring(
-                                11,
-                                16,
-                              ),
-                              "stage": stage,
-                            };
-                          })
-                          .toList();
-                  await sendSleepData(
-                    userId: userId,
-                    token: token,
-                    sleepStart: sleepStartReal ?? sleepStart!,
-                    sleepEnd: sleepEndReal ?? sleepEnd!,
-                    totalSleep: deepMin + remMin + lightMin,
-                    deepSleep: deepMin,
-                    remSleep: remMin,
-                    lightSleep: lightMin,
-                    awakeDuration: awakeMin,
-                    segments: segments, // 이건 위에서 따로 생성해 둔 리스트
-                    sleepScore: sleepScore,
-                  );
-                  await _refreshFromServerByRealStart();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2C2C72),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('🛏️ 오늘 수면 데이터 전송하기'),
-              ),
-              const SizedBox(height: 24),
+              // return {
+              //   "startTime": d.dateFrom
+              //       .toIso8601String()
+              //       .substring(11, 16),
+              //   "endTime": d.dateTo.toIso8601String().substring(
+              //     11,
+              //     16,
+              //   ),
+              //     "stage": stage,
+              //   };
+              //         })
+              //         .toList();
+              //     await sendSleepData(
+              //       userId: userId,
+              //       token: userId,
+              //       sleepStart: sleepStartReal ?? sleepStart!,
+              //       sleepEnd: sleepEndReal ?? sleepEnd!,
+              //       totalSleep: deepMin + remMin + lightMin,
+              //       deepSleep: deepMin,
+              //       remSleep: remMin,
+              //       lightSleep: lightMin,
+              //       awakeDuration: awakeMin,
+              //       segments: segments, // 이건 위에서 따로 생성해 둔 리스트
+              //       sleepScore: sleepScore,
+              //     );
+              //     await _refreshFromServerByRealStart();
+              //   },
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: const Color(0xFF2C2C72),
+              //       shape: RoundedRectangleBorder(
+              //         borderRadius: BorderRadius.circular(8),
+              //       ),
+              //       foregroundColor: Colors.white,
+              //       padding: const EdgeInsets.symmetric(vertical: 14),
+              //     ),
+              //   child: const Text('🛏️ 오늘 수면 데이터 전송하기'),
+              // ),
+              // const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -853,24 +1160,49 @@ class _SleepDashboardState extends State<SleepDashboard> {
                           size: 24,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          '오늘 $username님의 수면점수',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        Expanded(
+                          child: Text(
+                            '오늘 $username님의 수면점수',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Spacer(),
+
                         TextButton(
-                          onPressed: () {},
-                          child: const Text(
-                            '더 알아보기 >',
-                            style: TextStyle(
-                              color: Color(0xFF6C63FF),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                          onPressed: () {
+                            print('=== 수면점수 상세 페이지로 이동 ===');
+                            print('현재 목표 수면시간: $goalSleepDuration');
+                            if (goalSleepDuration != null) {
+                              print(
+                                '현재 목표 수면시간 (시간): ${goalSleepDuration!.inHours}시간 ${goalSleepDuration!.inMinutes % 60}분',
+                              );
+                              print(
+                                '현재 목표 수면시간 (분): ${goalSleepDuration!.inMinutes}분',
+                              );
+                            } else {
+                              print('목표 수면시간이 설정되지 않음');
+                            }
+                            print('현재 수면점수: $sleepScore');
+
+                            Navigator.pushNamed(
+                              context,
+                              '/score-explain',
+                              arguments: {
+                                'data': healthData,
+                                'sleepStart': sleepStartReal ?? sleepStart!,
+                                'sleepEnd': sleepEndReal ?? sleepEnd!,
+                                'goalSleepDuration':
+                                    goalSleepDuration ??
+                                    const Duration(hours: 8),
+                                // finalScore 제거 - sleep_score_details.dart에서 새로 계산
+                              },
+                            );
+                          },
+                          child: const Text('더 알아보기 >'),
                         ),
                       ],
                     ),
@@ -921,9 +1253,9 @@ class _SleepDashboardState extends State<SleepDashboard> {
                     const Divider(color: Colors.white10, height: 32),
                     _buildActionTile(
                       icon: Icons.psychology,
-                      title: '수면 조언 받으러 가기',
-                      subtitle: '전문가의 수면 개선 팁',
-                      onTap: () => Navigator.pushNamed(context, '/advice'),
+                      title: '내 수면 자세히 알아보기',
+                      subtitle: '수면 차트 보러가기',
+                      onTap: () => Navigator.pushNamed(context, '/sleep-chart'),
                     ),
                   ],
                 ),
@@ -936,7 +1268,9 @@ class _SleepDashboardState extends State<SleepDashboard> {
   }
 
   Widget _buildTab(BuildContext context, String label, bool selected) {
-    Widget to = SleepDashboard(goalSleepDuration: widget.goalSleepDuration);
+    Widget to = SleepDashboard(
+      goalSleepDuration: goalSleepDuration ?? widget.goalSleepDuration,
+    );
     if (label == 'Weeks') to = WeeklySleepScreen();
     if (label == 'Months') to = MonthlySleepScreen();
     return GestureDetector(
@@ -1036,7 +1370,8 @@ class _InfoItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = Container(
-      padding: const EdgeInsets.all(20),
+      height: 90,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1D1E33),
         borderRadius: BorderRadius.circular(16),
@@ -1051,32 +1386,35 @@ class _InfoItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: const Color(0xFF6C63FF).withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 28, color: const Color(0xFF6C63FF)),
+            child: Icon(icon, size: 20, color: const Color(0xFF6C63FF)),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   time,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                    fontSize: 15,
                     color: Colors.white,
                   ),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 14, color: Colors.white70),
+                  style: const TextStyle(fontSize: 11, color: Colors.white70),
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ],
             ),

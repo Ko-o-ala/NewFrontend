@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../onboarding_data.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -63,133 +64,348 @@ class _HealthPageState extends State<HealthPage> {
       screenTimeBeforeSleep != null &&
       stressLevel != null;
 
-  Widget _q(String t, List<String> opts, String? gv, Function(String?) oc) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          t,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        ...opts.map(
-          (o) => RadioListTile(
-            title: Text(o),
-            value: o,
-            groupValue: gv,
-            onChanged: oc,
+  Widget _buildQuestionCard(
+    String title,
+    List<String> options,
+    String? groupValue,
+    Function(String?) onChanged,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
-        ),
-        const SizedBox(height: 16),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.quiz,
+                  color: Color(0xFFFFD700),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ...options.map(
+            (option) => Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color:
+                    groupValue == option
+                        ? const Color(0xFF6C63FF).withOpacity(0.2)
+                        : const Color(0xFF0A0E21),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      groupValue == option
+                          ? const Color(0xFF6C63FF)
+                          : Colors.white.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+              child: RadioListTile(
+                title: Text(
+                  option,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight:
+                        groupValue == option
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                  ),
+                ),
+                value: option,
+                groupValue: groupValue,
+                onChanged: onChanged,
+                activeColor: const Color(0xFF6C63FF),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // 시스템 UI 스타일 설정 (상태바, 네비게이션바 색상)
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      ),
+    );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFDF9),
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '알라와 코잘라',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF0A0E21),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              Image.asset('lib/assets/koala.png', width: 120),
-              const SizedBox(height: 16),
-              _q(
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '건강 상태 파악',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '수면에 영향을 주는\n건강 관련 정보를 알려주세요',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 코알라 이미지
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'lib/assets/koala.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 질문들
+              _buildQuestionCard(
                 'Q19. 잠들끼까지 걸리는 시간은 보통 어떻게 되시나요?',
                 ['5분 이하', '5~15분', '15~30분', '30분 이상'],
                 timeToFallAsleep,
                 (v) => setState(() => timeToFallAsleep = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q20. 커피(카페인)는 보통 하루에 몇잔정도 드시나요?',
                 ['안 마심', '1~2잔', '3잔 이상'],
                 caffeineIntakeLevel,
                 (v) => setState(() => caffeineIntakeLevel = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q21. 운동을 얼마나 자주 하시나요?',
                 ['하지 않음', '주2~3회', '매일'],
                 exerciseFrequency,
                 (v) => setState(() => exerciseFrequency = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q22. 운동을 언제 하시나요?',
                 ['오전', '낮', '저녁', '운동을 하지 않음'],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q23. 취침 전 전자기기 사용 시간은 어떻게 되시나요?',
                 ['없음', '30분 이하', '1시간 이상'],
                 screenTimeBeforeSleep,
                 (v) => setState(() => screenTimeBeforeSleep = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q24. 최근 스트레스를 얼마나 받으시나요?',
                 ['높음', '보통', '낮음'],
                 stressLevel,
                 (v) => setState(() => stressLevel = v),
               ),
+
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed:
-                    isValid
-                        ? () async {
-                          final m = OnboardingData.answers;
 
-                          m['timeToFallAsleep'] =
-                              timeToFallAsleepMap[timeToFallAsleep];
-                          m['caffeineIntakeLevel'] =
-                              caffeineIntakeLevelMap[caffeineIntakeLevel];
-                          m['exerciseFrequency'] =
-                              exerciseFrequencyMap[exerciseFrequency];
-                          m['exerciseWhen'] = exerciseWhenMap[exerciseWhen];
-                          m['screenTimeBeforeSleep'] =
-                              screenTimeBeforeSleepMap[screenTimeBeforeSleep];
-                          m['stressLevel'] = stressLevelMap[stressLevel];
+              // 다음 버튼
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed:
+                      isValid
+                          ? () async {
+                            final m = OnboardingData.answers;
 
-                          await storage.write(
-                            key: 'timeToFallAsleep',
-                            value: timeToFallAsleepMap[timeToFallAsleep] ?? '',
-                          );
-                          await storage.write(
-                            key: 'caffeineIntakeLevel',
-                            value:
-                                caffeineIntakeLevelMap[caffeineIntakeLevel] ??
-                                '',
-                          );
-                          await storage.write(
-                            key: 'exerciseFrequency',
-                            value:
-                                exerciseFrequencyMap[exerciseFrequency] ?? '',
-                          );
-                          await storage.write(
-                            key: 'exerciseWhen',
-                            value: exerciseWhenMap[exerciseWhen] ?? '',
-                          );
-                          await storage.write(
-                            key: 'screenTimeBeforeSleep',
-                            value:
-                                screenTimeBeforeSleepMap[screenTimeBeforeSleep] ??
-                                '',
-                          );
-                          await storage.write(
-                            key: 'stressLevel',
-                            value: stressLevelMap[stressLevel] ?? '',
-                          );
+                            m['timeToFallAsleep'] =
+                                timeToFallAsleepMap[timeToFallAsleep];
+                            m['caffeineIntakeLevel'] =
+                                caffeineIntakeLevelMap[caffeineIntakeLevel];
+                            m['exerciseFrequency'] =
+                                exerciseFrequencyMap[exerciseFrequency];
+                            m['exerciseWhen'] = exerciseWhenMap[exerciseWhen];
+                            m['screenTimeBeforeSleep'] =
+                                screenTimeBeforeSleepMap[screenTimeBeforeSleep];
+                            m['stressLevel'] = stressLevelMap[stressLevel];
 
-                          widget.onNext();
-                        }
-                        : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8183D9),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+                            await storage.write(
+                              key: 'timeToFallAsleep',
+                              value:
+                                  timeToFallAsleepMap[timeToFallAsleep] ?? '',
+                            );
+                            await storage.write(
+                              key: 'caffeineIntakeLevel',
+                              value:
+                                  caffeineIntakeLevelMap[caffeineIntakeLevel] ??
+                                  '',
+                            );
+                            await storage.write(
+                              key: 'exerciseFrequency',
+                              value:
+                                  exerciseFrequencyMap[exerciseFrequency] ?? '',
+                            );
+                            await storage.write(
+                              key: 'exerciseWhen',
+                              value: exerciseWhenMap[exerciseWhen] ?? '',
+                            );
+                            await storage.write(
+                              key: 'screenTimeBeforeSleep',
+                              value:
+                                  screenTimeBeforeSleepMap[screenTimeBeforeSleep] ??
+                                  '',
+                            );
+                            await storage.write(
+                              key: 'stressLevel',
+                              value: stressLevelMap[stressLevel] ?? '',
+                            );
+
+                            widget.onNext();
+                          }
+                          : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+                  ),
+                  child: Text(
+                    '다음',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          isValid
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.5),
+                    ),
                   ),
                 ),
-                child: const Text('다음', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),

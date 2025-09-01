@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../onboarding_data.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 final storage = FlutterSecureStorage();
 const Map<String, String> napFrequencyMap = {
   '매일': 'daily',
-  '주3~4': '3to4perWeek',
-  '1~2회': '1to2perWeek',
+  '주 3~4회': '3to4perWeek',
+  '주 1~2회': '1to2perWeek',
   '거의 안 잠': 'rarely',
 };
 
@@ -50,106 +51,320 @@ class _HabitPage2State extends State<HabitPage2> {
       mostDrowsyTime != null &&
       averageSleepDuration != null;
 
-  Widget _q(String t, List<String> opts, String? gv, Function(String?) cg) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          t,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        ...opts.map(
-          (o) => RadioListTile(
-            title: Text(o),
-            value: o,
-            groupValue: gv,
-            onChanged: cg,
+  Widget _buildQuestionCard(
+    String title,
+    List<String> options,
+    String? groupValue,
+    Function(String?) onChanged,
+  ) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
-        ),
-        const SizedBox(height: 16),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD700).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.quiz,
+                  color: Color(0xFFFFD700),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ...options.map(
+            (option) => Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color:
+                    groupValue == option
+                        ? const Color(0xFF6C63FF).withOpacity(0.2)
+                        : const Color(0xFF0A0E21),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      groupValue == option
+                          ? const Color(0xFF6C63FF)
+                          : Colors.white.withOpacity(0.1),
+                  width: 1,
+                ),
+              ),
+              child: RadioListTile(
+                title: Text(
+                  option,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight:
+                        groupValue == option
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                  ),
+                ),
+                value: option,
+                groupValue: groupValue,
+                onChanged: onChanged,
+                activeColor: const Color(0xFF6C63FF),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // 시스템 UI 스타일 설정 (상태바, 네비게이션바 색상)
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      ),
+    );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFDF9),
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '알라와 코잘라',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF0A0E21),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              Image.asset('lib/assets/koala.png', width: 120),
-              const SizedBox(height: 16),
-              _q(
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.nightlight,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '수면 패턴 상세',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '낮잠과 수면 시간에 대한\n더 자세한 정보를 알려주세요',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 코알라 이미지
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'lib/assets/koala.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 질문들
+              _buildQuestionCard(
                 'Q9. 낮잠 빈도는 어떻게 되시나요?',
-                ['매일', '주3~4', '1~2회', '거의 안 잠'],
+                ['매일', '주 3~4회', '주 1~2회', '거의 안 잠'],
                 napFrequency,
                 (v) => setState(() => napFrequency = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q10. 평소에 낮잠은 얼마나 주무시나요?',
                 ['15분 이하', '15~30분', '30분~1시간', '1시간 이상'],
                 napDuration,
                 (v) => setState(() => napDuration = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q11. 가장 졸리거나 피곤한 시간대는 어떻게 되나요?',
                 ['오전', '오후', '저녁', '새벽', '일정 없음'],
                 mostDrowsyTime,
                 (v) => setState(() => mostDrowsyTime = v),
               ),
-              _q(
+              _buildQuestionCard(
                 'Q12. 최근 1주일 평균 수면 시간은 어떻게 되나요?',
                 ['4시간 이하', '4~6시간', '6~7시간', '7~8시간', '8시간 이상'],
                 averageSleepDuration,
                 (v) => setState(() => averageSleepDuration = v),
               ),
+
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed:
-                    isValid
-                        ? () async {
-                          final m = OnboardingData.answers;
 
-                          m['napFrequency'] = napFrequencyMap[napFrequency];
-                          m['napDuration'] = napDurationMap[napDuration];
-                          m['mostDrowsyTime'] =
-                              mostDrowsyTimeMap[mostDrowsyTime];
-                          m['averageSleepDuration'] =
-                              averageSleepDurationMap[averageSleepDuration];
+              // 다음 버튼
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed:
+                      isValid
+                          ? () async {
+                            final m = OnboardingData.answers;
 
-                          await storage.write(
-                            key: 'napFrequency',
-                            value: napFrequencyMap[napFrequency] ?? '',
-                          );
-                          await storage.write(
-                            key: 'napDuration',
-                            value: napDurationMap[napDuration] ?? '',
-                          );
-                          await storage.write(
-                            key: 'mostDrowsyTime',
-                            value: mostDrowsyTimeMap[mostDrowsyTime] ?? '',
-                          );
-                          await storage.write(
-                            key: 'averageSleepDuration',
-                            value:
-                                averageSleepDurationMap[averageSleepDuration] ??
-                                '',
-                          );
+                            m['napFrequency'] = napFrequencyMap[napFrequency];
+                            m['napDuration'] = napDurationMap[napDuration];
+                            m['mostDrowsyTime'] =
+                                mostDrowsyTimeMap[mostDrowsyTime];
+                            m['averageSleepDuration'] =
+                                averageSleepDurationMap[averageSleepDuration];
 
-                          widget.onNext();
-                        }
-                        : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8183D9),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+                            await storage.write(
+                              key: 'napFrequency',
+                              value: napFrequencyMap[napFrequency] ?? '',
+                            );
+                            await storage.write(
+                              key: 'napDuration',
+                              value: napDurationMap[napDuration] ?? '',
+                            );
+                            await storage.write(
+                              key: 'mostDrowsyTime',
+                              value: mostDrowsyTimeMap[mostDrowsyTime] ?? '',
+                            );
+                            await storage.write(
+                              key: 'averageSleepDuration',
+                              value:
+                                  averageSleepDurationMap[averageSleepDuration] ??
+                                  '',
+                            );
+
+                            widget.onNext();
+                          }
+                          : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C63FF),
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+                  ),
+                  child: Text(
+                    '다음',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          isValid
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.5),
+                    ),
                   ),
                 ),
-                child: const Text('다음', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),

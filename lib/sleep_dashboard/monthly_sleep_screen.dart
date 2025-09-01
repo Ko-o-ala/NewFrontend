@@ -1,7 +1,6 @@
 // ✅ 필요한 import 유지
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:my_app/TopNav.dart';
 
 import 'package:intl/intl.dart';
 import 'dart:convert';
@@ -28,11 +27,53 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
   }
 
   Future<void> _loadUsername() async {
-    final name = await storage.read(key: 'username');
-    setState(() {
-      username = name ?? '사용자';
-      _isLoggedIn = name != null;
-    });
+    try {
+      final token = await storage.read(key: 'jwt');
+      if (token == null) {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+        return;
+      }
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final response = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+        if (userData['success'] == true && userData['data'] != null) {
+          final name = userData['data']['name'] ?? '사용자';
+          setState(() {
+            username = name;
+            _isLoggedIn = true;
+          });
+        } else {
+          setState(() {
+            username = '사용자';
+            _isLoggedIn = false;
+          });
+        }
+      } else {
+        setState(() {
+          username = '사용자';
+          _isLoggedIn = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[USERNAME] Error fetching username: $e');
+      setState(() {
+        username = '사용자';
+        _isLoggedIn = false;
+      });
+    }
   }
 
   /// ⬇️ 이번(커서) 달의 평균 수면(분) / 평균 점수
@@ -102,346 +143,537 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
 
       try {
         final res = await http.get(uri, headers: headers);
-        if (res.statusCode != 200) return null; // 데이터 없는 날
+        if (res.statusCode != 200) return null;
 
         final body = json.decode(res.body);
-        Map<String, dynamic>? record;
+        final List dataList = body['data'] ?? [];
+        if (dataList.isEmpty) return null;
 
-        if (body['data'] is List && (body['data'] as List).isNotEmpty) {
-          record = Map<String, dynamic>.from((body['data'] as List).first);
-        } else if (body is Map &&
-            (body['userID'] != null || body['date'] != null)) {
-          record = Map<String, dynamic>.from(body);
-        }
-        if (record == null) return null;
-
-        final durationBlock = record['Duration'] ?? record['duration'];
-        final total = _asInt(durationBlock?['totalSleepDuration']);
-        final score = _asInt(record['sleepScore']);
-        if (total == null || score == null) return null;
-
-        return MapEntry(date, {'duration': total, 'score': score});
+        final item = dataList.first;
+        return MapEntry(date, {
+          'duration': item['Duration']?['totalSleepDuration'] ?? 0,
+          'score': item['sleepScore'] ?? 0,
+        });
       } catch (e) {
-        debugPrint('[sleep-month] $ymd -> error $e');
+        debugPrint('[fetchSleepData] error for $ymd: $e');
         return null;
       }
     });
 
     final results = await Future.wait(futures);
-    return Map.fromEntries(
-      results.whereType<MapEntry<DateTime, Map<String, dynamic>>>(),
-    );
-  }
-
-  int? _asInt(dynamic v) {
-    if (v is num) return v.round();
-    if (v is String) return int.tryParse(v);
-    return null;
-  }
-
-  Future<void> _handleLogout() async {
-    await storage.deleteAll();
-    if (mounted) Navigator.pushReplacementNamed(context, '/login');
-  }
-
-  /// 달 이동: delta -1(이전), +1(다음)
-  void _changeMonth(int delta) {
-    final next = DateTime(_cursorMonth.year, _cursorMonth.month + delta);
-    final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
-    if (next.isAfter(nowMonth)) return; // 미래 달 금지
-    setState(() => _cursorMonth = next);
-  }
-
-  bool get _canGoNext {
-    final nowMonth = DateTime(DateTime.now().year, DateTime.now().month);
-    return _cursorMonth.isBefore(nowMonth);
+    final Map<DateTime, Map<String, dynamic>> data = {};
+    for (final result in results) {
+      if (result != null) data[result.key] = result.value;
+    }
+    return data;
   }
 
   @override
   Widget build(BuildContext context) {
-    final monthLabel = DateFormat('yyyy년 M월').format(_cursorMonth);
-
     return Scaffold(
-      appBar: TopNav(
-        isLoggedIn: _isLoggedIn,
-        onLogin: () => Navigator.pushNamed(context, '/login'),
-        onLogout: _handleLogout,
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '월간 수면 현황',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  username,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            // 헤더 섹션
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-              ),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Good Morning',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildTab('Days', false),
-                  const SizedBox(width: 8),
-                  _buildTab('Weeks', false),
-                  const SizedBox(width: 8),
-                  _buildTab('Months', true),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6C63FF).withOpacity(0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 12),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-
-              // 🔁 수면 기록 달력 카드
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                height: 360,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ✅ 달력 헤더(이전/다음 화살표 + 월)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-                      child: Row(
+                    child: const Icon(
+                      Icons.calendar_month,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    '${username}님의 월간 수면',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '이번 달 수면 패턴을 확인해보세요',
+                    style: TextStyle(fontSize: 16, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 월 선택 컨트롤
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1D1E33),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _cursorMonth = DateTime(
+                          _cursorMonth.year,
+                          _cursorMonth.month - 1,
+                        );
+                      });
+                    },
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  Text(
+                    DateFormat('yyyy년 M월').format(_cursorMonth),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _cursorMonth = DateTime(
+                          _cursorMonth.year,
+                          _cursorMonth.month + 1,
+                        );
+                      });
+                    },
+                    icon: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 월간 통계 카드
+            FutureBuilder<Map<String, int?>>(
+              future: fetchMonthlyAverageData(_cursorMonth),
+              builder: (context, snapshot) {
+                final data = snapshot.data ?? {};
+                final avgDuration = data['duration'];
+                final avgScore = data['score'];
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1D1E33),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left),
-                            onPressed: () => _changeMonth(-1),
-                            tooltip: '이전 달',
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                monthLabel,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4CAF50).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.analytics,
+                              color: Color(0xFF4CAF50),
+                              size: 20,
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right),
-                            onPressed:
-                                _canGoNext ? () => _changeMonth(1) : null,
-                            tooltip: '다음 달',
+                          const SizedBox(width: 12),
+                          const Text(
+                            "월간 평균 통계",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const Divider(height: 1, color: Color(0x11000000)),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                const Text(
+                                  '평균 수면 시간',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  avgDuration != null
+                                      ? '${(avgDuration / 60).toStringAsFixed(1)}시간'
+                                      : '데이터 없음',
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF4CAF50),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                const Text(
+                                  '평균 수면 점수',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  avgScore != null ? '${avgScore}점' : '데이터 없음',
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF6C63FF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
 
-                    // ✅ 달력 내용
-                    Expanded(
-                      child: FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
-                        future: fetchSleepData(_cursorMonth),
-                        builder: (context, snap) {
-                          if (snap.connectionState == ConnectionState.waiting) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-                          if (!snap.hasData || snap.hasError) {
-                            return const Center(
-                              child: Text('수면 데이터를 불러오지 못했어요.'),
-                            );
-                          }
-                          return Scrollbar(
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              child: _buildCalendar(_cursorMonth, snap.data!),
+            const SizedBox(height: 30),
+
+            // 월간 캘린더 차트
+            FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
+              future: fetchSleepData(_cursorMonth),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
+                  );
+                }
+
+                final data = snapshot.data ?? {};
+                final year = _cursorMonth.year;
+                final month = _cursorMonth.month;
+                final daysInMonth = DateUtils.getDaysInMonth(year, month);
+                final firstDayOfMonth = DateTime(year, month, 1);
+                final firstWeekday = firstDayOfMonth.weekday;
+
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1D1E33),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6C63FF).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.calendar_view_month,
+                              color: Color(0xFF6C63FF),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            "월간 수면 캘린더",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // 요일 헤더
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children:
+                            ['월', '화', '수', '목', '금', '토', '일']
+                                .map(
+                                  (day) => SizedBox(
+                                    width: 40,
+                                    child: Text(
+                                      day,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // 캘린더 그리드
+                      ...List.generate(
+                        ((firstWeekday - 1 + daysInMonth) / 7).ceil(),
+                        (weekIndex) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: List.generate(7, (dayIndex) {
+                                final dayOfWeek = dayIndex + 1;
+                                final weekOffset = weekIndex * 7;
+                                final dayOfMonth =
+                                    weekOffset +
+                                    dayIndex -
+                                    (firstWeekday - 1) +
+                                    1;
+
+                                if (dayOfMonth < 1 ||
+                                    dayOfMonth > daysInMonth) {
+                                  return const SizedBox(width: 40, height: 40);
+                                }
+
+                                final date = DateTime(year, month, dayOfMonth);
+                                final dayData = data[date];
+                                final score = dayData?['score'] ?? 0;
+                                final duration = dayData?['duration'] ?? 0;
+
+                                Color getColor() {
+                                  if (score >= 80)
+                                    return const Color(0xFF4CAF50);
+                                  if (score >= 60)
+                                    return const Color(0xFFFFA726);
+                                  if (score > 0) return const Color(0xFFEF5350);
+                                  return Colors.transparent;
+                                }
+
+                                return Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: getColor(),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.1),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          dayOfMonth.toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color:
+                                                score > 0
+                                                    ? Colors.white
+                                                    : Colors.white70,
+                                          ),
+                                        ),
+                                        if (score > 0)
+                                          Text(
+                                            '${score.toStringAsFixed(0)}',
+                                            style: const TextStyle(
+                                              fontSize: 8,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
                             ),
                           );
                         },
                       ),
-                    ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 16),
+                      const SizedBox(height: 20),
 
-              // 🔁 평균 수면 시간/점수 (커서 달 기준)
-              FutureBuilder<Map<String, int?>>(
-                future: fetchMonthlyAverageData(_cursorMonth),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const CircularProgressIndicator();
-                  }
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Text('이 달의 평균 데이터를 불러올 수 없어요.');
-                  }
-
-                  final duration = snapshot.data!['duration'];
-                  final score = snapshot.data!['score'];
-                  if (duration == null || score == null) {
-                    return const Text('이 달의 평균 데이터가 부족해요.');
-                  }
-
-                  final hrs = duration ~/ 60;
-                  final mins = duration % 60;
-
-                  return Column(
-                    children: [
-                      Text(
-                        '$username님은 ${_cursorMonth.month}월에 ...',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '평균 ${hrs}시간 ${mins}분을 주무셨어요.\n수면 점수는 평균 ${score}점이에요.',
-                        textAlign: TextAlign.center,
+                      // 범례
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildLegendItem(
+                            '우수 (80점+)',
+                            const Color(0xFF4CAF50),
+                          ),
+                          _buildLegendItem(
+                            '보통 (60-79점)',
+                            const Color(0xFFFFA726),
+                          ),
+                          _buildLegendItem(
+                            '미흡 (1-59점)',
+                            const Color(0xFFEF5350),
+                          ),
+                        ],
                       ),
                     ],
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTab(String label, bool selected) {
-    return GestureDetector(
-      onTap: () {
-        if (label == 'Days') Navigator.pushReplacementNamed(context, '/sleep');
-        if (label == 'Weeks')
-          Navigator.pushReplacementNamed(context, '/weekly');
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF8183D9) : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatHM2Lines(dynamic minutes) {
-    if (minutes == null || minutes is! int) return '-';
-    final hrs = minutes ~/ 60;
-    final mins = minutes % 60;
-    return '${hrs}H\n${mins}M';
-  }
-
-  Widget _buildCalendar(
-    DateTime month,
-    Map<DateTime, Map<String, dynamic>> sleepData,
-  ) {
-    const double kCellHeight = 90;
-    const BorderRadius kRadius = BorderRadius.all(Radius.circular(12));
-
-    final firstDay = DateTime(month.year, month.month, 1);
-    final firstWd = firstDay.weekday; // 1=Mon ... 7=Sun
-    final totalDays = DateUtils.getDaysInMonth(month.year, month.month);
-
-    const weekHeaders = ['일', '월', '화', '수', '목', '금', '토'];
-    final rows = <Widget>[
-      Row(
-        children:
-            weekHeaders
-                .map((d) => Expanded(child: Center(child: Text(d))))
-                .toList(),
-      ),
-    ];
-
-    int dayCounter = 1 - (firstWd % 7); // Sun-start 보정
-    while (dayCounter <= totalDays) {
-      final week = <Widget>[];
-      for (int wd = 0; wd < 7; wd++, dayCounter++) {
-        if (dayCounter < 1 || dayCounter > totalDays) {
-          week.add(const Expanded(child: SizedBox()));
-        } else {
-          final d = DateTime(month.year, month.month, dayCounter);
-          final data = sleepData[d];
-          week.add(
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.all(4),
-                height: kCellHeight,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: data != null ? Colors.black : Colors.transparent,
-                  borderRadius: kRadius,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$dayCounter',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: data != null ? Colors.white : Colors.black,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (data != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatHM2Lines(data['duration']),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          height: 1.1,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${data['score']}점',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-          );
-        }
-      }
-      rows.add(Row(children: week));
-    }
 
-    return Column(children: rows);
+            const SizedBox(height: 30),
+
+            // 액션 버튼들
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/weekly'),
+                    icon: const Icon(Icons.calendar_view_week),
+                    label: const Text('주간 보기'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6C63FF),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/sleep'),
+                    icon: const Icon(Icons.bedtime),
+                    label: const Text('수면 대시보드'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1D1E33),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.white70),
+        ),
+      ],
+    );
   }
 }

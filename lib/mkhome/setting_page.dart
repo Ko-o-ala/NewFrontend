@@ -12,8 +12,9 @@ Future<UserModel> fetchUserInfo() async {
   await Future.delayed(const Duration(seconds: 1));
   return UserModel(
     name: '이유나',
-    email: 'yuna@example.com',
-    profileImage: 'lib/assets/profile.jpg', // pubspec.yaml에 등록되어야 함
+    birthdate: '2000-01-01', // 임시 생년월일
+    gender: 1, // 임시 성별 (1: 여성)
+    id: 'temp_user_id', // 임시 사용자 ID
   );
 }
 
@@ -42,10 +43,7 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundImage: AssetImage(user.profileImage),
-                  ),
+                  CircleAvatar(radius: 36),
                   const SizedBox(width: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +57,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        user.email,
+                        user.birthdate,
                         style: const TextStyle(color: Colors.grey),
                       ),
                     ],

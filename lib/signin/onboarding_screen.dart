@@ -60,13 +60,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0A0E21),
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: PageView(
-          controller: _controller,
-          physics: const NeverScrollableScrollPhysics(),
-          onPageChanged: (i) => setState(() => _currentIndex = i),
-          children: pages,
+        child: Container(
+          color: const Color(0xFF0A0E21),
+          child: PageView(
+            controller: _controller,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _currentIndex = i),
+            children: pages,
+          ),
         ),
       ),
     );

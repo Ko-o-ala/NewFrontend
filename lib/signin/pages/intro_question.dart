@@ -1,5 +1,6 @@
 // lib/onboarding/pages/intro_question_page.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class IntroQuestionPage extends StatefulWidget {
@@ -30,45 +31,171 @@ class _IntroQuestionPageState extends State<IntroQuestionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFDF9),
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset('lib/assets/koala.png', width: 120),
-                const SizedBox(height: 30),
-                Text(
-                  '$username님,',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFF0A0E21),
+      appBar: AppBar(
+        title: const Text(
+          '알라와 코잘라',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF0A0E21),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            // 헤더 섹션
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6C63FF).withOpacity(0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 12),
                   ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  '편안한 수면을 위해\n몇 가지를 여쭤볼게요!\n어려운 건 없어요.\n차근차근 같이 해봐요 :)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, height: 1.6),
-                ),
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: widget.onNext,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8183D9),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.quiz,
+                      color: Colors.white,
+                      size: 32,
                     ),
                   ),
-                  child: const Text('시작할게요!', style: TextStyle(fontSize: 16)),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  Text(
+                    '안녕하세요, $username님!',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '수면에 대해\n간단한 질문을 드릴게요',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white70,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
-          ),
+
+            const SizedBox(height: 30),
+
+            // 코알라 이미지와 설명
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1D1E33),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 130,
+                    height: 130,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'lib/assets/koala.png',
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '어려운 건 없어요.\n차근차근 같이 해봐요 :)',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 시작 버튼
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: widget.onNext,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6C63FF),
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 8,
+                  shadowColor: const Color(0xFF6C63FF).withOpacity(0.3),
+                ),
+                child: const Text(
+                  '시작할게요!',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

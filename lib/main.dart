@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:my_app/connect_settings/delete_account.dart';
+import 'package:my_app/connect_settings/faq.dart';
+import 'package:my_app/connect_settings/manage_account.dart';
+import 'package:my_app/device/light_control_page.dart';
 import 'package:my_app/mkhome/real_home.dart';
 import 'package:my_app/signin/onboarding_screen.dart';
 import 'package:my_app/signin/pages/complete_page.dart';
-
+import 'package:my_app/sleep_dashboard/sleep_score_details.dart';
 import 'package:my_app/sleep_time/sleep_goal_screen.dart';
 import 'package:my_app/sound/sound.dart';
 
@@ -11,7 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:my_app/login/login.dart';
 import 'package:my_app/signin/signin.dart';
 import 'package:my_app/sleep_dashboard/sleep_chart_screen.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'home_page.dart';
 import 'sleep_dashboard/sleep_dashboard.dart';
 import 'package:my_app/sleep_dashboard/weekly_sleep_screen.dart';
@@ -26,10 +31,24 @@ import 'package:my_app/device/alarm/alarm_provider.dart';
 import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
 import 'package:my_app/models/message.dart';
+import 'package:my_app/services/api_client.dart';
 
+late final ApiClient apiClient;
 void main() async {
+  await dotenv.load();
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 전역 시스템 UI 스타일 설정
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+      statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+      systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+      systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+    ),
+  );
+
+  apiClient = ApiClient(baseUrl: dotenv.env['API_BASE_URL']!);
   //Hive 초기화
   await Hive.initFlutter();
 
@@ -53,6 +72,16 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 앱 전체 시스템 UI 스타일 설정
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
+        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
+        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
+        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      ),
+    );
+
     return MaterialApp(
       title: 'Sleep App',
       debugShowCheckedModeBanner: false,
@@ -71,6 +100,8 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (_) => const SleepDashboard());
           case '/weekly':
             return MaterialPageRoute(builder: (_) => const WeeklySleepScreen());
+          case '/light-control':
+            return MaterialPageRoute(builder: (_) => const LightControlPage());
           case '/monthly':
             return MaterialPageRoute(builder: (_) => MonthlySleepScreen());
           case '/setting':
@@ -83,6 +114,8 @@ class MyApp extends StatelessWidget {
             );
           case '/login':
             return MaterialPageRoute(builder: (_) => LoginScreen());
+          case '/faq':
+            return MaterialPageRoute(builder: (_) => FAQPage());
           case '/sign-in':
             return MaterialPageRoute(builder: (_) => const SignInScreen());
           case '/time-set':
@@ -91,12 +124,69 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (_) => RealHomeScreen());
           case '/sound':
             return MaterialPageRoute(builder: (_) => SoundScreen());
+          case '/edit-account':
+            return MaterialPageRoute(builder: (_) => ManageAccountPage());
+          case '/delete-account':
+            return MaterialPageRoute(builder: (_) => DeleteAccountPage());
 
           case '/start':
             return MaterialPageRoute(builder: (_) => OnboardingScreen());
 
           case '/test':
             return MaterialPageRoute(builder: (_) => MP3TestPage());
+          case '/score-explain':
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: args['data'] ?? [],
+                      sleepStart: args['sleepStart'] ?? DateTime.now(),
+                      sleepEnd: args['sleepEnd'] ?? DateTime.now(),
+                      goalSleepDuration:
+                          args['goalSleepDuration'] ?? const Duration(hours: 8),
+                    ),
+              );
+            } else {
+              // arguments가 없는 경우 기본값으로 페이지 생성
+              final now = DateTime.now();
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: [],
+                      sleepStart: now,
+                      sleepEnd: now,
+                      goalSleepDuration: const Duration(hours: 8),
+                    ),
+              );
+            }
+
+          case '/sleep-score':
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: args['data'] ?? [],
+                      sleepStart: args['sleepStart'] ?? DateTime.now(),
+                      sleepEnd: args['sleepEnd'] ?? DateTime.now(),
+                      goalSleepDuration:
+                          args['goalSleepDuration'] ?? const Duration(hours: 8),
+                    ),
+              );
+            } else {
+              // arguments가 없는 경우 기본값으로 페이지 생성
+              final now = DateTime.now();
+              return MaterialPageRoute(
+                builder:
+                    (_) => SleepScoreDetailsPage(
+                      data: [],
+                      sleepStart: now,
+                      sleepEnd: now,
+                      goalSleepDuration: const Duration(hours: 8),
+                    ),
+              );
+            }
 
           case '/complete':
             return MaterialPageRoute(

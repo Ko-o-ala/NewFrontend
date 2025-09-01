@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 /// 모델 & 유틸
 /// =======================
 
-enum SleepStage { deep, rem, light, core, awake }
+enum SleepStage { deep, rem, light, awake }
 
 class SleepLog {
   final DateTime start;
@@ -18,18 +18,6 @@ class SleepLog {
   SleepLog({required this.start, required this.end, required this.stage});
 
   Duration get duration => end.difference(start);
-}
-
-class SleepSegment {
-  final double startMinute; // baseTime으로부터 분
-  final double endMinute;
-  final SleepStage stage;
-
-  SleepSegment({
-    required this.startMinute,
-    required this.endMinute,
-    required this.stage,
-  });
 }
 
 String _ymd(DateTime d) {
@@ -45,11 +33,19 @@ DateTime _parseTimeWithDate(String timeStr, DateTime date) {
 
   final dt = DateTime(date.year, date.month, date.day, hour, minute);
 
-  // 만약 시각이 자정 이후(00:00~06:00)인데 수면 시작 시간이 밤이라면 → 다음 날로 보정
-  if (hour < 12 && dt.isBefore(date)) {
+  // 수정된 시간 계산 로직
+  // 12시 이후(12:00~23:59)는 그 날짜 그대로, 12시 이전(00:00~11:59)은 다음 날짜로
+  if (hour < 12) {
+    // 00:00~11:59는 다음 날로 처리
+    debugPrint(
+      '[TIME] $timeStr -> 다음 날로 처리: ${dt.add(const Duration(days: 1))}',
+    );
     return dt.add(const Duration(days: 1));
+  } else {
+    // 12:00~23:59는 그 날 그대로
+    debugPrint('[TIME] $timeStr -> 그 날 그대로: $dt');
+    return dt;
   }
-  return dt;
 }
 
 DateTime _parseTs(dynamic v) {
@@ -88,7 +84,7 @@ SleepStage _parseStage(dynamic v) {
   if (s.contains('DEEP')) return SleepStage.deep;
   if (s.contains('REM')) return SleepStage.rem;
   if (s.contains('AWAKE') || s == 'WAKE') return SleepStage.awake;
-  if (s.contains('CORE')) return SleepStage.core;
+
   // HealthDataType.SLEEP_LIGHT / SLEEP_ASLEEP / LIGHT 등은 light로
   return SleepStage.light;
 }
@@ -96,77 +92,13 @@ SleepStage _parseStage(dynamic v) {
 Color stageColor(SleepStage s) {
   switch (s) {
     case SleepStage.deep:
-      return const Color(0xFF5E35B1);
+      return const Color(0xFF1565C0); // 코어 수면 - 짙은 파란색
     case SleepStage.rem:
-      return const Color(0xFF29B6F6);
+      return const Color(0xFF5E35B1); // REM 수면 - 보라색
     case SleepStage.light:
-      return const Color(0xFF42A5F5);
-    case SleepStage.core:
-      return const Color(0xFF66BB6A);
+      return const Color(0xFF42A5F5); // 얕은 수면 - 연한 파란색
     case SleepStage.awake:
-      return const Color(0xFFEF5350);
-  }
-}
-
-/// =======================
-/// 차트 Painter
-/// =======================
-
-class SleepTimelinePainter extends CustomPainter {
-  final List<SleepSegment> segments;
-  final double totalWidth; // px 기준 전체 가로폭 (예: 1080)
-  final double trackHeight;
-
-  SleepTimelinePainter({
-    required this.segments,
-    required this.totalWidth,
-    this.trackHeight = 20,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final trackRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, totalWidth, trackHeight),
-      const Radius.circular(8),
-    );
-
-    // 바탕 트랙
-    final basePaint =
-        Paint()
-          ..color = const Color(0xFF12152A)
-          ..style = PaintingStyle.fill;
-    canvas.drawRRect(trackRect, basePaint);
-
-    // 구간 칠하기
-    for (final seg in segments) {
-      final left = max(0.0, seg.startMinute / (60 * 12) * totalWidth);
-      final right = min(totalWidth, seg.endMinute / (60 * 12) * totalWidth);
-      if (right <= left) continue;
-
-      final rrect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, 0, right - left, trackHeight),
-        const Radius.circular(6),
-      );
-      final paint = Paint()..color = stageColor(seg.stage);
-      canvas.drawRRect(rrect, paint);
-    }
-
-    // 격자/눈금선 (3시간 간격)
-    final gridPaint =
-        Paint()
-          ..color = Colors.white10
-          ..strokeWidth = 1;
-    for (int i = 0; i <= 6; i++) {
-      final x = (i / 6) * totalWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, trackHeight), gridPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant SleepTimelinePainter oldDelegate) {
-    return oldDelegate.segments != segments ||
-        oldDelegate.totalWidth != totalWidth ||
-        oldDelegate.trackHeight != trackHeight;
+      return const Color(0xFFEF5350); // 깨어있음 - 빨간색
   }
 }
 
@@ -246,6 +178,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   String? _error;
   List<SleepLog> _logs = [];
   String? _userId;
+  Duration? _totalSleepDuration; // 서버의 totalSleepDuration 저장
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -337,19 +270,12 @@ class _SleepChartScreenState extends State<SleepChartScreen>
         _error = null;
       });
 
-      // 수면이 시작된 시간을 기준으로 -6시간을 해서 그 날짜로 데이터 가져오기
-      // 예: 8월 22일 새벽 2시에 잠들었다면 → 8월 21일 20시부터 시작 → 8월 21일 데이터
-      final baseDate = DateTime(
-        widget.selectedDate.year,
-        widget.selectedDate.month,
-        widget.selectedDate.day,
-      ); // 시간 00:00으로 고정
+      // 수정된 날짜 계산: 선택된 날짜 그대로 사용
+      // 예: 8월 31일을 선택했다면 → 8월 31일 데이터 조회
+      final dateStr = _ymd(widget.selectedDate);
 
-      final adjustedDate = baseDate.subtract(const Duration(hours: 6));
-      final dateStr = _ymd(adjustedDate);
-
-      debugPrint('[SLEEP] 원래 선택된 날짜: ${_ymd(widget.selectedDate)}');
-      debugPrint('[SLEEP] 조정된 날짜 (수면 시작 기준): $dateStr');
+      debugPrint('[SLEEP] 선택된 날짜: ${_ymd(widget.selectedDate)}');
+      debugPrint('[SLEEP] 조회할 날짜: $dateStr');
       debugPrint('[SLEEP] 사용자 ID: $_userId');
 
       final url = Uri.parse(
@@ -393,11 +319,29 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       debugPrint('[SLEEP] 데이터 개수: ${dataList.length}');
 
       final List<SleepLog> logs = [];
+      Duration? totalSleepDuration; // 서버의 totalSleepDuration 저장
 
       for (int i = 0; i < dataList.length; i++) {
         try {
           final sleepData = dataList[i] as Map<String, dynamic>;
           debugPrint('[SLEEP] 수면 데이터 $i: $sleepData');
+
+          // totalSleepDuration 가져오기 (수면분석과 동일한 값 사용)
+          if (totalSleepDuration == null) {
+            final durationBlock =
+                sleepData['Duration'] as Map<String, dynamic>?;
+            if (durationBlock != null) {
+              final totalMinutes =
+                  durationBlock['totalSleepDuration'] as int? ?? 0;
+              final awakeMinutes = durationBlock['awakeDuration'] as int? ?? 0;
+              // 수면분석과 동일하게: 실제 수면시간 + 깨어있는 시간
+              final inBedMinutes = totalMinutes + awakeMinutes;
+              totalSleepDuration = Duration(minutes: inBedMinutes);
+              debugPrint(
+                '[SLEEP] totalSleepDuration: $totalMinutes분, awakeDuration: $awakeMinutes분, inBedTotal: $inBedMinutes분',
+              );
+            }
+          }
 
           // segments 배열에서 각 수면 단계별 정보 파싱
           final segments = sleepData['segments'] as List? ?? [];
@@ -465,6 +409,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       if (!mounted) return;
       setState(() {
         _logs = logs..sort((a, b) => a.start.compareTo(b.start));
+        _totalSleepDuration = totalSleepDuration;
         _loading = false;
       });
 
@@ -482,20 +427,19 @@ class _SleepChartScreenState extends State<SleepChartScreen>
 
   /// baseTime = 선택 날짜의 00:00 - 6시간 (전날 18시) ~ 다음날 12:00 까지 18시간 윈도우
   /// 예: 21일을 선택하면 20일 18시 ~ 22일 12시까지의 수면 데이터를 표시
-  /// 이렇게 하면 21일 새벽 2시에 잠든 수면도 21일 데이터로 올바르게 표시됨
-  DateTime _baseTime(DateTime d) =>
-      DateTime(d.year, d.month, d.day).subtract(const Duration(hours: 6));
-
-  List<SleepSegment> _toSegments(List<SleepLog> logs, DateTime base) {
-    return logs.map((e) {
-      final s = e.start.difference(base).inMinutes.toDouble();
-      final ed = e.end.difference(base).inMinutes.toDouble();
-      return SleepSegment(startMinute: s, endMinute: ed, stage: e.stage);
-    }).toList();
+  Duration get _totalSleep {
+    // 서버의 totalSleepDuration을 우선 사용 (수면분석과 동일한 값)
+    if (_totalSleepDuration != null) {
+      debugPrint(
+        '[SLEEP] totalSleepDuration 사용: ${_totalSleepDuration!.inMinutes}분',
+      );
+      return _totalSleepDuration!;
+    }
+    // fallback: segments 기반 계산
+    final calculated = _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
+    debugPrint('[SLEEP] segments 기반 계산 사용: ${calculated.inMinutes}분');
+    return calculated;
   }
-
-  Duration get _totalSleep =>
-      _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
 
   Map<SleepStage, Duration> get _byStage {
     final Map<SleepStage, Duration> m = {};
@@ -524,22 +468,31 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     final d = widget.selectedDate;
     // 수면이 시작된 시간을 기준으로 -6시간을 해서 그 날짜로 데이터 가져오기
     final adjustedDate = d.subtract(const Duration(hours: 6));
-    final base = _baseTime(d);
-    final segments = _toSegments(_logs, base);
+
+    // 디버그 로그 추가
+    debugPrint('[SLEEP] 빌드 시 데이터 상태:');
+    debugPrint('[SLEEP] _logs 개수: ${_logs.length}');
+    debugPrint('[SLEEP] _loading: $_loading');
+    debugPrint('[SLEEP] _error: $_error');
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
         title: const Text(
-          '수면 분석',
-          style: TextStyle(fontWeight: FontWeight.w600),
+          '수면차트',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loading ? null : _fetch,
             tooltip: '새로고침',
           ),
@@ -591,8 +544,6 @@ class _SleepChartScreenState extends State<SleepChartScreen>
                               byStage: _byStage,
                               total: _totalSleep,
                             ),
-                            const SizedBox(height: 24),
-                            _TimelineCard(segments: segments, baseTime: base),
                             const SizedBox(height: 24),
                             _StageBreakdown(byStage: _byStage),
                             const SizedBox(height: 24),
@@ -872,113 +823,13 @@ class _PieChartCard extends StatelessWidget {
   }
 }
 
-class _TimelineCard extends StatelessWidget {
-  final List<SleepSegment> segments;
-  final DateTime baseTime;
-
-  const _TimelineCard({required this.segments, required this.baseTime});
-
-  @override
-  Widget build(BuildContext context) {
-    const width = 1080.0; // 가로 스크롤 기준 총 폭(픽셀)
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(Icons.timeline, color: Colors.white70, size: 24),
-              SizedBox(width: 8),
-              Text(
-                '수면 단계 타임라인',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              color: const Color(0xFF0A0E21),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: width,
-                        height: 24,
-                        child: CustomPaint(
-                          painter: SleepTimelinePainter(
-                            segments: segments,
-                            totalWidth: width,
-                            trackHeight: 20,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: width,
-                        height: 24,
-                        child: Stack(
-                          children: List.generate(7, (i) {
-                            // 18시 기준 3시간 간격
-                            final hour = (18 + i * 3) % 24;
-                            final label =
-                                '${hour.toString().padLeft(2, '0')}:00';
-                            final left = (i / 6) * width;
-                            return Positioned(
-                              left: left - 18,
-                              top: 0,
-                              child: Text(
-                                label,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white54,
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _Legend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = const [
       {'name': '깊은 수면', 'stage': SleepStage.deep},
       {'name': 'REM 수면', 'stage': SleepStage.rem},
-      {'name': '얕은 수면', 'stage': SleepStage.light},
-      {'name': '코어 수면', 'stage': SleepStage.core},
+      {'name': '코어 수면', 'stage': SleepStage.light},
       {'name': '깨어있음', 'stage': SleepStage.awake},
     ];
 
@@ -1184,9 +1035,8 @@ class _StageBreakdown extends StatelessWidget {
       case SleepStage.rem:
         return 'REM 수면';
       case SleepStage.light:
-        return '얕은 수면';
-      case SleepStage.core:
         return '코어 수면';
+
       case SleepStage.awake:
         return '깨어있음';
     }
@@ -1203,6 +1053,7 @@ class _QualityHints extends StatelessWidget {
   Widget build(BuildContext context) {
     final deep = byStage[SleepStage.deep] ?? Duration.zero;
     final rem = byStage[SleepStage.rem] ?? Duration.zero;
+    final light = byStage[SleepStage.light] ?? Duration.zero;
     final awake = byStage[SleepStage.awake] ?? Duration.zero;
 
     return Container(
@@ -1252,6 +1103,15 @@ class _QualityHints extends StatelessWidget {
             color: rem.inMinutes >= 60 ? Colors.blue : Colors.orange,
             icon: Icons.psychology,
             description: '60분 이상 권장',
+          ),
+          const SizedBox(height: 16),
+          _qualityItem(
+            title: '코어 수면',
+            value: '${light.inHours}시간 ${light.inMinutes % 60}분',
+            status: light.inMinutes >= 120 ? '적절함' : '부족',
+            color: light.inMinutes >= 120 ? Colors.cyan : Colors.orange,
+            icon: Icons.bedtime,
+            description: '120분 이상 권장',
           ),
           const SizedBox(height: 16),
           _qualityItem(
