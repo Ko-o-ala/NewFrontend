@@ -8,6 +8,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:my_app/sound/why_recommended_page.dart';
 import 'package:my_app/services/jwt_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 /// ==============================
 /// 전역 사운드 서비스 (화면 이동해도 유지)
@@ -15,33 +17,136 @@ import 'package:my_app/services/jwt_utils.dart';
 class GlobalSoundService extends ChangeNotifier {
   static final GlobalSoundService _instance = GlobalSoundService._internal();
   factory GlobalSoundService() => _instance;
-  GlobalSoundService._internal() {
-    player.playerStateStream.listen((state) {
-      _isPlaying = state.playing;
-      if (state.processingState == ProcessingState.completed) {
-        _currentPlaying = null;
-      }
-      notifyListeners();
-    });
-  }
 
   final AudioPlayer player = AudioPlayer();
+
+  // 자동 재생 콜백 함수
+  VoidCallback? _onSongFinished;
+
+  // 노래 종료 감지를 위한 변수들
+  Timer? _positionCheckTimer;
+  Duration? _currentDuration;
+  bool _callbackExecuted = false; // 중복 콜백 실행 방지
+
+  // 재생 상태 변수들
   String? _currentPlaying;
   bool _isPlaying = false;
 
   String? get currentPlaying => _currentPlaying;
   bool get isPlaying => _isPlaying;
 
+  GlobalSoundService._internal() {
+    player.playerStateStream.listen((state) {
+      debugPrint(
+        '[GLOBAL_SOUND] playerState 변경: playing=${state.playing}, processingState=${state.processingState}',
+      );
+
+      // 이전 상태와 비교하여 변화 감지
+      final wasPlaying = _isPlaying;
+      _isPlaying = state.playing;
+
+      if (wasPlaying != _isPlaying) {
+        debugPrint('[GLOBAL_SOUND] 재생 상태 변화: $wasPlaying -> $_isPlaying');
+      }
+
+      // 노래가 끝났는지 간단하게 확인
+      if (state.processingState == ProcessingState.completed &&
+          state.playing == false &&
+          _currentPlaying != null &&
+          !_callbackExecuted) {
+        debugPrint('[GLOBAL_SOUND] 노래 종료 감지됨!');
+        debugPrint('[GLOBAL_SOUND] _currentPlaying: $_currentPlaying');
+        debugPrint('[GLOBAL_SOUND] _callbackExecuted: $_callbackExecuted');
+        debugPrint(
+          '[GLOBAL_SOUND] _onSongFinished: ${_onSongFinished != null ? "설정됨" : "설정되지 않음"}',
+        );
+        debugPrint(
+          '[GLOBAL_SOUND] playerState: playing=${state.playing}, processingState=${state.processingState}',
+        );
+
+        // _currentPlaying은 다음 노래가 시작될 때까지 유지 (플레이어 표시용)
+        // _currentDuration = null; // 이 줄 제거
+        _callbackExecuted = true;
+
+        // 노래가 끝났을 때 자동 재생 콜백 실행
+        if (_onSongFinished != null) {
+          debugPrint('[GLOBAL_SOUND] 노래 종료 감지 - 콜백 실행 시작');
+          try {
+            _onSongFinished!();
+            debugPrint('[GLOBAL_SOUND] 콜백 실행 완료');
+          } catch (e) {
+            debugPrint('[GLOBAL_SOUND] 콜백 실행 중 오류: $e');
+          }
+        } else {
+          debugPrint('[GLOBAL_SOUND] 콜백이 설정되지 않음 - 다음 노래 재생 불가');
+        }
+      } else if (state.processingState == ProcessingState.completed &&
+          state.playing == false) {
+        debugPrint('[GLOBAL_SOUND] 노래 종료 조건 불만족:');
+        debugPrint('[GLOBAL_SOUND] _currentPlaying: $_currentPlaying');
+        debugPrint('[GLOBAL_SOUND] _callbackExecuted: $_callbackExecuted');
+        debugPrint(
+          '[GLOBAL_SOUND] _onSongFinished: ${_onSongFinished != null ? "설정됨" : "설정되지 않음"}',
+        );
+      }
+
+      notifyListeners();
+    });
+
+    // position 체크 타이머로 더 정확한 노래 종료 감지
+    _startPositionCheck();
+  }
+
+  // 자동 재생 콜백 설정
+  void setAutoPlayCallback(VoidCallback callback) {
+    _onSongFinished = callback;
+    debugPrint('[GLOBAL_SOUND] 자동 재생 콜백 설정됨');
+  }
+
+  // 자동 재생 콜백 제거
+  void clearAutoPlayCallback() {
+    _onSongFinished = null;
+    debugPrint('[GLOBAL_SOUND] 자동 재생 콜백 제거됨');
+  }
+
+  // position 체크 타이머 시작
+  void _startPositionCheck() {
+    _positionCheckTimer?.cancel(); // 기존 타이머가 있다면 취소
+    // position 체크는 더 이상 사용하지 않음
+    // just_audio의 playerStateStream으로 충분히 감지 가능
+    debugPrint('[GLOBAL_SOUND] position 체크 타이머 비활성화됨');
+  }
+
   Future<void> playAsset(String file) async {
-    if (_currentPlaying == file && _isPlaying) {
-      await pause();
-      return;
+    debugPrint('[GLOBAL_SOUND] playAsset 호출됨: $file');
+
+    // 기존 재생 중지
+    await stop();
+
+    try {
+      // 에셋 설정
+      await player.setAsset('assets/sounds/$file');
+      debugPrint('[GLOBAL_SOUND] 에셋 설정 완료: assets/sounds/$file');
+
+      // 재생 시작
+      debugPrint('[GLOBAL_SOUND] play() 호출 시작');
+      await player.play();
+      debugPrint('[GLOBAL_SOUND] play() 완료');
+
+      _isPlaying = true;
+      _currentPlaying = file; // 새로운 노래 파일명 설정
+      _currentDuration = player.duration;
+      _callbackExecuted = false; // 새로운 노래 시작 시 콜백 실행 가능하도록 리셋
+
+      debugPrint(
+        '[GLOBAL_SOUND] 재생 상태 설정 완료: _isPlaying=$_isPlaying, _currentPlaying=$_currentPlaying, _callbackExecuted=$_callbackExecuted',
+      );
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[GLOBAL_SOUND] playAsset 실행 중 오류: $e');
+      rethrow;
     }
-    await player.setAsset('assets/sounds/$file');
-    _currentPlaying = file;
-    await player.play();
-    _isPlaying = true;
-    notifyListeners();
   }
 
   Future<void> pause() async {
@@ -54,7 +159,16 @@ class GlobalSoundService extends ChangeNotifier {
     await player.stop();
     _isPlaying = false;
     _currentPlaying = null;
+    _currentDuration = null;
+    _callbackExecuted = false; // 콜백 실행 상태 리셋
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _positionCheckTimer?.cancel();
+    player.dispose(); // AudioPlayer도 정리
+    super.dispose();
   }
 }
 
@@ -183,7 +297,7 @@ class _SoundScreenState extends State<SoundScreen> {
 
   String? recommendationText; // 서버가 내려주는 recommendation_text
   List<String> topRecommended = [];
-  bool loadingRecommendations = false;
+  bool _isLoadingRecommendations = false;
   String? userId;
   bool authReady = false;
   DateTime recDate = DateTime(2025, 8, 12);
@@ -342,24 +456,24 @@ class _SoundScreenState extends State<SoundScreen> {
     },
   };
 
+  // 자동 재생 관련 변수들
+  Timer? _autoPlayTimer;
+  int _currentAutoPlayIndex = 0;
+  List<String> _autoPlayQueue = [];
+  bool _isAutoPlaying = false;
+  bool _userStoppedAutoPlay = false;
+
   @override
   void initState() {
     super.initState();
     sound.addListener(() => mounted ? setState(() {}) : null);
 
-    // 페이지 접속 시 자동으로 서버에서 추천 사운드 가져오기
-    _loadRecommendations();
-
-    // 기본 사운드 목록이 있다면 자동재생 시도
-    if (soundFiles.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 2000), () async {
-        if (mounted) {
-          debugPrint('[INIT] 기본 사운드 자동재생 시도: ${soundFiles.first}');
-          await _playSound(soundFiles.first);
-          debugPrint('[INIT] 기본 사운드 자동재생 완료');
-        }
-      });
-    }
+    // 자동 재생 시작 (2초 후)
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        Future.microtask(() => _startAutoPlay());
+      }
+    });
   }
 
   @override
@@ -403,7 +517,8 @@ class _SoundScreenState extends State<SoundScreen> {
           authReady = true;
         });
 
-        await _executeRecommendation();
+        // 페이지 접속 시 자동으로 서버에서 추천 사운드 가져오기
+        _loadRecommendations();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -418,6 +533,11 @@ class _SoundScreenState extends State<SoundScreen> {
   void dispose() {
     _prefDebounce?.cancel();
     _execDebounce?.cancel();
+    _autoPlayTimer?.cancel(); // 자동 재생 타이머 정리
+
+    // GlobalSoundService에서 자동 재생 콜백 제거
+    sound.clearAutoPlayCallback();
+
     sound.removeListener(() {});
     super.dispose();
   }
@@ -500,168 +620,368 @@ class _SoundScreenState extends State<SoundScreen> {
     await _patchPreferredSoundsRank(); // ✅ 서버에 정렬 저장
   }
 
+  // 추천 실행
   Future<void> _executeRecommendation() async {
-    if (userId == null) {
-      debugPrint('[EXEC] skip: userId is null');
-      return;
-    }
-    if (executing) return;
+    if (userId == null) return;
+
+    setState(() {
+      _isLoadingRecommendations = true;
+    });
 
     try {
-      setState(() => executing = true);
-      final url = Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute');
-      final headers = await _authHeaders();
-      final body = json.encode({"userID": userId, "date": _fmtDate(recDate)});
+      final response = await http.post(
+        Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+        },
+        body: jsonEncode({
+          'userID': userId,
+          'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        }),
+      );
 
-      final resp = await http.post(url, headers: headers, body: body);
-      debugPrint('[EXEC] status=${resp.statusCode} body=${resp.body}');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // 추천 요청 완료 상태 저장
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'soundRecommendationRequested',
+          DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        );
 
-      if (resp.statusCode == 401) {
-        await storage.delete(key: 'jwt');
-        throw Exception('Unauthorized (401)');
-      }
-      if (resp.statusCode == 200 ||
-          resp.statusCode == 201 ||
-          resp.statusCode == 202 ||
-          resp.statusCode == 204) {
-        // 성공 메시지 표시
+        // 잠시 기다린 후 결과 가져오기
+        await Future.delayed(const Duration(seconds: 3));
+
+        // 결과 가져오기 (직접 처리)
+        try {
+          final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final resultsResponse = await http.get(
+            Uri.parse(
+              'https://kooala.tassoo.uk/recommend-sound/$userId/$dateStr/results',
+            ),
+            headers: {
+              'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+            },
+          );
+
+          if (resultsResponse.statusCode == 200) {
+            final data = jsonDecode(resultsResponse.body);
+            if (data['recommended_sounds'] != null) {
+              final recommendations = data['recommended_sounds'] as List;
+              setState(() {
+                topRecommended =
+                    recommendations
+                        .where(
+                          (item) =>
+                              item is Map<String, dynamic> &&
+                              item['filename'] != null &&
+                              item['filename'].toString().isNotEmpty,
+                        )
+                        .map((item) => item['filename'].toString())
+                        .toList();
+                _isLoadingRecommendations = false;
+              });
+              debugPrint(
+                '[RESULTS] 새로운 추천 결과 로드 완료: ${topRecommended.length}개',
+              );
+
+              // 자동 재생 시작
+              Future.microtask(() => _startAutoPlay());
+            } else {
+              debugPrint('[RESULTS] 새로운 추천 결과 데이터 없음');
+              setState(() {
+                _isLoadingRecommendations = false;
+              });
+            }
+          } else {
+            debugPrint(
+              '[RESULTS] 새로운 추천 결과 가져오기 실패: ${resultsResponse.statusCode}',
+            );
+            setState(() {
+              _isLoadingRecommendations = false;
+            });
+          }
+        } catch (e) {
+          debugPrint('[RESULTS] 새로운 추천 결과 가져오기 중 오류: $e');
+          setState(() {
+            _isLoadingRecommendations = false;
+          });
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('추천 실행 성공! (${resp.statusCode})'),
-              backgroundColor: const Color(0xFF4CAF50),
-              duration: const Duration(seconds: 2),
+            const SnackBar(
+              content: Text('추천이 성공적으로 실행되었습니다!'),
+              backgroundColor: Colors.green,
             ),
           );
         }
-
-        await _loadRecommendations();
-
-        // 추천 실행 후 자동재생 시도
-        if (soundFiles.isNotEmpty) {
-          debugPrint('[EXEC] 추천 실행 완료 후 자동재생 시도: ${soundFiles.first}');
-          await Future.delayed(const Duration(milliseconds: 1500));
-          if (mounted) {
-            await _playSound(soundFiles.first);
-            debugPrint('[EXEC] 자동재생 완료');
-          }
+      } else {
+        debugPrint('추천 실행 실패: ${response.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('추천 실행 실패: ${response.statusCode}'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
-
-        return;
+        setState(() {
+          _isLoadingRecommendations = false;
+        });
       }
-      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
     } catch (e) {
-      debugPrint('execute 에러: $e');
+      debugPrint('추천 실행 중 오류: $e');
       if (mounted) {
-        String errorMessage = '추천 실행 오류';
-
-        // HTTP 201은 성공이므로 특별 처리
-        if (e.toString().contains('HTTP 201')) {
-          errorMessage = '추천 실행 성공! (201 Created)';
-        } else if (e.toString().contains('HTTP 200')) {
-          errorMessage = '추천 실행 성공! (200 OK)';
-        } else if (e.toString().contains('HTTP 202')) {
-          errorMessage = '추천 실행 성공! (202 Accepted)';
-        } else if (e.toString().contains('HTTP 204')) {
-          errorMessage = '추천 실행 성공! (204 No Content)';
-        } else {
-          errorMessage = '추천 실행 오류: $e';
-        }
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
-            backgroundColor:
-                errorMessage.contains('성공')
-                    ? const Color(0xFF4CAF50)
-                    : const Color(0xFFF44336),
-            duration: const Duration(seconds: 3),
+            content: Text('추천 실행 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => executing = false);
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
     }
   }
 
+  // 추천 사운드 로드
   Future<void> _loadRecommendations() async {
-    if (userId == null) {
-      debugPrint('[RESULTS] skip: userId is null');
-      return;
-    }
-
-    setState(() => loadingRecommendations = true);
-
     try {
-      // 기존 date 포함 API (유지)
-      final url = Uri.parse(
-        'https://kooala.tassoo.uk/recommend-sound/${Uri.encodeComponent(userId!)}/${_fmtDate(recDate)}/results',
-      );
-      debugPrint('[RESULTS] GET $url');
-
-      final resp = await http.get(url, headers: await _authHeaders());
-      debugPrint('[RESULTS] status=${resp.statusCode} body=${resp.body}');
-
-      if (resp.statusCode == 401) {
-        await storage.delete(key: 'jwt');
-        throw Exception('Unauthorized (401)');
-      }
-      if (resp.statusCode != 200) {
-        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
-      }
-
-      final Map<String, dynamic> jsonBody = json.decode(resp.body);
-      final List<dynamic> recs =
-          (jsonBody['recommended_sounds'] as List?) ?? [];
-
-      final recommendationText =
-          (jsonBody['recommendation_text'] ??
-                  jsonBody['recommended_text'] ??
-                  '')
-              .toString();
-
-      final sorted =
-          recs.whereType<Map<String, dynamic>>().toList()
-            ..sort((a, b) => (a['rank'] ?? 999).compareTo(b['rank'] ?? 999));
-
-      final filenames = <String>[];
-      for (final m in sorted) {
-        final fn = m['filename']?.toString();
-        if (fn != null && soundFiles.contains(fn)) filenames.add(fn);
-      }
-
-      final rest = soundFiles.where((f) => !filenames.contains(f)).toList();
-
       setState(() {
-        this.recommendationText = recommendationText;
-        topRecommended = filenames;
-        soundFiles
-          ..clear()
-          ..addAll(filenames)
-          ..addAll(rest);
+        _isLoadingRecommendations = true;
       });
 
-      // 맨 위에 있는 사운드 자동재생
-      if (soundFiles.isNotEmpty) {
-        debugPrint('[AUTO-PLAY] 사운드 목록 로드 완료, 첫 번째 사운드: ${soundFiles.first}');
-        await Future.delayed(
-          const Duration(milliseconds: 1000),
-        ); // UI 렌더링 대기 시간 증가
-        if (mounted) {
-          debugPrint('[AUTO-PLAY] 자동재생 시작: ${soundFiles.first}');
-          await _playSound(soundFiles.first);
-          debugPrint('[AUTO-PLAY] 자동재생 완료');
+      // 홈화면에서 이미 추천 요청이 완료되었는지 확인
+      final prefs = await SharedPreferences.getInstance();
+      final recommendationRequested = prefs.getString(
+        'soundRecommendationRequested',
+      );
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      debugPrint('[RESULTS] === 추천 상태 확인 ===');
+      debugPrint('[RESULTS] 오늘 날짜: $today');
+      debugPrint(
+        '[RESULTS] SharedPreferences에 저장된 날짜: $recommendationRequested',
+      );
+      debugPrint('[RESULTS] 날짜 일치 여부: ${recommendationRequested == today}');
+
+      if (recommendationRequested == today) {
+        debugPrint('[RESULTS] 홈화면에서 이미 추천 요청 완료됨, 저장된 결과 사용');
+
+        // 미리 저장된 추천 결과가 있는지 확인
+        final savedRecommendations = prefs.getString('soundRecommendations');
+        final savedDate = prefs.getString('soundRecommendationsDate');
+
+        debugPrint('[RESULTS] 저장된 추천 결과 확인:');
+        debugPrint('[RESULTS] soundRecommendations 키 값: $savedRecommendations');
+        debugPrint('[RESULTS] soundRecommendationsDate 키 값: $savedDate');
+        debugPrint('[RESULTS] 모든 SharedPreferences 키들: ${prefs.getKeys()}');
+
+        if (savedRecommendations != null && savedDate == today) {
+          try {
+            final recommendations = jsonDecode(savedRecommendations) as List;
+            debugPrint('[RESULTS] 파싱할 추천 결과: $recommendations');
+
+            // filename 필드가 null이 아닌 항목만 필터링하여 안전하게 처리
+            final validRecommendations =
+                recommendations
+                    .where(
+                      (item) =>
+                          item is Map<String, dynamic> &&
+                          item['filename'] != null &&
+                          item['filename'].toString().isNotEmpty,
+                    )
+                    .map((item) => item['filename'].toString())
+                    .toList();
+
+            debugPrint('[RESULTS] 유효한 추천 결과: $validRecommendations');
+
+            setState(() {
+              topRecommended = validRecommendations;
+              _isLoadingRecommendations = false;
+            });
+            debugPrint('[RESULTS] 저장된 추천 결과 로드 완료: ${topRecommended.length}개');
+
+            // 자동 재생 시작
+            Future.microtask(() => _startAutoPlay());
+            return; // 저장된 데이터 사용 완료, 함수 종료
+          } catch (e) {
+            debugPrint('[RESULTS] 저장된 추천 결과 파싱 실패: $e');
+            // 저장된 결과가 잘못되었으면 새로 요청
+          }
+        } else {
+          debugPrint('[RESULTS] 저장된 추천 결과가 없음, 서버에서 새로 요청');
         }
+      } else {
+        debugPrint('[RESULTS] 홈화면에서 추천 요청 안됨, 새로 요청');
+      }
+
+      // 홈화면에서 추천을 받지 않았거나 저장된 결과가 없는 경우에만 서버에서 새로 요청
+      await _requestNewRecommendation();
+    } catch (e) {
+      debugPrint('[RESULTS] 추천 사운드 로드 중 오류: $e');
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
+    }
+  }
+
+  // 홈화면에서 이미 추천 요청이 완료된 경우 결과만 가져오기 (현재 사용하지 않음)
+  /*
+  Future<void> _loadRecommendationResults() async {
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final response = await http.get(
+        Uri.parse(
+          'https://kooala.tassoo.uk/recommend-sound/$userId/$dateStr/results',
+        ),
+        headers: {
+          'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('[RESULTS] 추천 결과 응답 전체: $data');
+        debugPrint('[RESULTS] 응답 키들: ${data.keys.toList()}');
+        
+        if (data['success'] == true && data['recommended_sounds'] != null) {
+          final recommendations = data['recommended_sounds'] as List;
+          debugPrint('[RESULTS] recommended_sounds 데이터: $recommendations');
+          
+          setState(() {
+            topRecommended =
+                recommendations
+                    .map((item) => item['fileName'] as String)
+                    .toList();
+            _isLoadingRecommendations = false;
+          });
+          debugPrint('[RESULTS] 서버에서 추천 결과 가져오기 완료: ${topRecommended.length}개');
+          
+          // 자동 재생 시작
+          Future.microtask(() => _startAutoPlay());
+        } else {
+          debugPrint('[RESULTS] 추천 결과 데이터 없음');
+          debugPrint('[RESULTS] success: ${data['success']}');
+          debugPrint(
+            '[RESULTS] recommended_sounds: ${data['recommended_sounds']}',
+          );
+          setState(() {
+            _isLoadingRecommendations = false;
+          });
+        }
+      } else {
+        debugPrint('[RESULTS] 추천 결과 가져오기 실패: ${response.statusCode}');
+        debugPrint('[RESULTS] 응답 내용: ${response.body}');
+        setState(() {
+          _isLoadingRecommendations = false;
+        });
       }
     } catch (e) {
-      debugPrint('추천 조회 실패: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('추천을 불러오지 못했습니다: $e')));
+      debugPrint('[RESULTS] 추천 결과 가져오기 중 오류: $e');
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
+    }
+  }
+  */
+
+  // 새로운 추천 요청
+  Future<void> _requestNewRecommendation() async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+        },
+        body: jsonEncode({
+          'userID': userId,
+          'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('[RESULTS] 새로운 추천 요청 성공');
+
+        // 추천 요청 완료 상태 저장
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'soundRecommendationRequested',
+          DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        );
+
+        // 잠시 기다린 후 결과 가져오기
+        await Future.delayed(const Duration(seconds: 3));
+
+        // 결과 가져오기 (직접 처리)
+        try {
+          final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final resultsResponse = await http.get(
+            Uri.parse(
+              'https://kooala.tassoo.uk/recommend-sound/$userId/$dateStr/results',
+            ),
+            headers: {
+              'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+            },
+          );
+
+          if (resultsResponse.statusCode == 200) {
+            final data = jsonDecode(resultsResponse.body);
+            if (data['recommended_sounds'] != null) {
+              final recommendations = data['recommended_sounds'] as List;
+              setState(() {
+                topRecommended =
+                    recommendations
+                        .where(
+                          (item) =>
+                              item is Map<String, dynamic> &&
+                              item['filename'] != null &&
+                              item['filename'].toString().isNotEmpty,
+                        )
+                        .map((item) => item['filename'].toString())
+                        .toList();
+                _isLoadingRecommendations = false;
+              });
+              debugPrint(
+                '[RESULTS] 새로운 추천 결과 로드 완료: ${topRecommended.length}개',
+              );
+
+              // 자동 재생 시작
+              Future.microtask(() => _startAutoPlay());
+            } else {
+              debugPrint('[RESULTS] 새로운 추천 결과 데이터 없음');
+              setState(() {
+                _isLoadingRecommendations = false;
+              });
+            }
+          } else {
+            debugPrint(
+              '[RESULTS] 새로운 추천 결과 가져오기 실패: ${resultsResponse.statusCode}',
+            );
+            setState(() {
+              _isLoadingRecommendations = false;
+            });
+          }
+        } catch (e) {
+          debugPrint('[RESULTS] 새로운 추천 결과 가져오기 중 오류: $e');
+          setState(() {
+            _isLoadingRecommendations = false;
+          });
+        }
+      } else {
+        debugPrint('[RESULTS] 새로운 추천 요청 실패: ${response.statusCode}');
+        setState(() {
+          _isLoadingRecommendations = false;
+        });
       }
-    } finally {
-      if (mounted) setState(() => loadingRecommendations = false);
+    } catch (e) {
+      debugPrint('[RESULTS] 새로운 추천 요청 중 오류: $e');
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
     }
   }
 
@@ -712,8 +1032,199 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
-  Future<void> _playSound(String fileName) async {
-    await sound.playAsset(fileName);
+  // 자동 재생 시작
+  void _startAutoPlay() {
+    debugPrint('[AUTO_PLAY] _startAutoPlay 시작');
+    debugPrint('[AUTO_PLAY] _userStoppedAutoPlay: $_userStoppedAutoPlay');
+    debugPrint('[AUTO_PLAY] mounted: $mounted');
+
+    if (_userStoppedAutoPlay) {
+      debugPrint('[AUTO_PLAY] 사용자가 자동 재생을 중지했음');
+      return;
+    }
+
+    if (!mounted) {
+      debugPrint('[AUTO_PLAY] 위젯이 마운트되지 않음');
+      return;
+    }
+
+    // 추천사운드가 로드되었는지 확인
+    if (topRecommended.isEmpty) {
+      debugPrint('[AUTO_PLAY] 추천사운드가 로드되지 않음');
+      return;
+    }
+
+    // 자동 재생 시작
+    _isAutoPlaying = true;
+    _autoPlayQueue.clear();
+    _currentAutoPlayIndex = 0;
+
+    final top3Songs = topRecommended.take(3).toList();
+    debugPrint('[AUTO_PLAY] top3Songs: $top3Songs');
+
+    // 2바퀴 돌리기
+    for (int round = 0; round < 2; round++) {
+      for (String song in top3Songs) {
+        _autoPlayQueue.add(song);
+      }
+    }
+
+    debugPrint('[AUTO_PLAY] 추천사운드 TOP3 2바퀴 추가: ${_autoPlayQueue.length}개');
+    debugPrint('[AUTO_PLAY] _autoPlayQueue 내용: $_autoPlayQueue');
+
+    // GlobalSoundService에서 자동 재생 콜백 제거 (기존 콜백 정리)
+    sound.clearAutoPlayCallback();
+
+    // GlobalSoundService에 자동 재생 콜백 설정
+    sound.setAutoPlayCallback(() {
+      debugPrint('[AUTO_PLAY] 콜백 실행됨!');
+      debugPrint('[AUTO_PLAY] _currentAutoPlayIndex: $_currentAutoPlayIndex');
+      debugPrint('[AUTO_PLAY] _autoPlayQueue 길이: ${_autoPlayQueue.length}');
+
+      if (_currentAutoPlayIndex < _autoPlayQueue.length) {
+        debugPrint(
+          '[AUTO_PLAY] 현재 노래 종료, 다음 노래로 이동: $_currentAutoPlayIndex -> ${_currentAutoPlayIndex + 1}',
+        );
+
+        // 다음 노래 재생
+        _playNextInQueue();
+      } else {
+        debugPrint('[AUTO_PLAY] 모든 노래 재생 완료 - 자동 재생 종료');
+        _isAutoPlaying = false;
+        _currentAutoPlayIndex = 0;
+      }
+    });
+
+    debugPrint('[AUTO_PLAY] 콜백 설정 완료');
+    debugPrint('[AUTO_PLAY] _playNextInQueue 호출 시작');
+
+    // 즉시 첫 번째 곡 재생 시작
+    _playNextInQueue();
+  }
+
+  // 5분 동안 반복 재생할 노래를 큐에 추가 (현재 사용하지 않음)
+  /*
+  Future<void> _addRepeatedSong(String songFile) async {
+    try {
+      // 노래 길이를 가져와서 5분 동안 몇 번 반복해야 하는지 계산
+      const targetDuration = Duration(minutes: 5);
+
+      // 실제 노래 길이를 가져오기 위해 임시로 AudioPlayer 생성
+      final tempPlayer = AudioPlayer();
+      await tempPlayer.setAsset('assets/sounds/$songFile');
+
+      final songDuration = tempPlayer.duration;
+      await tempPlayer.dispose();
+
+      if (songDuration != null && songDuration.inSeconds > 0) {
+        // 실제 노래 길이로 정확한 반복 횟수 계산
+        final repeatCount =
+            (targetDuration.inSeconds / songDuration.inSeconds).ceil();
+
+        // 기존에 추가된 노래를 제거하고 반복 재생용으로만 추가
+        _autoPlayQueue.removeWhere((item) => item == songFile);
+
+        for (int i = 0; i < repeatCount; i++) {
+          _autoPlayQueue.add(songFile);
+        }
+
+        debugPrint(
+          '[AUTO_PLAY] $songFile을 $repeatCount번 반복 추가 (노래 길이: ${songDuration.inSeconds}초, 목표: 5분)',
+        );
+      } else {
+        // 노래 길이를 가져올 수 없는 경우 기본값 사용
+        const estimatedSongLength = Duration(minutes: 3);
+        final repeatCount =
+            (targetDuration.inSeconds / estimatedSongLength.inSeconds).ceil();
+
+        // 기존에 추가된 노래를 제거하고 반복 재생용으로만 추가
+        _autoPlayQueue.removeWhere((item) => item == songFile);
+
+        for (int i = 0; i < repeatCount; i++) {
+          _autoPlayQueue.add(songFile);
+        }
+
+        debugPrint('[AUTO_PLAY] $songFile을 $repeatCount번 반복 추가 (기본 추정 길이 사용)');
+      }
+    } catch (e) {
+      debugPrint('[AUTO_PLAY] 반복 노래 추가 실패: $e');
+      // 실패 시 기본값으로 3번 추가
+      _autoPlayQueue.removeWhere((item) => item == songFile);
+      for (int i = 0; i < 3; i++) {
+        _autoPlayQueue.add(songFile);
+      }
+    }
+  }
+  */
+
+  // 큐에서 다음 곡 재생
+  void _playNextInQueue() {
+    debugPrint('[AUTO_PLAY] _playNextInQueue 시작');
+    debugPrint('[AUTO_PLAY] _currentAutoPlayIndex: $_currentAutoPlayIndex');
+    debugPrint('[AUTO_PLAY] _autoPlayQueue 길이: ${_autoPlayQueue.length}');
+
+    if (_currentAutoPlayIndex >= _autoPlayQueue.length) {
+      debugPrint('[AUTO_PLAY] 모든 노래 재생 완료');
+      _isAutoPlaying = false;
+      _currentAutoPlayIndex = 0;
+      return;
+    }
+
+    final songFile = _autoPlayQueue[_currentAutoPlayIndex];
+    debugPrint(
+      '[AUTO_PLAY] 재생할 노래: $songFile (${_currentAutoPlayIndex + 1}/${_autoPlayQueue.length})',
+    );
+
+    // GlobalSoundService를 통해 노래 재생
+    sound
+        .playAsset(songFile)
+        .then((_) {
+          debugPrint('[AUTO_PLAY] 노래 재생 시작 완료: $songFile');
+          // 노래가 끝나면 콜백이 자동으로 실행되어 다음 노래로 넘어감
+        })
+        .catchError((error) {
+          debugPrint('[AUTO_PLAY] 노래 재생 실패: $error');
+          // 재생 실패 시 다음 노래로 넘어가기 (콜백을 통하지 않고 직접)
+          _currentAutoPlayIndex++;
+          if (_currentAutoPlayIndex < _autoPlayQueue.length) {
+            _playNextInQueue();
+          } else {
+            debugPrint('[AUTO_PLAY] 모든 노래 재생 완료 (오류로 인한 종료)');
+            _isAutoPlaying = false;
+            _currentAutoPlayIndex = 0;
+          }
+        });
+  }
+
+  // 자동 재생 중지
+  void _stopAutoPlay() {
+    _isAutoPlaying = false;
+    _userStoppedAutoPlay = true;
+    _autoPlayTimer?.cancel();
+
+    // GlobalSoundService에서 자동 재생 콜백 제거
+    sound.clearAutoPlayCallback();
+
+    debugPrint('[AUTO_PLAY] 사용자가 자동 재생 중지');
+  }
+
+  // 사용자가 수동으로 사운드 재생 시 자동 재생 중지
+  Future<void> _playSound(String file) async {
+    debugPrint(
+      '[AUTO_PLAY] _playSound 호출: $file, _isAutoPlaying: $_isAutoPlaying',
+    );
+
+    // 자동 재생 중이 아닐 때만 자동 재생 중지 (자동 재생 중에는 중지하지 않음)
+    if (_isAutoPlaying) {
+      // 자동 재생 중이므로 중지하지 않음
+      debugPrint('[AUTO_PLAY] 자동 재생 중: $file 재생');
+    } else {
+      // 사용자가 수동으로 재생하면 자동 재생 중지
+      debugPrint('[AUTO_PLAY] 수동 재생: 자동 재생 중지');
+      _stopAutoPlay();
+    }
+
+    await sound.playAsset(file);
   }
 
   void _debouncedExecute() {
@@ -797,6 +1308,29 @@ class _SoundScreenState extends State<SoundScreen> {
         ).showSnackBar(SnackBar(content: Text('정렬 저장 실패: $e')));
       }
     }
+  }
+
+  // 현재 재생 중인 노래의 순위 계산
+  int _getCurrentSongRank() {
+    if (_autoPlayQueue.isEmpty ||
+        _currentAutoPlayIndex >= _autoPlayQueue.length) {
+      return 0;
+    }
+
+    // 2바퀴 돌리므로 3으로 나누어 실제 노래 순위 계산
+    final actualIndex = _currentAutoPlayIndex % 3;
+    return actualIndex + 1; // 1부터 시작
+  }
+
+  // 현재 재생 중인 노래의 바퀴 수 계산
+  int _getCurrentRound() {
+    if (_autoPlayQueue.isEmpty ||
+        _currentAutoPlayIndex >= _autoPlayQueue.length) {
+      return 0;
+    }
+
+    // 3으로 나누어 바퀴 수 계산
+    return (_currentAutoPlayIndex ~/ 3) + 1;
   }
 
   @override
@@ -1016,7 +1550,7 @@ class _SoundScreenState extends State<SoundScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                loadingRecommendations
+                                _isLoadingRecommendations
                                     ? "추천 불러오는 중..."
                                     : "오늘의 추천 사운드를 받아보세요",
                                 style: const TextStyle(
@@ -1030,6 +1564,148 @@ class _SoundScreenState extends State<SoundScreen> {
                         ),
 
                         const SizedBox(height: 12),
+
+                        // 🎵 자동 재생 상태 표시 및 제어
+                        if (!_userStoppedAutoPlay) ...[
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color:
+                                  _isAutoPlaying
+                                      ? const Color(0xFF4CAF50).withOpacity(0.2)
+                                      : const Color(0xFF1D1E33),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color:
+                                    _isAutoPlaying
+                                        ? const Color(0xFF4CAF50)
+                                        : const Color(
+                                          0xFF6C63FF,
+                                        ).withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      _isAutoPlaying
+                                          ? Icons.play_circle
+                                          : Icons.pause_circle,
+                                      color:
+                                          _isAutoPlaying
+                                              ? const Color(0xFF4CAF50)
+                                              : const Color(0xFF6C63FF),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _isAutoPlaying
+                                            ? '자동 재생 중... (${_currentAutoPlayIndex + 1}/${_autoPlayQueue.length})'
+                                            : '자동 재생 준비 완료',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color:
+                                              _isAutoPlaying
+                                                  ? const Color(0xFF4CAF50)
+                                                  : Colors.white70,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (!_isAutoPlaying) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    '추천사운드 TOP3 2바퀴 자동 재생',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white60,
+                                    ),
+                                  ),
+                                ],
+                                if (_isAutoPlaying) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '추천사운드 ${_getCurrentSongRank()}위 재생 중 (${_getCurrentRound()}바퀴)',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: const Color(0xFF4CAF50),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '현재: ${_autoPlayQueue.isNotEmpty && _currentAutoPlayIndex < _autoPlayQueue.length ? _autoPlayQueue[_currentAutoPlayIndex].replaceAll('.mp3', '').replaceAll('_', ' ') : ''}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white60,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    if (_isAutoPlaying) ...[
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: _stopAutoPlay,
+                                          icon: const Icon(
+                                            Icons.stop,
+                                            size: 16,
+                                          ),
+                                          label: const Text('자동 재생 중지'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFFE57373,
+                                            ),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: _startAutoPlay,
+                                          icon: const Icon(
+                                            Icons.play_arrow,
+                                            size: 16,
+                                          ),
+                                          label: const Text('자동 재생 시작'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF4CAF50,
+                                            ),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
 
                         // ✅ "왜 사운드를 추천하나요?" 버튼 (새 페이지로 이동해서 API 호출)
                         SizedBox(
@@ -1275,30 +1951,51 @@ class _SoundScreenState extends State<SoundScreen> {
                                 width: 1,
                               ),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF6C63FF,
-                                    ).withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.hourglass_empty,
-                                    color: Color(0xFF6C63FF),
-                                    size: 20,
-                                  ),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF6C63FF,
+                                        ).withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.hourglass_empty,
+                                        color: Color(0xFF6C63FF),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        '오늘의 추천사운드 TOP3가 준비중입니다! 조금만 기다려주세요:)',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white.withOpacity(0.8),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    '오늘의 추천사운드 TOP3가 준비중입니다! 조금만 기다려주세요:)',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white.withOpacity(0.8),
-                                      fontWeight: FontWeight.w500,
+                                const SizedBox(height: 16),
+                                // 로딩 애니메이션 추가
+                                Center(
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        const Color(0xFF6C63FF),
+                                      ),
+                                      backgroundColor: const Color(
+                                        0xFF6C63FF,
+                                      ).withOpacity(0.2),
                                     ),
                                   ),
                                 ),

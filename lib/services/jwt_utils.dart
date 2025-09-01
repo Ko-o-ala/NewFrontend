@@ -20,8 +20,46 @@ class JwtUtils {
       final resp = utf8.decode(base64Url.decode(normalized));
       final payloadMap = json.decode(resp) as Map<String, dynamic>;
 
-      // userID 추출
-      return payloadMap['userID'] as String?;
+      // 다양한 필드명으로 userID 찾기
+      String? userId;
+
+      // 1. userID (기본)
+      userId = payloadMap['userID'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        log('JWT에서 userID 필드로 추출: $userId');
+        return userId;
+      }
+
+      // 2. userId (소문자)
+      userId = payloadMap['userId'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        log('JWT에서 userId 필드로 추출: $userId');
+        return userId;
+      }
+
+      // 3. id
+      userId = payloadMap['id'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        log('JWT에서 id 필드로 추출: $userId');
+        return userId;
+      }
+
+      // 4. sub (JWT 표준)
+      userId = payloadMap['sub'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        log('JWT에서 sub 필드로 추출: $userId');
+        return userId;
+      }
+
+      // 5. user_id
+      userId = payloadMap['user_id'] as String?;
+      if (userId != null && userId.isNotEmpty) {
+        log('JWT에서 user_id 필드로 추출: $userId');
+        return userId;
+      }
+
+      log('JWT에서 userID를 찾을 수 없음. 사용 가능한 필드: ${payloadMap.keys.toList()}');
+      return null;
     } catch (e) {
       log('JWT 토큰에서 userID 추출 실패: $e');
       return null;
@@ -108,6 +146,21 @@ class JwtUtils {
       return extractUsernameFromToken(token);
     } catch (e) {
       log('현재 사용자명 가져오기 실패: $e');
+      return null;
+    }
+  }
+
+  // 현재 JWT 토큰 가져오기
+  static Future<String?> getCurrentToken() async {
+    try {
+      final token = await _storage.read(key: 'jwt');
+      if (token == null) return null;
+
+      if (!isTokenValid(token)) return null;
+
+      return token;
+    } catch (e) {
+      log('현재 JWT 토큰 가져오기 실패: $e');
       return null;
     }
   }

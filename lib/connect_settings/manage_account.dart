@@ -4,6 +4,7 @@ import 'package:my_app/mkhome/setting_page.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ManageAccountPage extends StatefulWidget {
   const ManageAccountPage({super.key});
@@ -159,6 +160,10 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
 
       if (response.statusCode == 200 || response.statusCode == 202) {
         _showSnackBar('프로필이 성공적으로 업데이트되었습니다.', true);
+
+        // 이름을 SharedPreferences에 저장하여 다른 페이지에서 즉시 반영
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userName', nameController.text.trim());
 
         // 비밀번호 필드 초기화
         currentPasswordController.clear();

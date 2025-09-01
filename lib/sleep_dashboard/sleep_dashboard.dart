@@ -224,9 +224,17 @@ class _SleepDashboardState extends State<SleepDashboard>
     final base = sleepStartReal ?? sleepStart;
     if (token == null || userId == null || base == null) return;
 
-    final date = DateFormat(
-      'yyyy-MM-dd',
-    ).format(base.subtract(const Duration(hours: 6)));
+    // 수정된 날짜 계산: 잠든 시간 기준으로 날짜 결정
+    // 잠든 시간이 자정 전이면 그 날짜, 자정 이후면 전날로 처리
+    DateTime targetDate;
+    if (base.hour < 12) {
+      // 자정 이후(00:00~11:59)에 잠들었다면 전날
+      targetDate = base.subtract(const Duration(days: 1));
+    } else {
+      // 자정 이전(12:00~23:59)에 잠들었다면 그 날
+      targetDate = base;
+    }
+    final date = DateFormat('yyyy-MM-dd').format(targetDate);
 
     final server = await _getSleepDataFromServer(
       userId: userId,
@@ -260,10 +268,20 @@ class _SleepDashboardState extends State<SleepDashboard>
 
     final uid = await storage.read(key: 'userID');
     if (uid == null) return; // ← 추가 (로그인 전에 저장 방지)
-    // 서버 규칙: 시작시각 -6시간을 해당 날짜로 사용
-    final date = DateFormat(
-      'yyyy-MM-dd',
-    ).format(realStart.subtract(const Duration(hours: 6)));
+
+    // 수정된 날짜 계산: 잠든 시간 기준으로 날짜 결정
+    // 잠든 시간이 자정 전이면 그 날짜, 자정 이후면 전날로 처리
+    // 예: 8월 31일 오후 11시에 잠들면 → 8월 31일 데이터 (자정 전)
+    // 예: 9월 1일 새벽 2시에 잠들면 → 8월 31일 데이터 (자정 이후이므로 전날)
+    DateTime targetDate;
+    if (realStart.hour < 12) {
+      // 자정 이후(00:00~11:59)에 잠들었다면 전날
+      targetDate = realStart.subtract(const Duration(days: 1));
+    } else {
+      // 자정 이전(12:00~23:59)에 잠들었다면 그 날
+      targetDate = realStart;
+    }
+    final date = DateFormat('yyyy-MM-dd').format(targetDate);
 
     final segments = _buildSegments();
 
@@ -471,6 +489,17 @@ class _SleepDashboardState extends State<SleepDashboard>
         setState(() {
           username = '사용자';
           _isLoggedIn = false;
+        });
+        return;
+      }
+
+      // SharedPreferences에서 사용자명 확인 (프로필 수정 후 즉시 반영)
+      final prefs = await SharedPreferences.getInstance();
+      final userNameFromPrefs = prefs.getString('userName');
+      if (userNameFromPrefs != null && userNameFromPrefs.isNotEmpty) {
+        setState(() {
+          username = userNameFromPrefs;
+          _isLoggedIn = true;
         });
         return;
       }

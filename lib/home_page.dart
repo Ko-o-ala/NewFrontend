@@ -16,18 +16,38 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool _isLoggedIn = false;
+  String _userName = '사용자';
   final storage = FlutterSecureStorage(); // FlutterSecureStorage 인스턴스 생성
 
   @override
   void initState() {
     super.initState();
     _checkLoginStatus();
+    _loadUserName();
 
     // 기존 잘못된 데이터 정리 후 수면데이터 전송
     _initializeData();
 
     // 테스트용 수면데이터 생성 (개발/테스트 환경에서만)
     _createTestSleepData();
+  }
+
+  // 사용자 이름 로드
+  Future<void> _loadUserName() async {
+    try {
+      // FlutterSecureStorage에서 username 가져오기
+      final userName = await storage.read(key: 'username');
+      if (userName != null && userName.isNotEmpty) {
+        setState(() {
+          _userName = userName;
+        });
+        debugPrint('[홈페이지] 사용자 이름 로드 성공: $userName');
+      } else {
+        debugPrint('[홈페이지] 사용자 이름이 없음');
+      }
+    } catch (e) {
+      debugPrint('[홈페이지] 사용자 이름 로드 실패: $e');
+    }
   }
 
   // 데이터 초기화 및 수면데이터 전송
@@ -37,6 +57,9 @@ class _HomePageState extends State<HomePage> {
 
     // 데이터 정리 완료 후 수면데이터 전송 시도
     _tryUploadPendingSleepData();
+
+    // 사운드 추천 요청 (홈화면 접속 시 미리 실행)
+    _requestSoundRecommendation();
   }
 
   // 기존 잘못된 데이터 정리
@@ -233,6 +256,58 @@ class _HomePageState extends State<HomePage> {
             }
           });
         }
+      } else if (resp.statusCode == 409) {
+        // 409 Conflict: 이미 같은 시작 시간의 데이터가 존재
+        debugPrint('[홈페이지] 409 오류: 기존 데이터 삭제 후 재전송 시도');
+
+        try {
+          // 1. 기존 데이터 삭제
+          final deleteResp = await http.delete(
+            Uri.parse('https://kooala.tassoo.uk/sleep-data/$userId/$date'),
+            headers: {'Authorization': 'Bearer $token'},
+          );
+
+          if (deleteResp.statusCode == 200 || deleteResp.statusCode == 404) {
+            debugPrint('[홈페이지] 기존 데이터 삭제 완료 (또는 없음)');
+
+            // 2. 새 데이터 다시 전송
+            final retryResp = await http.post(
+              Uri.parse('https://kooala.tassoo.uk/sleep-data'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: payloadJson,
+            );
+
+            if (retryResp.statusCode == 200 || retryResp.statusCode == 201) {
+              debugPrint('[홈페이지] 재전송 성공: $date');
+              await prefs.setString('lastSentDate', date);
+
+              // 서버 데이터로 캐시 갱신
+              final server = await _getSleepDataFromServer(
+                userId: userId,
+                token: token,
+                date: date,
+              );
+              if (server != null) {
+                await prefs.setString(
+                  'latestServerSleepData',
+                  jsonEncode(server),
+                );
+                debugPrint('[홈페이지] 재전송 후 서버 캐시 갱신 완료');
+              }
+            } else {
+              debugPrint(
+                '[홈페이지] 재전송 실패: ${retryResp.statusCode} ${retryResp.body}',
+              );
+            }
+          } else {
+            debugPrint('[홈페이지] 기존 데이터 삭제 실패: ${deleteResp.statusCode}');
+          }
+        } catch (e) {
+          debugPrint('[홈페이지] 409 오류 처리 중 예외: $e');
+        }
       } else {
         debugPrint('[홈페이지] 수면데이터 전송 실패: ${resp.statusCode} ${resp.body}');
       }
@@ -273,6 +348,99 @@ class _HomePageState extends State<HomePage> {
       debugPrint('[홈페이지] 서버 데이터 가져오기 오류: $e');
     }
     return null;
+  }
+
+  // 사운드 추천 요청 및 결과 미리 받기
+  Future<void> _requestSoundRecommendation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = await JwtUtils.getCurrentUserId();
+
+      if (userId == null) {
+        debugPrint('[홈페이지] userID가 없어서 사운드 추천 요청 불가');
+        return;
+      }
+
+      final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+      debugPrint('[홈페이지] 사운드 추천 요청 시작: $userId, $dateStr');
+
+      // 1단계: 추천 요청
+      final response = await http.post(
+        Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+        },
+        body: jsonEncode({'userID': userId, 'date': dateStr}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('[홈페이지] 사운드 추천 요청 성공');
+
+        // 추천 요청 완료 표시
+        await prefs.setString('soundRecommendationRequested', dateStr);
+
+        // 2단계: 잠시 기다린 후 결과 가져오기
+        await Future.delayed(const Duration(seconds: 3));
+
+        // 3단계: 추천 결과 가져오기
+        final resultsResponse = await http.get(
+          Uri.parse(
+            'https://kooala.tassoo.uk/recommend-sound/$userId/$dateStr/results',
+          ),
+          headers: {
+            'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
+          },
+        );
+
+        if (resultsResponse.statusCode == 200) {
+          final resultsData = jsonDecode(resultsResponse.body);
+          debugPrint('[홈페이지] 추천 결과 응답 전체: $resultsData');
+          debugPrint('[홈페이지] 응답 키들: ${resultsData.keys.toList()}');
+
+          if (resultsData['recommended_sounds'] != null) {
+            final recommendations = resultsData['recommended_sounds'] as List;
+            debugPrint('[홈페이지] recommended_sounds 데이터: $recommendations');
+
+            // 추천 결과를 SharedPreferences에 저장
+            final recommendationsJson = jsonEncode(recommendations);
+            await prefs.setString('soundRecommendations', recommendationsJson);
+            await prefs.setString('soundRecommendationsDate', dateStr);
+
+            debugPrint('[홈페이지] SharedPreferences 저장 완료:');
+            debugPrint(
+              '[홈페이지] soundRecommendations 키에 저장: $recommendationsJson',
+            );
+            debugPrint('[홈페이지] soundRecommendationsDate 키에 저장: $dateStr');
+
+            // 저장 확인
+            final savedCheck = prefs.getString('soundRecommendations');
+            final savedDateCheck = prefs.getString('soundRecommendationsDate');
+            debugPrint('[홈페이지] 저장 확인 - soundRecommendations: $savedCheck');
+            debugPrint(
+              '[홈페이지] 저장 확인 - soundRecommendationsDate: $savedDateCheck',
+            );
+
+            debugPrint('[홈페이지] 사운드 추천 결과 미리 저장 완료: ${recommendations.length}개');
+          } else {
+            debugPrint('[홈페이지] 사운드 추천 결과 데이터 없음');
+            debugPrint(
+              '[홈페이지] recommended_sounds: ${resultsData['recommended_sounds']}',
+            );
+          }
+        } else {
+          debugPrint('[홈페이지] 사운드 추천 결과 가져오기 실패: ${resultsResponse.statusCode}');
+          debugPrint('[홈페이지] 응답 내용: ${resultsResponse.body}');
+        }
+      } else {
+        debugPrint(
+          '[홈페이지] 사운드 추천 요청 실패: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('[홈페이지] 사운드 추천 요청 중 오류: $e');
+    }
   }
 
   @override
@@ -338,9 +506,9 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      '안녕하세요!',
-                      style: TextStyle(
+                    Text(
+                      '$_userName님, 안녕하세요!',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,

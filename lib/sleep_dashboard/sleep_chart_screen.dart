@@ -45,11 +45,15 @@ DateTime _parseTimeWithDate(String timeStr, DateTime date) {
 
   final dt = DateTime(date.year, date.month, date.day, hour, minute);
 
-  // 만약 시각이 자정 이후(00:00~06:00)인데 수면 시작 시간이 밤이라면 → 다음 날로 보정
-  if (hour < 12 && dt.isBefore(date)) {
+  // 수정된 시간 계산 로직
+  // 12시 이후(12:00~23:59)는 그 날짜 그대로, 12시 이전(00:00~11:59)은 다음 날짜로
+  if (hour < 12) {
+    // 00:00~11:59는 다음 날로 처리
     return dt.add(const Duration(days: 1));
+  } else {
+    // 12:00~23:59는 그 날 그대로
+    return dt;
   }
-  return dt;
 }
 
 DateTime _parseTs(dynamic v) {
@@ -96,14 +100,13 @@ SleepStage _parseStage(dynamic v) {
 Color stageColor(SleepStage s) {
   switch (s) {
     case SleepStage.deep:
-      return const Color(0xFF5E35B1);
+      return const Color(0xFF1565C0); // 코어 수면 - 짙은 파란색
     case SleepStage.rem:
-      return const Color(0xFF29B6F6);
+      return const Color(0xFF5E35B1); // REM 수면 - 보라색
     case SleepStage.light:
-      return const Color(0xFF42A5F5);
-
+      return const Color(0xFF42A5F5); // 얕은 수면 - 연한 파란색
     case SleepStage.awake:
-      return const Color(0xFFEF5350);
+      return const Color(0xFFEF5350); // 깨어있음 - 빨간색
   }
 }
 
@@ -126,6 +129,10 @@ class SleepTimelinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    debugPrint('[PAINTER] SleepTimelinePainter.paint 호출:');
+    debugPrint('[PAINTER] segments 개수: ${segments.length}');
+    debugPrint('[PAINTER] totalWidth: $totalWidth, trackHeight: $trackHeight');
+
     final trackRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, totalWidth, trackHeight),
       const Radius.circular(8),
@@ -146,6 +153,10 @@ class SleepTimelinePainter extends CustomPainter {
       final left = (seg.startMinute * scale).clamp(0.0, totalWidth);
       final right = (seg.endMinute * scale).clamp(0.0, totalWidth);
       if (right <= left) continue;
+
+      debugPrint(
+        '[PAINTER] 그리기: ${seg.stage} - ${seg.startMinute}분~${seg.endMinute}분 -> ${left}px~${right}px',
+      );
 
       final rrect = RRect.fromRectAndRadius(
         Rect.fromLTWH(left, 0, right - left, trackHeight),
@@ -342,19 +353,12 @@ class _SleepChartScreenState extends State<SleepChartScreen>
         _error = null;
       });
 
-      // 수면이 시작된 시간을 기준으로 -6시간을 해서 그 날짜로 데이터 가져오기
-      // 예: 8월 22일 새벽 2시에 잠들었다면 → 8월 21일 20시부터 시작 → 8월 21일 데이터
-      final baseDate = DateTime(
-        widget.selectedDate.year,
-        widget.selectedDate.month,
-        widget.selectedDate.day,
-      ); // 시간 00:00으로 고정
+      // 수정된 날짜 계산: 선택된 날짜 그대로 사용
+      // 예: 8월 31일을 선택했다면 → 8월 31일 데이터 조회
+      final dateStr = _ymd(widget.selectedDate);
 
-      final adjustedDate = baseDate.subtract(const Duration(hours: 6));
-      final dateStr = _ymd(adjustedDate);
-
-      debugPrint('[SLEEP] 원래 선택된 날짜: ${_ymd(widget.selectedDate)}');
-      debugPrint('[SLEEP] 조정된 날짜 (수면 시작 기준): $dateStr');
+      debugPrint('[SLEEP] 선택된 날짜: ${_ymd(widget.selectedDate)}');
+      debugPrint('[SLEEP] 조회할 날짜: $dateStr');
       debugPrint('[SLEEP] 사용자 ID: $_userId');
 
       final url = Uri.parse(
@@ -511,11 +515,22 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       DateTime(d.year, d.month, d.day).subtract(const Duration(hours: 6));
 
   List<SleepSegment> _toSegments(List<SleepLog> logs, DateTime base) {
-    return logs.map((e) {
-      final s = e.start.difference(base).inMinutes.toDouble();
-      final ed = e.end.difference(base).inMinutes.toDouble();
-      return SleepSegment(startMinute: s, endMinute: ed, stage: e.stage);
-    }).toList();
+    debugPrint('[SEGMENTS] _toSegments 호출:');
+    debugPrint('[SEGMENTS] logs 개수: ${logs.length}');
+    debugPrint('[SEGMENTS] base: $base');
+
+    final segments =
+        logs.map((e) {
+          final s = e.start.difference(base).inMinutes.toDouble();
+          final ed = e.end.difference(base).inMinutes.toDouble();
+          debugPrint(
+            '[SEGMENTS] 변환: ${e.start} ~ ${e.end} (${e.stage}) -> ${s}분 ~ ${ed}분',
+          );
+          return SleepSegment(startMinute: s, endMinute: ed, stage: e.stage);
+        }).toList();
+
+    debugPrint('[SEGMENTS] 생성된 segments 개수: ${segments.length}');
+    return segments;
   }
 
   Duration get _totalSleep {
@@ -561,6 +576,14 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     final adjustedDate = d.subtract(const Duration(hours: 6));
     final base = _baseTime(d);
     final segments = _toSegments(_logs, base);
+
+    // 디버그 로그 추가
+    debugPrint('[SLEEP] 빌드 시 데이터 상태:');
+    debugPrint('[SLEEP] _logs 개수: ${_logs.length}');
+    debugPrint('[SLEEP] segments 개수: ${segments.length}');
+    debugPrint('[SLEEP] base: $base');
+    debugPrint('[SLEEP] _loading: $_loading');
+    debugPrint('[SLEEP] _error: $_error');
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
@@ -921,6 +944,17 @@ class _TimelineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const width = 1080.0; // 가로 스크롤 기준 총 폭(픽셀)
+
+    // 디버그 로그 추가
+    debugPrint('[TIMELINE] _TimelineCard 빌드:');
+    debugPrint('[TIMELINE] segments 개수: ${segments.length}');
+    debugPrint('[TIMELINE] baseTime: $baseTime');
+    if (segments.isNotEmpty) {
+      debugPrint(
+        '[TIMELINE] 첫 번째 segment: ${segments.first.startMinute} ~ ${segments.first.endMinute} (${segments.first.stage})',
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1241,6 +1275,7 @@ class _QualityHints extends StatelessWidget {
   Widget build(BuildContext context) {
     final deep = byStage[SleepStage.deep] ?? Duration.zero;
     final rem = byStage[SleepStage.rem] ?? Duration.zero;
+    final light = byStage[SleepStage.light] ?? Duration.zero;
     final awake = byStage[SleepStage.awake] ?? Duration.zero;
 
     return Container(
@@ -1290,6 +1325,15 @@ class _QualityHints extends StatelessWidget {
             color: rem.inMinutes >= 60 ? Colors.blue : Colors.orange,
             icon: Icons.psychology,
             description: '60분 이상 권장',
+          ),
+          const SizedBox(height: 16),
+          _qualityItem(
+            title: '코어 수면',
+            value: '${light.inHours}시간 ${light.inMinutes % 60}분',
+            status: light.inMinutes >= 120 ? '적절함' : '부족',
+            color: light.inMinutes >= 120 ? Colors.cyan : Colors.orange,
+            icon: Icons.bedtime,
+            description: '120분 이상 권장',
           ),
           const SizedBox(height: 16),
           _qualityItem(
