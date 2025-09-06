@@ -236,6 +236,9 @@ class _HomePageState extends State<HomePage> {
         if (server != null) {
           await prefs.setString('lastSentDate', date);
           await prefs.setString('latestServerSleepData', jsonEncode(server));
+          // 업로드 성공 후 서버 데이터 캐시 저장하는 바로 *다음 줄* 정도에 추가
+          await prefs.setBool('sleepDataJustUploaded', true); // 🔔 조용한 새로고침 신호
+
           debugPrint('[홈페이지] 서버 수면데이터 캐시 갱신 완료 및 lastSentDate 업데이트: $date');
         } else {
           debugPrint('[홈페이지] 서버에서 데이터 확인 실패 - 3초 후 재시도');

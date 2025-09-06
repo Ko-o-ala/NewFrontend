@@ -179,6 +179,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   List<SleepLog> _logs = [];
   String? _userId;
   Duration? _totalSleepDuration; // 서버의 totalSleepDuration 저장
+  bool _fallbackFromTwoDaysAgo = false; // 디버그/추적 용(표시 안함)
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -216,6 +217,112 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     _fadeController.dispose();
     _slideController.dispose();
     super.dispose();
+  }
+
+  Future<bool> _fetchForDate(DateTime apiDay) async {
+    try {
+      final dateStr = _ymd(apiDay);
+      final uid =
+          _userId ??
+          await _storage.read(key: 'userID') ??
+          await _storage.read(key: 'userId');
+      if (uid == null || uid.trim().isEmpty) {
+        if (mounted) setState(() => _error = '로그인이 필요합니다. (userID 없음)');
+        return false;
+      }
+
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(uid)}/$dateStr',
+      );
+      final headers = await _headers();
+
+      debugPrint('[SLEEP] TRY $dateStr -> $url');
+
+      final resp = await http.get(url, headers: headers);
+      debugPrint('[SLEEP] GET $url -> ${resp.statusCode}');
+      debugPrint('[SLEEP] body: ${resp.body}');
+
+      if (resp.statusCode == 401) {
+        if (mounted) setState(() => _error = '인증 만료됨(401). 다시 로그인해주세요.');
+        return false;
+      }
+      if (resp.statusCode == 404) {
+        // 해당 날짜 데이터 없음 → 폴백 후보
+        return false;
+      }
+      if (resp.statusCode != 200) {
+        if (mounted) {
+          setState(
+            () =>
+                _error =
+                    'HTTP ${resp.statusCode}: ${resp.body.isNotEmpty ? resp.body : 'Unknown error'}',
+          );
+        }
+        return false;
+      }
+
+      final decoded = json.decode(resp.body);
+      final dataList = decoded['data'] as List? ?? [];
+
+      // 파싱
+      final List<SleepLog> logs = [];
+      Duration? totalSleepDuration;
+
+      for (final item in dataList) {
+        if (item is! Map<String, dynamic>) continue;
+
+        // 총 수면시간(수면분석과 동일: 실제수면 + 깨어있음)
+        totalSleepDuration ??= () {
+          final dur = item['Duration'] as Map<String, dynamic>?;
+          if (dur == null) return null;
+          final total = (dur['totalSleepDuration'] as int?) ?? 0;
+          final awake = (dur['awakeDuration'] as int?) ?? 0;
+          return Duration(minutes: total + awake);
+        }();
+
+        final segments = item['segments'] as List? ?? [];
+        final dateStr = item['date'] as String?;
+        if (dateStr == null) continue;
+
+        final baseDate = DateTime.parse(dateStr);
+
+        for (final seg in segments) {
+          if (seg is! Map<String, dynamic>) continue;
+          final startTimeStr = seg['startTime'] as String?;
+          final endTimeStr = seg['endTime'] as String?;
+          final stageStr = seg['stage'] as String?;
+          if (startTimeStr == null || endTimeStr == null || stageStr == null)
+            continue;
+
+          final start = _parseTimeWithDate(startTimeStr, baseDate);
+          final end = _parseTimeWithDate(endTimeStr, baseDate);
+          if (!end.isAfter(start)) continue;
+
+          logs.add(
+            SleepLog(start: start, end: end, stage: _parseStage(stageStr)),
+          );
+        }
+      }
+
+      // 데이터가 완전히 비면 false (폴백 대상)
+      final hasAny =
+          logs.isNotEmpty ||
+          (totalSleepDuration != null && totalSleepDuration!.inMinutes > 0);
+      if (!hasAny) return false;
+
+      // 성공적으로 불러온 경우 화면 상태 갱신
+      if (mounted) {
+        setState(() {
+          _logs = logs..sort((a, b) => a.start.compareTo(b.start));
+          _totalSleepDuration = totalSleepDuration;
+          _error = null;
+        });
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[SLEEP] _fetchForDate error: $e');
+      return false;
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -273,160 +380,29 @@ class _SleepChartScreenState extends State<SleepChartScreen>
         _error = null;
       });
 
-      final apiDay = _apiDate(widget.selectedDate);
-      final dateStr = _ymd(apiDay);
+      final apiDay1 = _apiDate(widget.selectedDate); // 선택일 - 1일
 
-      debugPrint('[SLEEP] 선택된 날짜(표시용): ${_ymd(widget.selectedDate)}');
-      debugPrint('[SLEEP] API 조회 날짜(전날): $dateStr');
-      debugPrint('[SLEEP] 사용자 ID: $_userId');
+      final ok1 = await _fetchForDate(apiDay1);
 
-      final uid = _userId;
-      if (uid == null || uid.trim().isEmpty) {
-        setState(() {
-          _error = '로그인이 필요합니다. (userID 없음)';
-        });
-        return;
-      }
-      final url = Uri.parse(
-        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(uid)}/$dateStr',
-      );
+      if (!ok1) {
+        // 전날 없으면 → 이틀 전
+        final apiDay2 = apiDay1.subtract(const Duration(days: 1));
 
-      debugPrint('[SLEEP] API URL: $url');
-
-      final headers = await _headers();
-      debugPrint('[SLEEP] Headers: $headers');
-
-      final resp = await http.get(url, headers: headers);
-      // 디버그 로그
-      debugPrint('[SLEEP] GET $url -> ${resp.statusCode}');
-      debugPrint('[SLEEP] Response body: ${resp.body}');
-
-      if (resp.statusCode == 401) {
-        throw Exception('인증 만료됨(401). 다시 로그인해주세요.');
-      }
-      if (resp.statusCode == 404) {
-        // 데이터 없을 때는 빈 배열 처리
-        debugPrint('[SLEEP] 404 - 데이터가 없습니다');
-        setState(() {
-          _logs = [];
-          _loading = false;
-        });
-        return;
-      }
-      if (resp.statusCode != 200) {
-        throw Exception(
-          'HTTP ${resp.statusCode}: ${resp.body.isNotEmpty ? resp.body : 'Unknown error'}',
-        );
-      }
-
-      final decoded = json.decode(resp.body);
-      debugPrint('[SLEEP] 디코딩된 응답: $decoded');
-
-      // API 응답 구조에 맞게 파싱
-      final dataList = decoded['data'] as List? ?? [];
-      debugPrint('[SLEEP] 데이터 리스트: $dataList');
-      debugPrint('[SLEEP] 데이터 개수: ${dataList.length}');
-
-      final List<SleepLog> logs = [];
-      Duration? totalSleepDuration; // 서버의 totalSleepDuration 저장
-
-      for (int i = 0; i < dataList.length; i++) {
-        try {
-          final sleepData = dataList[i] as Map<String, dynamic>;
-          debugPrint('[SLEEP] 수면 데이터 $i: $sleepData');
-
-          // totalSleepDuration 가져오기 (수면분석과 동일한 값 사용)
-          if (totalSleepDuration == null) {
-            final durationBlock =
-                sleepData['Duration'] as Map<String, dynamic>?;
-            if (durationBlock != null) {
-              final totalMinutes =
-                  durationBlock['totalSleepDuration'] as int? ?? 0;
-              final awakeMinutes = durationBlock['awakeDuration'] as int? ?? 0;
-              // 수면분석과 동일하게: 실제 수면시간 + 깨어있는 시간
-              final inBedMinutes = totalMinutes + awakeMinutes;
-              totalSleepDuration = Duration(minutes: inBedMinutes);
-              debugPrint(
-                '[SLEEP] totalSleepDuration: $totalMinutes분, awakeDuration: $awakeMinutes분, inBedTotal: $inBedMinutes분',
-              );
-            }
-          }
-
-          // segments 배열에서 각 수면 단계별 정보 파싱
-          final segments = sleepData['segments'] as List? ?? [];
-          debugPrint('[SLEEP] segments 개수: ${segments.length}');
-
-          for (int j = 0; j < segments.length; j++) {
-            try {
-              final segment = segments[j] as Map<String, dynamic>;
-              debugPrint('[SLEEP] segment $j: $segment');
-
-              final startTimeStr = segment['startTime'] as String?;
-              final endTimeStr = segment['endTime'] as String?;
-              final stageStr = segment['stage'] as String?;
-
-              if (startTimeStr == null ||
-                  endTimeStr == null ||
-                  stageStr == null) {
-                debugPrint('[SLEEP] segment $j: 필수 필드가 null입니다');
-                continue;
-              }
-
-              debugPrint(
-                '[SLEEP] segment $j: startTime=$startTimeStr, endTime=$endTimeStr, stage=$stageStr',
-              );
-
-              // 날짜 정보 가져오기 (API 응답의 date 필드 사용)
-              final dateStr = sleepData['date'] as String?;
-              if (dateStr == null) {
-                debugPrint('[SLEEP] date 필드가 null입니다');
-                continue;
-              }
-
-              final date = DateTime.parse(dateStr);
-              debugPrint('[SLEEP] 파싱된 날짜: $date');
-
-              // 시간 문자열을 DateTime으로 변환
-              final start = _parseTimeWithDate(startTimeStr, date);
-              final end = _parseTimeWithDate(endTimeStr, date);
-              final stage = _parseStage(stageStr);
-
-              debugPrint(
-                '[SLEEP] 변환된 시간: start=$start, end=$end, stage=$stage',
-              );
-
-              // 수면 시간이 유효한지 확인
-              if (end.isAfter(start)) {
-                logs.add(SleepLog(start: start, end: end, stage: stage));
-                debugPrint(
-                  '[SLEEP] 유효한 수면 로그 추가: ${start} ~ ${end} (${stage})',
-                );
-              } else {
-                debugPrint('[SLEEP] 유효하지 않은 수면 시간: ${start} ~ ${end}');
-              }
-            } catch (e) {
-              debugPrint('[SLEEP] segment $j 파싱 실패: $e');
-              continue;
-            }
-          }
-        } catch (e) {
-          debugPrint('[SLEEP] 수면 데이터 $i 파싱 실패: $e');
-          continue;
-        }
+        final ok2 = await _fetchForDate(apiDay2);
+        if (mounted) setState(() => _fallbackFromTwoDaysAgo = ok2);
+      } else {
+        if (mounted) setState(() => _fallbackFromTwoDaysAgo = false);
       }
 
       if (!mounted) return;
-      setState(() {
-        _logs = logs..sort((a, b) => a.start.compareTo(b.start));
-        _totalSleepDuration = totalSleepDuration;
-        _loading = false;
-      });
+      setState(() => _loading = false);
 
       // 애니메이션 시작
       _fadeController.forward();
       _slideController.forward();
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
+
       setState(() {
         _error = e.toString();
         _loading = false;
