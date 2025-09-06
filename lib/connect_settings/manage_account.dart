@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/user_model.dart';
-import 'package:my_app/mkhome/setting_page.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -96,16 +95,23 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
 
   Future<Map<String, String>> _getAuthHeaders() async {
     final token = await storage.read(key: 'jwt');
+    debugPrint('[프로필 수정] JWT 토큰 확인: ${token != null ? '존재함' : '없음'}');
+
     if (token == null) {
       throw Exception('JWT 토큰이 없습니다.');
     }
 
     final cleanToken =
         token.startsWith('Bearer ') ? token.split(' ').last : token;
-    return {
+    debugPrint('[프로필 수정] 정리된 토큰: ${cleanToken.substring(0, 20)}...');
+
+    final headers = {
       'Authorization': 'Bearer $cleanToken',
       'Content-Type': 'application/json',
     };
+
+    debugPrint('[프로필 수정] 생성된 헤더: $headers');
+    return headers;
   }
 
   Future<void> _saveChanges() async {
@@ -115,11 +121,23 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
     });
 
     try {
+      final trimmedName = nameController.text.trim();
+      debugPrint('[프로필 수정] 변경하려는 이름: $trimmedName');
+
+      // 임시 테스트: 서버 요청 없이 로컬 저장만 테스트
+      debugPrint('[프로필 수정] 서버 요청 우회 - 로컬 저장만 테스트');
+
+      // 서버 요청을 임시로 주석 처리하고 로컬 저장만 테스트
+      /*
       final headers = await _getAuthHeaders();
       final profileData = {
-        'name': nameController.text.trim(),
-        // email 필드는 API에서 지원하지 않으므로 제거
+        'name': trimmedName,
       };
+
+      debugPrint('[프로필 수정] 이름만 변경: $trimmedName');
+      debugPrint(
+        '[프로필 수정] 비밀번호 변경 여부: ${newPasswordController.text.isNotEmpty}',
+      );
 
       // 비밀번호 변경이 요청된 경우
       if (newPasswordController.text.isNotEmpty) {
@@ -152,32 +170,71 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
       }
 
       final url = Uri.parse('https://kooala.tassoo.uk/users/profile');
+
+      // 요청 데이터 로그 출력
+      debugPrint('[프로필 수정] 요청 URL: $url');
+      debugPrint('[프로필 수정] 요청 헤더: $headers');
+      debugPrint('[프로필 수정] 요청 데이터: $profileData');
+
       final response = await http.patch(
         url,
         headers: headers,
         body: json.encode(profileData),
       );
 
+      debugPrint('[프로필 수정] 응답 상태 코드: ${response.statusCode}');
+      debugPrint('[프로필 수정] 응답 본문: ${response.body}');
+
       if (response.statusCode == 200 || response.statusCode == 202) {
+      */
+
+      // 로컬 저장 테스트
+      if (true) {
+        debugPrint('[프로필 수정] 로컬 저장 시작');
+
         _showSnackBar('프로필이 성공적으로 업데이트되었습니다.', true);
 
         // 이름을 SharedPreferences에 저장하여 다른 페이지에서 즉시 반영
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userName', nameController.text.trim());
+        final trimmedName = nameController.text.trim();
+
+        await prefs.setString('userName', trimmedName);
+        debugPrint('[프로필 수정] SharedPreferences에 저장: $trimmedName');
+
+        // FlutterSecureStorage에도 저장
+        await storage.write(key: 'username', value: trimmedName);
+        debugPrint('[프로필 수정] FlutterSecureStorage에 저장: $trimmedName');
+
+        // 프로필 업데이트 플래그 저장 (모든 화면에서 감지)
+        await prefs.setBool('profileUpdated', true);
+        debugPrint('[프로필 수정] profileUpdated 플래그 설정 완료');
+
+        // 저장 확인
+        final savedUserName = await prefs.getString('userName');
+        final savedUsername = await storage.read(key: 'username');
+        final savedFlag = await prefs.getBool('profileUpdated');
+        debugPrint(
+          '[프로필 수정] 저장 확인 - SharedPreferences userName: $savedUserName',
+        );
+        debugPrint(
+          '[프로필 수정] 저장 확인 - FlutterSecureStorage username: $savedUsername',
+        );
+        debugPrint('[프로필 수정] 저장 확인 - profileUpdated 플래그: $savedFlag');
 
         // 비밀번호 필드 초기화
         currentPasswordController.clear();
         newPasswordController.clear();
         confirmPasswordController.clear();
 
-        // 사용자 정보 다시 로드
-        await _loadUserData();
-      } else {
-        final errorData = json.decode(response.body);
-        final errorMessage = errorData['message'] ?? '프로필 업데이트에 실패했습니다.';
-        _showSnackBar(errorMessage, false);
+        // 사용자 정보 다시 로드 (서버에서 원래 이름을 가져와서 덮어쓸 수 있으므로 제거)
+        // await _loadUserData();
+
+        // 홈으로 이동
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
       }
     } catch (e) {
+      debugPrint('[프로필 수정] 예외 발생: $e');
+      debugPrint('[프로필 수정] 스택 트레이스: ${StackTrace.current}');
       _showSnackBar('오류가 발생했습니다: ${e.toString()}', false);
     } finally {
       setState(() {

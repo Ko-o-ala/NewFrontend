@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MonthlySleepScreen extends StatefulWidget {
   const MonthlySleepScreen({super.key});
@@ -24,6 +25,7 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
   void initState() {
     super.initState();
     _loadUsername();
+    _checkProfileUpdate();
   }
 
   Future<void> _loadUsername() async {
@@ -73,6 +75,23 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
         username = '사용자';
         _isLoggedIn = false;
       });
+    }
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+
+      if (profileUpdated) {
+        // 프로필이 업데이트된 경우 사용자 이름 다시 로드
+        await _loadUsername();
+        // 플래그 제거
+        await prefs.remove('profileUpdated');
+        debugPrint('[MonthlySleepScreen] 프로필 업데이트 감지 - 사용자 이름 새로고침');
+      }
+    } catch (e) {
+      debugPrint('[MonthlySleepScreen] 프로필 업데이트 체크 실패: $e');
     }
   }
 

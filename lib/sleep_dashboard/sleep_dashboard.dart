@@ -165,6 +165,7 @@ class _SleepDashboardState extends State<SleepDashboard>
     _loadGoalText();
     _fetchTodaySleep();
     _checkForFreshServerData();
+    _checkProfileUpdate();
 
     WidgetsBinding.instance.addObserver(this);
 
@@ -705,6 +706,23 @@ class _SleepDashboardState extends State<SleepDashboard>
         username = '사용자';
         _isLoggedIn = false;
       });
+    }
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+
+      if (profileUpdated) {
+        // 프로필이 업데이트된 경우 사용자 이름 다시 로드
+        await _loadUsername();
+        // 플래그 제거
+        await prefs.remove('profileUpdated');
+        debugPrint('[SleepDashboard] 프로필 업데이트 감지 - 사용자 이름 새로고침');
+      }
+    } catch (e) {
+      debugPrint('[SleepDashboard] 프로필 업데이트 체크 실패: $e');
     }
   }
 

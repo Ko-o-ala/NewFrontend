@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
 import 'package:my_app/sleep_dashboard/sleep_dashboard.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WeeklySleepScreen extends StatefulWidget {
   const WeeklySleepScreen({super.key});
@@ -30,6 +31,7 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
     _loadUsername();
     _loadTodayScore();
     _fetchWeeklySleep();
+    _checkProfileUpdate();
   }
 
   Future<void> _loadUsername() async {
@@ -79,6 +81,23 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
         username = '사용자';
         _isLoggedIn = false;
       });
+    }
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+
+      if (profileUpdated) {
+        // 프로필이 업데이트된 경우 사용자 이름 다시 로드
+        await _loadUsername();
+        // 플래그 제거
+        await prefs.remove('profileUpdated');
+        debugPrint('[WeeklySleepScreen] 프로필 업데이트 감지 - 사용자 이름 새로고침');
+      }
+    } catch (e) {
+      debugPrint('[WeeklySleepScreen] 프로필 업데이트 체크 실패: $e');
     }
   }
 

@@ -16,6 +16,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:my_app/sound/sound.dart';
 import 'package:just_audio/just_audio.dart' as just_audio;
+import 'package:shared_preferences/shared_preferences.dart';
 
 final storage = FlutterSecureStorage();
 final apiClient = ApiClient(
@@ -288,8 +289,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     // real_home.dart 진입 시 사운드 중지
     _stopAllAudio();
-
+    // 대화 횟수 로드 (현재는 UI에서 사용하지 않음)
+    storage.read(key: 'talk_count').then((v) {
+      // _conversationCount는 현재 UI에서 사용하지 않으므로 제거
+    });
     _chatBox = Hive.box<Message>('chatBox');
+
+    // 프로필 업데이트 감지
+    _checkProfileUpdate();
 
     // 🔌 소켓 연결 상태 반영
     _connSub = voiceService.connectionStream.listen((connected) async {
@@ -469,6 +476,86 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     debugPrint('WS connect: $wsUri'); // 예: wss://llm.tassoo.uk?jwt=...
     voiceService.connect(url: wsUri.toString());
+  }
+
+  Future<void> _incConversationCount() async {
+    try {
+      final raw = await storage.read(key: 'talk_count');
+      final current = int.tryParse(raw ?? '0') ?? 0;
+      final next = current + 1;
+      await storage.write(key: 'talk_count', value: '$next');
+      // _conversationCount는 현재 UI에서 사용하지 않으므로 제거
+
+      // 10회 도달 시 1번만 알림
+      if (next == 10) {
+        _showPaywallHint();
+      }
+    } catch (e) {
+      debugPrint('[PAYWALL] failed to inc: $e');
+    }
+  }
+
+  void _showPaywallHint() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: const Color(0xFF1D1E33),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.lock, color: Colors.white, size: 28),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  '알림',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '알라와 더 대화를 하기 위해서는\n추후 유료 결제가 필요한 서비스입니다.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6C63FF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('확인'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _gracefulStopAll(String uiMessage) async {
@@ -672,10 +759,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         final userData = json.decode(response.body);
         if (userData['success'] == true && userData['data'] != null) {
           final name = userData['data']['name'] ?? '';
-          setState(() {
-            _username = name;
-            _text = '';
-          });
+          // 값이 실제로 변경되었을 때만 setState 호출
+          if (_username != name) {
+            setState(() {
+              _username = name;
+              _text = '';
+            });
+          }
           return;
         }
       }
@@ -739,6 +829,58 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // ===== 기존 함수들 =====
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // SharedPreferences에서 프로필 업데이트 플래그 확인
+    _checkProfileUpdate();
+  }
+
+  Future<void> _loadUsernameFromLocal() async {
+    try {
+      final updatedName = await storage.read(key: 'username');
+      if (updatedName != null && updatedName.isNotEmpty) {
+        if (mounted && !_disposed) {
+          setState(() {
+            _username = updatedName;
+          });
+        }
+        debugPrint('[RealHome] 로컬 저장소에서 이름 새로고침: $updatedName');
+      }
+    } catch (e) {
+      debugPrint('[RealHome] 로컬 저장소에서 이름 로드 실패: $e');
+    }
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+
+      if (profileUpdated) {
+        // 프로필이 업데이트된 경우 로컬 저장소에서 사용자 이름 다시 로드
+        await _loadUsernameFromLocal();
+        // 플래그 제거
+        await prefs.remove('profileUpdated');
+      } else {
+        // 일반적인 경우 debounce 처리
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted && !_disposed) {
+            _loadUsername();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[RealHome] 프로필 업데이트 체크 실패: $e');
+      // 오류 발생 시에도 일반적인 로드 수행
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && !_disposed) {
+          _loadUsername();
+        }
+      });
+    }
+  }
+
   void dispose() {
     _serverDiscSub?.cancel();
     _connSub?.cancel();
@@ -763,7 +905,10 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     _chatBox.add(Message(sender: sender, text: trimmed));
-    if (sender == 'user') setState(() => _text = trimmed);
+    if (sender == 'user') {
+      setState(() => _text = trimmed);
+      _incConversationCount(); // ⬅️ 추가
+    }
   }
 
   void _scheduleSilentLoginRetry() {
@@ -1148,7 +1293,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                       ),
                                       const SizedBox(height: 4),
                                       const Text(
-                                        '한번 마이크 버튼 누르고 나면 이후에는 알라얘기가 끝나면 자동으로 마이크가 활성화되니, 눈을 감고 편하게 대화해보세요.\n\n졸리다고 말하면 알라와의 대화를 종료하고 추천사운드를 들을 수 있습니다.\n아예 말을 하지 않을 경우 알라는 사용자분이 잠에 들었다고 판단하고 자동으로 대화를 종료합니다.',
+                                        '한번 마이크 버튼 누르고 나면 이후에는 알라 얘기가 끝나면 자동으로 마이크가 활성화되니, 눈을 감고 편하게 대화해보세요.\n\n졸리다고 말하면 알라와의 대화를 종료하고 추천사운드를 들을 수 있습니다.\n아예 말을 하지 않을 경우 알라는 사용자분이 잠에 들었다고 판단하고 자동으로 대화를 종료합니다.',
                                         style: TextStyle(
                                           fontSize: 12,
                                           color: Colors.white70,

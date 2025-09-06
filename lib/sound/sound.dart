@@ -418,7 +418,7 @@ class _SoundScreenState extends State<SoundScreen> {
   DateTime recDate = DateTime(2025, 8, 12);
   bool _argsApplied = false;
 
-  final List<String> soundFiles = [
+  List<String> soundFiles = [
     "NATURE_1_WATER.mp3",
     "NATURE_2_MORNINGBIRDS.mp3",
     "NATURE_3_CRICKETS.mp3",
@@ -875,7 +875,9 @@ class _SoundScreenState extends State<SoundScreen> {
         if (savedRecommendations != null && savedDate == today) {
           try {
             final recommendations = jsonDecode(savedRecommendations) as List;
-            final validRecommendations =
+
+            // 랭킹순으로 정렬 (rank 필드가 있으면 사용, 없으면 순서대로)
+            final sortedRecommendations =
                 recommendations
                     .where(
                       (item) =>
@@ -883,11 +885,26 @@ class _SoundScreenState extends State<SoundScreen> {
                           item['filename'] != null &&
                           item['filename'].toString().isNotEmpty,
                     )
-                    .map((item) => item['filename'].toString())
                     .toList();
 
+            // rank 필드가 있으면 랭킹순으로 정렬, 없으면 기존 순서 유지
+            if (sortedRecommendations.isNotEmpty &&
+                sortedRecommendations.first.containsKey('rank')) {
+              sortedRecommendations.sort((a, b) {
+                final rankA = a['rank'] as int? ?? 999;
+                final rankB = b['rank'] as int? ?? 999;
+                return rankA.compareTo(rankB);
+              });
+            }
+
             setState(() {
-              topRecommended = validRecommendations;
+              topRecommended =
+                  sortedRecommendations
+                      .map((item) => item['filename'].toString())
+                      .toList();
+              // soundFiles도 추천 순서로 업데이트
+              soundFiles.clear();
+              soundFiles.addAll(topRecommended);
               _isLoadingRecommendations = false;
             });
 
@@ -945,19 +962,48 @@ class _SoundScreenState extends State<SoundScreen> {
             final data = jsonDecode(resultsResponse.body);
             if (data['recommended_sounds'] != null) {
               final recommendations = data['recommended_sounds'] as List;
+
+              // 랭킹순으로 정렬 (rank 필드가 있으면 사용, 없으면 순서대로)
+              final sortedRecommendations =
+                  recommendations
+                      .where(
+                        (item) =>
+                            item is Map<String, dynamic> &&
+                            item['filename'] != null &&
+                            item['filename'].toString().isNotEmpty,
+                      )
+                      .toList();
+
+              // rank 필드가 있으면 랭킹순으로 정렬, 없으면 기존 순서 유지
+              if (sortedRecommendations.isNotEmpty &&
+                  sortedRecommendations.first.containsKey('rank')) {
+                sortedRecommendations.sort((a, b) {
+                  final rankA = a['rank'] as int? ?? 999;
+                  final rankB = b['rank'] as int? ?? 999;
+                  return rankA.compareTo(rankB);
+                });
+              }
+
               setState(() {
                 topRecommended =
-                    recommendations
-                        .where(
-                          (item) =>
-                              item is Map<String, dynamic> &&
-                              item['filename'] != null &&
-                              item['filename'].toString().isNotEmpty,
-                        )
+                    sortedRecommendations
                         .map((item) => item['filename'].toString())
                         .toList();
+                // soundFiles도 추천 순서로 업데이트
+                soundFiles.clear();
+                soundFiles.addAll(topRecommended);
                 _isLoadingRecommendations = false;
               });
+
+              // 추천 사운드를 랭킹 정보와 함께 저장
+              await prefs.setString(
+                'soundRecommendations',
+                jsonEncode(sortedRecommendations),
+              );
+              await prefs.setString(
+                'soundRecommendationsDate',
+                DateFormat('yyyy-MM-dd').format(DateTime.now()),
+              );
 
               Future.microtask(() => _startAutoPlay());
             } else {

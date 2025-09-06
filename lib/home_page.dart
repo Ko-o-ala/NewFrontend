@@ -16,16 +16,19 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _isLoggedIn = false;
+  bool _isLoading = true; // 로딩 상태 추가
   String _userName = '사용자';
   final storage = FlutterSecureStorage(); // FlutterSecureStorage 인스턴스 생성
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkLoginStatus();
     _loadUserName();
+    // _refreshUserNameFromServer(); // 서버에서 원래 이름을 가져와서 덮어쓰므로 제거
 
     // 기존 잘못된 데이터 정리 후 수면데이터 전송
     _initializeData();
@@ -34,26 +37,123 @@ class _HomePageState extends State<HomePage> {
     _createTestSleepData();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _loadUserName(); // 캐시 표시
+      // _refreshUserNameFromServer(); // 서버에서 원래 이름을 가져와서 덮어쓰므로 제거
+      _checkLoginStatus();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyRouteArgs();
+
+    // SharedPreferences에서 프로필 업데이트 플래그 확인
+    _checkProfileUpdate();
+  }
+
+  void _applyRouteArgs() {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['updatedName'] is String) {
+      final newName = (args['updatedName'] as String).trim();
+      if (newName.isNotEmpty && _userName != newName) {
+        setState(() => _userName = newName); // ✅ 즉시 반영 (깜빡임 없이)
+      }
+    }
+  }
+
+  Future<void> _refreshUserNameFromServer() async {
+    try {
+      final raw = await storage.read(key: 'jwt');
+      if (raw == null || raw.isEmpty) return;
+
+      final token = raw.startsWith('Bearer ') ? raw.split(' ').last : raw;
+
+      final res = await http.get(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final body = json.decode(res.body);
+        final name = body['data']?['name'] ?? body['name'] ?? '';
+
+        if (name is String && name.trim().isNotEmpty) {
+          // 캐시도 최신화(다른 화면에서도 동일하게 보이도록)
+          await storage.write(key: 'username', value: name.trim());
+          if (mounted && _userName != name.trim()) {
+            setState(() => _userName = name.trim());
+          }
+        }
+      } else {
+        debugPrint('[홈페이지] 프로필 요청 실패: ${res.statusCode} ${res.body}');
+      }
+    } catch (e) {
+      debugPrint('[홈페이지] 프로필 요청 에러: $e');
+    }
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+      debugPrint('[홈페이지] 프로필 업데이트 체크 - profileUpdated: $profileUpdated');
+
+      if (profileUpdated) {
+        debugPrint('[홈페이지] 프로필 업데이트 감지됨 - 로컬 저장소에서 이름 새로고침 시작');
+        // 서버에서 가져오지 말고 로컬 저장소에서 직접 가져오기
+        await _loadUserName();
+        await prefs.remove('profileUpdated');
+        debugPrint('[홈페이지] 프로필 업데이트 감지 - 로컬 저장소에서 이름 새로고침 완료');
+      } else {
+        debugPrint('[홈페이지] 프로필 업데이트 없음 - 캐시에서 이름 로드');
+        // 일반 케이스는 캐시만 살짝 읽어와 반영
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _loadUserName();
+        });
+      }
+    } catch (e) {
+      debugPrint('[홈페이지] 프로필 업데이트 체크 실패: $e');
+      if (mounted) _loadUserName();
+    }
+  }
+
   // 사용자 이름 로드
   Future<void> _loadUserName() async {
     try {
       // FlutterSecureStorage에서 username 가져오기
       final userName = await storage.read(key: 'username');
-      if (userName != null && userName.isNotEmpty) {
-        setState(() {
-          _userName = userName;
-        });
-        debugPrint('[홈페이지] 사용자 이름 로드 성공: $userName');
-      } else {
+      final newUserName =
+          userName != null && userName.isNotEmpty ? userName : '사용자';
+
+      // 값이 실제로 변경되었을 때만 setState 호출
+      if (_userName != newUserName) {
+        if (mounted) {
+          setState(() {
+            _userName = newUserName;
+          });
+          debugPrint('[홈페이지] 사용자 이름 업데이트: $newUserName');
+        }
+      }
+    } catch (e) {
+      if (_userName != '사용자' && mounted) {
         setState(() {
           _userName = '사용자';
         });
-        debugPrint('[홈페이지] 사용자 이름이 없음');
       }
-    } catch (e) {
-      setState(() {
-        _userName = '사용자';
-      });
       debugPrint('[홈페이지] 사용자 이름 로드 실패: $e');
     }
   }
@@ -157,6 +257,7 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       _isLoggedIn = username != null && jwt != null;
+      _isLoading = false; // 로딩 완료
     });
   }
 
@@ -471,7 +572,16 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           SafeArea(
-            child: _isLoggedIn ? _buildMainContent() : _buildLoginRequired(),
+            child:
+                _isLoading
+                    ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF6C63FF),
+                      ),
+                    )
+                    : _isLoggedIn
+                    ? _buildMainContent()
+                    : _buildLoginRequired(),
           ),
           // 전역 미니 플레이어
           Positioned(

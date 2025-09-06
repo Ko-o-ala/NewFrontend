@@ -179,7 +179,8 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   List<SleepLog> _logs = [];
   String? _userId;
   Duration? _totalSleepDuration; // 서버의 totalSleepDuration 저장
-  bool _fallbackFromTwoDaysAgo = false; // 디버그/추적 용(표시 안함)
+  bool _fallbackFromTwoDaysAgo = false; // 이틀 전 데이터 사용 여부
+  DateTime? _actualDataDate; // 실제 가져온 데이터의 날짜
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -315,6 +316,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
         setState(() {
           _logs = logs..sort((a, b) => a.start.compareTo(b.start));
           _totalSleepDuration = totalSleepDuration;
+          _actualDataDate = apiDay; // 실제 데이터 날짜 저장
           _error = null;
         });
       }
@@ -518,8 +520,18 @@ class _SleepChartScreenState extends State<SleepChartScreen>
                             _DateHeader(
                               originalDate: d,
                               adjustedDate: adjustedDate,
+                              actualDataDate: _actualDataDate,
+                              fallbackFromTwoDaysAgo: _fallbackFromTwoDaysAgo,
                             ),
                             const SizedBox(height: 20),
+                            // Apple Watch 안내 메시지 (수면 데이터가 없을 때만 표시)
+                            if (_logs.isEmpty) ...[
+                              _EmptyHint(
+                                originalDate: d,
+                                adjustedDate: adjustedDate,
+                              ),
+                              const SizedBox(height: 20),
+                            ],
                             _SummaryCard(
                               total: _totalSleep,
                               efficiency: _sleepEfficiency,
@@ -536,15 +548,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
                               byStage: _byStage,
                               total: _totalSleep,
                             ),
-                            if (_logs.isEmpty) ...[
-                              const SizedBox(height: 24),
-                              _EmptyHint(
-                                originalDate: d,
-                                adjustedDate: adjustedDate,
-                              ),
-                            ] else ...[
-                              const SizedBox(height: 24),
-                            ],
+                            const SizedBox(height: 24),
                           ],
                         ),
                       ),
@@ -563,14 +567,34 @@ class _SleepChartScreenState extends State<SleepChartScreen>
 class _DateHeader extends StatelessWidget {
   final DateTime originalDate;
   final DateTime adjustedDate;
+  final DateTime? actualDataDate;
+  final bool fallbackFromTwoDaysAgo;
 
-  const _DateHeader({required this.originalDate, required this.adjustedDate});
+  const _DateHeader({
+    required this.originalDate,
+    required this.adjustedDate,
+    this.actualDataDate,
+    this.fallbackFromTwoDaysAgo = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final w = ['일', '월', '화', '수', '목', '금', '토'][originalDate.weekday % 7];
-    final adjustedW =
-        ['일', '월', '화', '수', '목', '금', '토'][adjustedDate.weekday % 7];
+    final now = DateTime.now();
+    DateTime startDate;
+    DateTime endDate;
+
+    if (fallbackFromTwoDaysAgo) {
+      // 이틀 전 데이터 사용 중
+      startDate = now.subtract(const Duration(days: 2));
+      endDate = now.subtract(const Duration(days: 1));
+    } else {
+      // 일반적인 어제 데이터
+      startDate = now.subtract(const Duration(days: 1));
+      endDate = now;
+    }
+
+    final startW = ['일', '월', '화', '수', '목', '금', '토'][startDate.weekday % 7];
+    final endW = ['일', '월', '화', '수', '목', '금', '토'][endDate.weekday % 7];
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -585,24 +609,23 @@ class _DateHeader extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                '${originalDate.year}년 ${originalDate.month}월 ${originalDate.day}일 ($w)',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                ),
+          const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '${startDate.year}년 ${startDate.month}월 ${startDate.day}일 ($startW) ~ ${endDate.month}월 ${endDate.day}일 ($endW)',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
               ),
-            ],
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -1217,67 +1240,71 @@ class _EmptyHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1D1E33), Color(0xFF2A2D3A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF6C63FF).withOpacity(0.3),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF6C63FF).withOpacity(0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         children: [
+          // Apple Watch 아이콘
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(50),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(60),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF6C63FF).withOpacity(0.4),
+                  blurRadius: 15,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            child: const Icon(
-              Icons.bedtime_outlined,
-              color: Colors.blue,
-              size: 32,
-            ),
+            child: const Icon(Icons.watch, color: Colors.white, size: 48),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
+
+          // 메인 제목
           Text(
-            '수면 데이터가 없습니다',
+            'Apple Watch가 필요해요',
             style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${_ymd(originalDate)} 날짜의 수면 기록이 없습니다.\n수면을 측정해보세요!',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.orange.withOpacity(0.4),
-                width: 1,
-              ),
+          const SizedBox(height: 16),
+
+          // 설명 텍스트
+          Text(
+            '수면 데이터는 Apple Watch로 측정됩니다.\nApple Watch를 차고 자지 않으면\n수면 데이터가 수집되지 않아요.',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+              height: 1.5,
             ),
-            child: Text(
-              'API 호출: ${_ymd(adjustedDate)}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.orange,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

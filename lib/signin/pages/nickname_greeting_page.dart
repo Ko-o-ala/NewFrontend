@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'intro_question.dart'; // 📌 다음 페이지 import 추가
 
 class NicknameGreetPage extends StatefulWidget {
@@ -20,6 +21,27 @@ class _NicknameGreetPageState extends State<NicknameGreetPage> {
   void initState() {
     super.initState();
     storage.read(key: 'username').then((v) => setState(() => name = v));
+    _checkProfileUpdate();
+  }
+
+  Future<void> _checkProfileUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final profileUpdated = prefs.getBool('profileUpdated') ?? false;
+
+      if (profileUpdated) {
+        // 프로필이 업데이트된 경우 사용자 이름 다시 로드
+        final updatedName = await storage.read(key: 'username');
+        if (mounted) {
+          setState(() => name = updatedName);
+        }
+        // 플래그 제거
+        await prefs.remove('profileUpdated');
+        debugPrint('[NicknameGreetPage] 프로필 업데이트 감지 - 사용자 이름 새로고침');
+      }
+    } catch (e) {
+      debugPrint('[NicknameGreetPage] 프로필 업데이트 체크 실패: $e');
+    }
   }
 
   void _goToIntroPage() {
