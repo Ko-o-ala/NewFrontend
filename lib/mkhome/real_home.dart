@@ -14,6 +14,7 @@ import 'package:my_app/models/message.dart';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
+import 'package:my_app/sound/sound.dart';
 
 final storage = FlutterSecureStorage();
 final apiClient = ApiClient(
@@ -34,7 +35,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   Timer? _silentLoginRetryTimer; // ← 자동 재시도 타이머
   bool _silentLoginRetried = false; // ← 1회만 수행하기 위한 가드
   bool _disposed = false;
-  bool _authLoading = false; // 즉시 화면 표시를 위해 false로 초기화
+  // 즉시 화면 표시를 위해 false로 초기화
 
   Timer? _assembleTimer;
   final Duration _assembleGap = const Duration(milliseconds: 350);
@@ -52,7 +53,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   bool _isListening = false;
   String _text = '';
   String _username = '';
-  bool _isLoggedIn = false;
   double _soundLevel = 0.0;
 
   // ===== Audio (audioplayers) =====
@@ -285,6 +285,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _initAudioPlayer();
     _connectVoice();
 
+    // real_home.dart 진입 시 사운드 중지
+    _stopAllAudio();
+
     _chatBox = Hive.box<Message>('chatBox');
 
     // 🔌 소켓 연결 상태 반영
@@ -467,23 +470,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     voiceService.connect(url: wsUri.toString());
   }
 
-  Future<void> _callUserProfile() async {
-    try {
-      final response = await apiClient.getJson('');
-      print('👤 사용자 정보: $response');
-
-      // 예: 이름 갱신
-      if (mounted) {
-        setState(() {
-          _username = response['name'] ?? _username;
-        });
-      }
-    } catch (e, stack) {
-      print('❌ 사용자 정보 요청 실패: $e');
-      print(stack);
-    }
-  }
-
   Future<void> _gracefulStopAll(String uiMessage) async {
     _autoResumeMic = false;
 
@@ -567,6 +553,19 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     }
   }
 
+  Future<void> _stopAllAudio() async {
+    try {
+      // 모든 오디오 플레이어 중지
+      await _player.stop();
+
+      // GlobalSoundService의 오디오도 중지
+      final globalSoundService = GlobalSoundService();
+      await globalSoundService.stop();
+    } catch (e) {
+      print('오디오 중지 중 오류: $e');
+    }
+  }
+
   Future<void> _initAudioPlayer() async {
     // iOS 무음 스위치/스피커 라우팅, Android 스피커포스
     await AudioPlayer.global.setAudioContext(
@@ -612,49 +611,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
   }
 
-  // ===== 버퍼에 쌓인 MP3를 하나로 합쳐 재생 =====
-  Future<void> _playBufferedAudio() async {
-    if (_isListening) {
-      _speech.stop();
-      _stopListening();
-    } // 마이크 중지
-    // (선택) 필요하면 재생 세션 재적용:
-    await _enterPlaybackMode();
-
-    if (!_audioAvailable || _audioBuffer.isEmpty) {
-      debugPrint('⚠️ 재생할 오디오가 없음');
-      return;
-    }
-
-    try {
-      // 1) 청크들을 하나로 합치기
-      final chunks = _audioBuffer.length;
-      final all = Uint8List.fromList(_audioBuffer.expand((c) => c).toList());
-      debugPrint('▶️ 합친 MP3 크기: ${all.length} bytes');
-
-      // 2) 재생 시작을 프레임 경계로 맞추기 (첫 청크가 프레임 중간일 수 있음)
-      final start = _findFirstMpegSync(all);
-
-      final trimmed = _stripToFirstMp3Frame(all);
-      if (trimmed.isEmpty) {
-        debugPrint('⚠️ MP3 프레임 동기를 찾지 못했습니다.');
-        return;
-      }
-
-      // 3) 버퍼는 비우고 플래그 초기화
-      _audioBuffer.clear();
-      setState(() => _audioAvailable = false);
-
-      // 4) 항상 임시파일로 저장 후 파일 소스로 재생 (iOS에서 가장 안정적)
-      final path = await _writeTemp(trimmed, ext: 'mp3');
-      debugPrint('🎧 play file: $path');
-      await _player.stop();
-      await _player.play(DeviceFileSource(path));
-    } catch (e) {
-      debugPrint('오디오 재생 실패: $e');
-    }
-  }
-
   /// MP3 헤더(ID3) 또는 첫 MPEG 오디오 프레임 동기를 찾아 그 지점부터 잘라냅니다.
   Uint8List _stripToFirstMp3Frame(Uint8List b) {
     // ID3 태그면 그대로 두어도 되지만, 곧바로 오디오 프레임부터 시작하고 싶으면
@@ -695,7 +651,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       if (token == null || token.isEmpty) {
         setState(() {
           _username = '';
-          _isLoggedIn = false;
           _text = '';
         });
         _scheduleSilentLoginRetry(); // 2초 뒤 재확인
@@ -718,7 +673,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           final name = userData['data']['name'] ?? '';
           setState(() {
             _username = name;
-            _isLoggedIn = name.isNotEmpty;
             _text = '';
           });
           return;
@@ -728,7 +682,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       // 실패 → 한 번만 무음 재시도
       setState(() {
         _username = '';
-        _isLoggedIn = false;
         _text = '';
       });
       _scheduleSilentLoginRetry();
@@ -736,7 +689,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       debugPrint('[USERNAME] Error fetching username: $e');
       setState(() {
         _username = '';
-        _isLoggedIn = false;
         _text = '';
       });
       _scheduleSilentLoginRetry();
@@ -781,23 +733,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         ),
       ),
     );
-  }
-
-  // ===== 수면데이터 서버 전송 관련 함수들 =====
-
-  // 수면데이터 서버 전송 시도
-  Future<void> _tryUploadPendingSleepData() async {
-    // 수면데이터 전송 관련 로직 제거
-  }
-
-  // 서버에서 수면데이터 가져오기
-  Future<Map<String, dynamic>?> _getSleepDataFromServer({
-    required String userId,
-    required String token,
-    required String date,
-  }) async {
-    // 수면데이터 전송 관련 로직 제거
-    return null;
   }
 
   // ===== 기존 함수들 =====
