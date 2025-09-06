@@ -25,9 +25,11 @@ const Map<String, String> dayActivityTypeMap = {
 };
 
 const Map<String, String> morningSunlightExposureMap = {
-  '거의 매일': 'daily',
-  '가끔': 'sometimes',
-  '거의 없음': 'rarely',
+  '1시간 이내': 'under1h',
+  '1~3시간': 'between1to3',
+  '3~5시간': 'between3to5',
+  '5~7시간': 'between5to7',
+  '7시간 이상': 'over7',
 };
 
 class HabitPage1 extends StatefulWidget {
@@ -291,14 +293,14 @@ class _HabitPage1State extends State<HabitPage1> {
                 (v) => setState(() => usualWakeupTime = v),
               ),
               _buildQuestionCard(
-                'Q7. 하루 중 어느 활동이 더 많은가요?',
+                'Q7. 하루 중 언제 가장 졸리거나 피곤하세요?',
                 ['실내 활동', '실외 활동', '비슷함'],
                 dayActivityType,
                 (v) => setState(() => dayActivityType = v),
               ),
               _buildQuestionCard(
                 'Q8. 평소 아침 햇빛을 쬐는 빈도는 어떻게 되나요?',
-                ['거의 매일', '가끔', '거의 없음'],
+                ['1시간 이내', '1~3시간', '3~5시간', '5~7시간', '7시간 이상'],
                 morningSunlightExposure,
                 (v) => setState(() => morningSunlightExposure = v),
               ),

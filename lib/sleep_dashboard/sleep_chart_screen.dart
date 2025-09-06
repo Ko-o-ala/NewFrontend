@@ -252,7 +252,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       throw Exception('토큰이 없습니다. 다시 로그인해주세요.');
     }
     final tokenOnly =
-        raw.startsWith(RegExp(r'Bearer\\s', caseSensitive: false))
+        raw.startsWith(RegExp(r'Bearer\\s+', caseSensitive: false))
             ? raw.split(' ').last
             : raw;
 
@@ -280,8 +280,15 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       debugPrint('[SLEEP] API 조회 날짜(전날): $dateStr');
       debugPrint('[SLEEP] 사용자 ID: $_userId');
 
+      final uid = _userId;
+      if (uid == null || uid.trim().isEmpty) {
+        setState(() {
+          _error = '로그인이 필요합니다. (userID 없음)';
+        });
+        return;
+      }
       final url = Uri.parse(
-        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(_userId!)}/$dateStr',
+        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(uid)}/$dateStr',
       );
 
       debugPrint('[SLEEP] API URL: $url');

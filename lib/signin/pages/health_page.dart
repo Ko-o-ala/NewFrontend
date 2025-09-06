@@ -8,13 +8,15 @@ const Map<String, String> timeToFallAsleepMap = {
   '5분 이하': 'under5min',
   '5~15분': '5to15min',
   '15~30분': '15to30min',
-  '30분 이상': 'over30min',
+  '30분~1시간': 'over30min',
+  '1시간 이상': 'over1h',
 };
 
 const Map<String, String> caffeineIntakeLevelMap = {
   '안 마심': 'none',
   '1~2잔': '1to2cups',
-  '3잔 이상': 'over3cups',
+  '3잔~4잔': 'over3cups',
+  '하루 5잔 이상': 'over5cups',
 };
 
 const Map<String, String> exerciseFrequencyMap = {
@@ -25,8 +27,11 @@ const Map<String, String> exerciseFrequencyMap = {
 
 const Map<String, String> screenTimeBeforeSleepMap = {
   '없음': 'none',
-  '30분 이하': 'under30min',
-  '1시간 이상': 'over1hour',
+  '30분 미만': 'under30min',
+  '30분~1시간': '30to1h',
+  '1시간~2시간': '1hto2h',
+  '2시간~3시간': '2hto3h',
+  '3시간 이상': 'over3h',
 };
 
 const Map<String, String> stressLevelMap = {
@@ -35,10 +40,12 @@ const Map<String, String> stressLevelMap = {
   '낮음': 'low',
 };
 const Map<String, String> exerciseWhenMap = {
-  '오전': 'morning',
-  '낮': 'day',
-  '저녁': 'night',
-  '운동을 하지 않음': 'none',
+  '8시 이전': 'before 8',
+  '8~12시': '8to12',
+  '12시~16시': '12to16',
+  '16~20시': '16to20',
+  '20~24시': '20to24',
+  '새벽': 'night',
 };
 
 class HealthPage extends StatefulWidget {
@@ -294,7 +301,7 @@ class _HealthPageState extends State<HealthPage> {
               // 질문들
               _buildQuestionCard(
                 'Q19. 잠들끼까지 걸리는 시간은 보통 어떻게 되시나요?',
-                ['5분 이하', '5~15분', '15~30분', '30분 이상'],
+                ['5분 이하', '5~15분', '15~30분', '30분~1시간', '1시간 이상'],
                 timeToFallAsleep,
                 (v) => setState(() => timeToFallAsleep = v),
               ),
@@ -312,18 +319,25 @@ class _HealthPageState extends State<HealthPage> {
               ),
               _buildQuestionCard(
                 'Q22. 운동을 언제 하시나요?',
-                ['오전', '낮', '저녁', '운동을 하지 않음'],
+                [
+                  '8시 이전',
+                  '8시 ~ 12시',
+                  '12시 ~ 16시',
+                  '16시 ~ 20시',
+                  '20시 ~ 24시',
+                  '새벽',
+                ],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
               ),
               _buildQuestionCard(
-                'Q23. 취침 전 전자기기 사용 시간은 어떻게 되시나요?',
-                ['없음', '30분 이하', '1시간 이상'],
+                'Q23. 잠들기 전에 전자기기는 얼마나 사용하시나요?',
+                ['없음', '30분 미만', '30분~1시간', '1시간~2시간', '2시간~3시간', '3시간 이상'],
                 screenTimeBeforeSleep,
                 (v) => setState(() => screenTimeBeforeSleep = v),
               ),
               _buildQuestionCard(
-                'Q24. 최근 스트레스를 얼마나 받으시나요?',
+                'Q24. 요즘 스트레스는 어느 정도라고 느끼시나요?',
                 ['높음', '보통', '낮음'],
                 stressLevel,
                 (v) => setState(() => stressLevel = v),

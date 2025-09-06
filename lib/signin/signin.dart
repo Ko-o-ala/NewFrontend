@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:my_app/services/auth_service.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -256,7 +257,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final decoded = json.decode(response.body);
         final username = decoded['data']['name'];
         final token = decoded['data']['token'];
+        final userId = decoded['data']['userID']?.toString();
 
+        await storage.write(key: 'userID', value: userId);
         await storage.write(key: 'username', value: username);
         await storage.write(key: 'jwt', value: token);
 

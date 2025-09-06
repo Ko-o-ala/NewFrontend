@@ -14,7 +14,9 @@ const Map<String, String> sleepIssuesMap = {
   '일찍 깨요': 'wakeEarly',
   '낮 졸림': 'daySleepy',
   '악몽/불안': 'nightmares',
-  '움직임 많음': 'movesALot',
+  '수면 중 움직임 많음': 'movesALot',
+  '아침에 개운하지 않음': 'notRested',
+  '수면제/수면 보조제 사용함': 'useSleepingPills',
   '없음': 'none', // none은 보통 단독 선택(배타) 처리
 };
 
@@ -33,7 +35,9 @@ const List<String> sleepIssueLabels = [
   '일찍 깨요',
   '낮 졸림',
   '악몽/불안',
-  '움직임 많음',
+  '수면 중 움직임 많음',
+  '아침에 개운하지 않음',
+  '수면제/수면 보조제를 사용함',
   '없음',
 ];
 

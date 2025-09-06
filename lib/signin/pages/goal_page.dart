@@ -7,7 +7,11 @@ final storage = FlutterSecureStorage();
 const Map<String, String> sleepGoalMap = {
   '깊은 수면을 자고 싶어요': 'deepSleep',
   '빨리 잠들고 싶어요': 'fallAsleepFast',
-  '깨지 않고 계속 자고 싶어요': 'stayAsleep',
+  '중간에 깨지 않고 계속 자고 싶어요': 'stayAsleep',
+  '아침에 상쾌하게 일어나고 싶어요': 'wakeUpRefreshed',
+  '수면 중 몸이 편안하게 쉬길 원해요': 'comfortableSleep',
+  '수면 환경(조명, 소음, 온도 등)을 최적화하고 싶어요': 'optimalEnvironment',
+  '일정한 수면 패턴을 유지하고 싶어요': 'consistentSchedule',
 };
 
 const Map<String, String> feedbackFormatMap = {
@@ -210,7 +214,15 @@ class _GoalPageState extends State<GoalPage> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    ...['깊은 수면을 자고 싶어요', '빨리 잠들고 싶어요', '깨지 않고 계속 자고 싶어요'].map(
+                    ...[
+                      '깊은 수면을 자고 싶어요',
+                      '빨리 잠들고 싶어요',
+                      '중간에 깨지 않고 계속 자고 싶어요',
+                      '아침에 상쾌하게 일어나고 싶어요',
+                      '수면 중 몸이 편안하게 쉬길 원해요',
+                      '수면 환경(조명, 소음, 온도 등)을 최적화하고 싶어요',
+                      '일정한 수면 패턴을 유지하고 싶어요',
+                    ].map(
                       (option) => Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
