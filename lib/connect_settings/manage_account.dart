@@ -116,130 +116,119 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
 
   Future<void> _saveChanges() async {
     if (isLoading) return;
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     try {
       final trimmedName = nameController.text.trim();
-      debugPrint('[프로필 수정] 변경하려는 이름: $trimmedName');
-
-      // 임시 테스트: 서버 요청 없이 로컬 저장만 테스트
-      debugPrint('[프로필 수정] 서버 요청 우회 - 로컬 저장만 테스트');
-
-      // 서버 요청을 임시로 주석 처리하고 로컬 저장만 테스트
-      /*
       final headers = await _getAuthHeaders();
-      final profileData = {
-        'name': trimmedName,
-      };
 
-      debugPrint('[프로필 수정] 이름만 변경: $trimmedName');
-      debugPrint(
-        '[프로필 수정] 비밀번호 변경 여부: ${newPasswordController.text.isNotEmpty}',
-      );
-
-      // 비밀번호 변경이 요청된 경우
-      if (newPasswordController.text.isNotEmpty) {
-        if (newPasswordController.text != confirmPasswordController.text) {
-          _showSnackBar('새 비밀번호가 일치하지 않습니다.', false);
-          setState(() {
-            isLoading = false;
-          });
+      final Map<String, dynamic> profileData = {};
+      // 이름을 바꾼 경우에만 PATCH 바디에 포함
+      if (user == null || trimmedName != (user!.name)) {
+        if (trimmedName.isEmpty) {
+          _showSnackBar('이름을 입력해주세요.', false);
           return;
         }
-        if (newPasswordController.text.length < 8) {
-          _showSnackBar('비밀번호는 8자 이상이어야 합니다.', false);
-          setState(() {
-            isLoading = false;
-          });
-          return;
-        }
-
-        // 현재 비밀번호 확인
-        if (currentPasswordController.text.isEmpty) {
-          _showSnackBar('현재 비밀번호를 입력해주세요.', false);
-          setState(() {
-            isLoading = false;
-          });
-          return;
-        }
-
-        profileData['currentPassword'] = currentPasswordController.text;
-        profileData['password'] = newPasswordController.text;
+        profileData['name'] = trimmedName;
       }
 
-      final url = Uri.parse('https://kooala.tassoo.uk/users/profile');
+      // ===== 비밀번호 변경 유효성 검사 =====
+      const minPwLen = 6;
+      final newPw = newPasswordController.text;
+      final confirmPw = confirmPasswordController.text;
+      final currentPw = currentPasswordController.text;
 
-      // 요청 데이터 로그 출력
-      debugPrint('[프로필 수정] 요청 URL: $url');
-      debugPrint('[프로필 수정] 요청 헤더: $headers');
-      debugPrint('[프로필 수정] 요청 데이터: $profileData');
+      final hasPwChange =
+          newPw.isNotEmpty || confirmPw.isNotEmpty || currentPw.isNotEmpty;
+      if (hasPwChange) {
+        if (newPw.isEmpty || confirmPw.isEmpty) {
+          _showSnackBar('새 비밀번호를 두 번 모두 입력해주세요.', false);
+          return;
+        }
+        if (newPw != confirmPw) {
+          _showSnackBar('새 비밀번호가 일치하지 않습니다.', false);
+          return;
+        }
+        if (newPw.length < minPwLen) {
+          _showSnackBar('비밀번호는 $minPwLen자 이상이어야 합니다.', false);
+          return;
+        }
+        if (currentPw.isEmpty) {
+          _showSnackBar('현재 비밀번호를 입력해주세요.', false);
+          return;
+        }
+        profileData['currentPassword'] = currentPw;
+        profileData['password'] = newPw;
+      }
 
-      final response = await http.patch(
-        url,
+      // 변경 사항이 하나도 없으면 막기
+      if (profileData.isEmpty) {
+        _showSnackBar('변경된 내용이 없습니다.', false);
+        return;
+      }
+
+      // ===== 서버 PATCH =====
+      final resp = await http.patch(
+        Uri.parse('https://kooala.tassoo.uk/users/profile'),
         headers: headers,
         body: json.encode(profileData),
       );
 
-      debugPrint('[프로필 수정] 응답 상태 코드: ${response.statusCode}');
-      debugPrint('[프로필 수정] 응답 본문: ${response.body}');
+      if (resp.statusCode == 200 || resp.statusCode == 202) {
+        // 서버가 최신 사용자 정보를 돌려주면 그 값을 사용
+        String? serverName;
+        try {
+          final body = json.decode(resp.body);
+          if (body is Map && body['data'] is Map) {
+            serverName = (body['data'] as Map)['name'] as String?;
+          }
+        } catch (_) {}
 
-      if (response.statusCode == 200 || response.statusCode == 202) {
-      */
-
-      // 로컬 저장 테스트
-      if (true) {
-        debugPrint('[프로필 수정] 로컬 저장 시작');
-
-        _showSnackBar('프로필이 성공적으로 업데이트되었습니다.', true);
-
-        // 이름을 SharedPreferences에 저장하여 다른 페이지에서 즉시 반영
         final prefs = await SharedPreferences.getInstance();
-        final trimmedName = nameController.text.trim();
 
-        await prefs.setString('userName', trimmedName);
-        debugPrint('[프로필 수정] SharedPreferences에 저장: $trimmedName');
+        // 이름을 보낸 경우에만 로컬 저장(서버 응답 우선)
+        if (profileData.containsKey('name')) {
+          final finalName = serverName ?? trimmedName;
+          await prefs.setString('userName', finalName);
+          await storage.write(key: 'username', value: finalName);
+          if (mounted) {
+            setState(() => nameController.text = finalName);
+          }
+        }
 
-        // FlutterSecureStorage에도 저장
-        await storage.write(key: 'username', value: trimmedName);
-        debugPrint('[프로필 수정] FlutterSecureStorage에 저장: $trimmedName');
-
-        // 프로필 업데이트 플래그 저장 (모든 화면에서 감지)
+        // 홈화면에서 즉시 반영되도록 플래그
         await prefs.setBool('profileUpdated', true);
-        debugPrint('[프로필 수정] profileUpdated 플래그 설정 완료');
 
-        // 저장 확인
-        final savedUserName = await prefs.getString('userName');
-        final savedUsername = await storage.read(key: 'username');
-        final savedFlag = await prefs.getBool('profileUpdated');
-        debugPrint(
-          '[프로필 수정] 저장 확인 - SharedPreferences userName: $savedUserName',
-        );
-        debugPrint(
-          '[프로필 수정] 저장 확인 - FlutterSecureStorage username: $savedUsername',
-        );
-        debugPrint('[프로필 수정] 저장 확인 - profileUpdated 플래그: $savedFlag');
-
-        // 비밀번호 필드 초기화
+        // 비밀번호 입력값 클리어
         currentPasswordController.clear();
         newPasswordController.clear();
         confirmPasswordController.clear();
 
-        // 사용자 정보 다시 로드 (서버에서 원래 이름을 가져와서 덮어쓸 수 있으므로 제거)
-        // await _loadUserData();
+        _showSnackBar('프로필이 성공적으로 업데이트되었습니다.', true);
 
-        // 홈으로 이동
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+        if (!mounted) return;
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/home',
+          (route) => false,
+          arguments: {
+            'updatedName':
+                serverName ??
+                (profileData['name'] ?? user?.name ?? trimmedName),
+          },
+        );
+      } else {
+        String msg = '프로필 업데이트에 실패했습니다.';
+        try {
+          final err = json.decode(resp.body);
+          msg = err['message'] ?? err['error'] ?? msg;
+        } catch (_) {}
+        _showSnackBar(msg, false);
       }
     } catch (e) {
-      debugPrint('[프로필 수정] 예외 발생: $e');
-      debugPrint('[프로필 수정] 스택 트레이스: ${StackTrace.current}');
-      _showSnackBar('오류가 발생했습니다: ${e.toString()}', false);
+      _showSnackBar('오류가 발생했습니다: $e', false);
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
