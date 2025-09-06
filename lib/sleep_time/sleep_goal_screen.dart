@@ -33,9 +33,10 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
     final wakeHour = prefs.getInt('wakeHour');
     final wakeMin = prefs.getInt('wakeMin');
 
-    // 🔁 선택한 요일들 불러오기
+    // 🔁 선택한 요일들 불러오기 (기본값: 빈 Set)
     final selectedList = prefs.getStringList('selectedDays');
-    final daySet = selectedList?.map(int.parse).toSet() ?? {};
+    final daySet =
+        selectedList?.map(int.parse).toSet() ?? <int>{}; // 저장된 것이 없으면 빈 Set
 
     setState(() {
       if (bedHour != null && bedMin != null) {

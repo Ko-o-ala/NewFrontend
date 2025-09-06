@@ -148,7 +148,7 @@ class _WelcomePageState extends State<WelcomePage> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '안녕하세요.\n저는 수면요정 코알라, 알라예요.',
+                    "안녕하세요.\n저는 수면요정 코알라 '알라'예요.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 18,

@@ -31,6 +31,11 @@ class RealHomeScreen extends StatefulWidget {
 class _RealHomeScreenState extends State<RealHomeScreen>
     with SingleTickerProviderStateMixin {
   // ── 자동 재생을 위한 조립 타이머 & 큐 ──────────────────────────────
+  Timer? _silentLoginRetryTimer; // ← 자동 재시도 타이머
+  bool _silentLoginRetried = false; // ← 1회만 수행하기 위한 가드
+  bool _disposed = false;
+  bool _authLoading = false; // 즉시 화면 표시를 위해 false로 초기화
+
   Timer? _assembleTimer;
   final Duration _assembleGap = const Duration(milliseconds: 350);
   final List<Uint8List> _pendingQueue = [];
@@ -41,7 +46,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // 필드 추가
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<void>? _playerCompleteSub;
-  bool _disposed = false;
 
   // ===== Speech & UI =====
   late stt.SpeechToText _speech;
@@ -685,13 +689,16 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   Future<void> _loadUsername() async {
     try {
+      // 백그라운드에서 로그인 체크 수행 (UI 블로킹 없음)
+
       final token = await storage.read(key: 'jwt');
-      if (token == null) {
+      if (token == null || token.isEmpty) {
         setState(() {
           _username = '';
           _isLoggedIn = false;
           _text = '';
         });
+        _scheduleSilentLoginRetry(); // 2초 뒤 재확인
         return;
       }
 
@@ -714,20 +721,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
             _isLoggedIn = name.isNotEmpty;
             _text = '';
           });
-        } else {
-          setState(() {
-            _username = '';
-            _isLoggedIn = false;
-            _text = '';
-          });
+          return;
         }
-      } else {
-        setState(() {
-          _username = '';
-          _isLoggedIn = false;
-          _text = '';
-        });
       }
+
+      // 실패 → 한 번만 무음 재시도
+      setState(() {
+        _username = '';
+        _isLoggedIn = false;
+        _text = '';
+      });
+      _scheduleSilentLoginRetry();
     } catch (e) {
       debugPrint('[USERNAME] Error fetching username: $e');
       setState(() {
@@ -735,6 +739,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _isLoggedIn = false;
         _text = '';
       });
+      _scheduleSilentLoginRetry();
     }
   }
 
@@ -805,7 +810,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _assembleTimer?.cancel(); // ✅ 타이머 취소
     _playerStateSub?.cancel(); // ✅ 구독 취소
     _playerCompleteSub?.cancel();
-
+    _silentLoginRetryTimer?.cancel();
     _speech.cancel();
     _animationController.dispose();
 
@@ -823,6 +828,23 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     if (trimmed.isEmpty) return;
     _chatBox.add(Message(sender: sender, text: trimmed));
     if (sender == 'user') setState(() => _text = trimmed);
+  }
+
+  void _scheduleSilentLoginRetry() {
+    if (_silentLoginRetried || _disposed) return;
+    _silentLoginRetried = true;
+
+    _silentLoginRetryTimer = Timer(const Duration(seconds: 2), () async {
+      if (!mounted || _disposed) return;
+      final jwt = await storage.read(key: 'jwt');
+      if (jwt != null && jwt.isNotEmpty) {
+        debugPrint('[LOGIN] silent retry: token 발견 → 프로필 재요청');
+        await _loadUsername(); // 백그라운드에서 사용자 정보 로드
+      } else {
+        debugPrint('[LOGIN] silent retry: 여전히 토큰 없음');
+        // 로그인 재시도 완료 (UI 변경 없음)
+      }
+    });
   }
 
   void _listen() async {
@@ -911,7 +933,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    if (_username.isNotEmpty) ...[
+                    // 항상 메인 화면 표시 (로그인 체크는 백그라운드에서)
+                    ...[
                       // 코알라 캐릭터 이미지
                       Container(
                         width: double.infinity,
@@ -965,7 +988,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  '$_username님, 안녕하세요!',
+                                  _username.isNotEmpty
+                                      ? '$_username님, 안녕하세요!'
+                                      : '안녕하세요!',
                                   style: const TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.bold,
@@ -1283,79 +1308,6 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                       const SizedBox(height: 24),
 
                       _micAutoStopHint(),
-                    ] else ...[
-                      // 로그인하지 않은 경우
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(40),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF6C63FF).withOpacity(0.25),
-                              blurRadius: 20,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.login,
-                              color: Colors.white,
-                              size: 48,
-                            ),
-                            const SizedBox(height: 20),
-                            const Text(
-                              '로그인이 필요합니다',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              '코알라와 대화하려면\n먼저 로그인해주세요',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white70,
-                                height: 1.4,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed:
-                                  () => Navigator.pushNamed(context, '/login'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white.withOpacity(0.2),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 32,
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: const Text(
-                                '로그인하기',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   ],
                 ),

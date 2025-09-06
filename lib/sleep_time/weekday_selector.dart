@@ -12,7 +12,7 @@ class WeekdaySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const dayLabels = ['SU', 'M', 'T', 'W', 'TH', 'F', 'S'];
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     return Wrap(
       spacing: 12,
