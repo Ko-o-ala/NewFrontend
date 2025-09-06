@@ -239,10 +239,10 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    if (service.currentPlaying == null && !service.isPlaying) {
+    if (service.currentPlaying == null || service.currentPlaying!.isEmpty) {
       return const SizedBox.shrink();
     }
-    final title = (service.currentPlaying ?? '')
+    final title = service.currentPlaying!
         .replaceAll('.mp3', '')
         .replaceAll('_', ' ');
     return Positioned(
@@ -300,7 +300,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            title.isEmpty ? '재생 중' : title,
+                            title,
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,

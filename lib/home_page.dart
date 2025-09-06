@@ -6,6 +6,8 @@ import 'package:intl/intl.dart'; // 날짜 포맷팅을 위해 추가
 import 'dart:convert'; // JSON 처리를 위해 추가
 import 'package:http/http.dart' as http; // HTTP 요청을 위해 추가
 import 'package:my_app/services/jwt_utils.dart'; // JWT 유틸리티 추가
+import 'package:my_app/sound/sound.dart'; // 글로벌 사운드 서비스 추가
+import 'package:just_audio/just_audio.dart' as just_audio;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -466,10 +468,163 @@ class _HomePageState extends State<HomePage> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SafeArea(
-        child: _isLoggedIn ? _buildMainContent() : _buildLoginRequired(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: _isLoggedIn ? _buildMainContent() : _buildLoginRequired(),
+          ),
+          // 전역 미니 플레이어
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildGlobalMiniPlayer(),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildGlobalMiniPlayer() {
+    final service = GlobalSoundService();
+
+    return AnimatedBuilder(
+      animation: service,
+      builder: (context, child) {
+        if (service.currentPlaying == null || service.currentPlaying!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final title = service.currentPlaying!
+            .replaceAll('.mp3', '')
+            .replaceAll('_', ' ');
+
+        return Container(
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6C63FF).withOpacity(0.3),
+                blurRadius: 14,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 진행바 (터치 가능한 슬라이더) - 스트림 기반으로 부드럽게
+                Container(
+                  height: 8,
+                  margin: const EdgeInsets.only(top: 8, left: 8, right: 8),
+                  child: _MiniSeekBar(player: service.player),
+                ),
+                // 메인 컨텐츠
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.music_note,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // 시간 표시 - 스트림으로 자연스럽게 갱신
+                            StreamBuilder<Duration>(
+                              stream: service.player.positionStream,
+                              initialData: service.player.position,
+                              builder: (_, snap) {
+                                final current = snap.data ?? Duration.zero;
+                                final total = service.player.duration;
+                                return Text(
+                                  _formatTime(current, total),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 11,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          service.isPlaying
+                              ? Icons.pause_circle
+                              : Icons.play_circle,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                        onPressed: () {
+                          if (service.isPlaying) {
+                            service.pause();
+                          } else {
+                            service.player.play();
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.stop_circle,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                        onPressed: service.stopFromMiniPlayer,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatTime(Duration? current, Duration? total) {
+    String f(Duration d) {
+      final m = d.inMinutes;
+      final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+      return '$m:$s';
+    }
+
+    if (current == null || total == null) return '0:00 / 0:00';
+    return '${f(current)} / ${f(total)}';
   }
 
   Widget _buildLoginRequired() {
@@ -495,44 +650,37 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.login, color: Colors.white, size: 64),
-            const SizedBox(height: 24),
             const Text(
               '로그인해주세요',
               style: TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '알라와 코잘라의 모든 기능을 이용하려면\n먼저 로그인해주세요',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-                height: 1.4,
-              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () => Navigator.pushNamed(context, '/login'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white.withOpacity(0.2),
-                foregroundColor: Colors.white,
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () {
+                Navigator.pushNamed(context, '/login');
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 40,
-                  vertical: 16,
+                  horizontal: 30,
+                  vertical: 15,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 0,
               ),
               child: const Text(
-                '로그인하기',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                '확인',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF6C63FF),
+                ),
               ),
             ),
           ],
@@ -1004,6 +1152,64 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MiniSeekBar extends StatefulWidget {
+  final just_audio.AudioPlayer player;
+  const _MiniSeekBar({required this.player});
+
+  @override
+  State<_MiniSeekBar> createState() => _MiniSeekBarState();
+}
+
+class _MiniSeekBarState extends State<_MiniSeekBar> {
+  bool _isDragging = false;
+  double _dragValue = 0.0;
+
+  double _ratio(Duration pos, Duration? dur) {
+    if (dur == null || dur.inMilliseconds <= 0) return 0.0;
+    final r = pos.inMilliseconds / dur.inMilliseconds;
+    if (r.isNaN || r.isInfinite) return 0.0;
+    return r.clamp(0.0, 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Duration>(
+      stream: widget.player.positionStream,
+      initialData: widget.player.position,
+      builder: (context, snap) {
+        final pos = snap.data ?? Duration.zero;
+        final dur = widget.player.duration;
+        final value = _isDragging ? _dragValue : _ratio(pos, dur);
+
+        return SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: Colors.white,
+            inactiveTrackColor: Colors.white.withOpacity(0.3),
+            thumbColor: Colors.white,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            trackHeight: 4,
+          ),
+          child: Slider(
+            value: value,
+            onChangeStart: (_) => setState(() => _isDragging = true),
+            onChanged: (v) => setState(() => _dragValue = v),
+            onChangeEnd: (v) async {
+              setState(() => _isDragging = false);
+              if (dur != null) {
+                final target = Duration(
+                  milliseconds: (v * dur.inMilliseconds).round(),
+                );
+                await widget.player.seek(target);
+              }
+            },
+          ),
+        );
+      },
     );
   }
 }
