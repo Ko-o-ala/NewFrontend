@@ -21,7 +21,7 @@ const Map<String, String> noisePreferenceMap = {
   '완전한 무음': 'silence',
   '백색소음': 'whiteNoise',
   '빗소리': 'rainsound',
-  '장작소리': 'firesoudn',
+  '장작소리': 'firesound',
   '가사 없는 음악': 'nolyricssound',
   '가사 있는 음악': 'yeslyricssound',
   '드라마 영화 영상': 'drama',

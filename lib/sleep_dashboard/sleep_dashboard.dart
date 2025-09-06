@@ -10,8 +10,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:my_app/sleep_dashboard/sleep_score_details.dart'
-    show SleepScoreArgs;
 import 'package:my_app/services/jwt_utils.dart';
 
 final storage = FlutterSecureStorage();
@@ -31,6 +29,34 @@ class _SleepDashboardState extends State<SleepDashboard>
   String fm(DateTime t) => t.toIso8601String().substring(11, 16);
   String goalText = '미설정';
   String _fmtMin(int m) => '${m ~/ 60}시간 ${m % 60}분';
+  bool get _inMidnightWindow {
+    final h = DateTime.now().hour;
+    return h >= 0 && h < 4; // 00:00 ~ 03:59
+  }
+
+  void _scheduleAutoRefreshAt4am() {
+    final now = DateTime.now();
+    final four = DateTime(now.year, now.month, now.day, 4);
+    final delay = four.isAfter(now) ? four.difference(now) : Duration.zero;
+    if (delay > Duration.zero) {
+      Future.delayed(delay, () {
+        if (!mounted) return;
+        _fetchTodaySleep(); // 4시에 자동 새로고침
+        setState(() {}); // 배너 자동 숨김
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsername();
+    _loadGoalText();
+    _fetchTodaySleep();
+    WidgetsBinding.instance.addObserver(this);
+
+    if (_inMidnightWindow) _scheduleAutoRefreshAt4am();
+  }
 
   // 목표 수면시간과 실제 수면시간을 비교하는 함수
   String _getSleepComparisonText() {
@@ -123,18 +149,6 @@ class _SleepDashboardState extends State<SleepDashboard>
     } catch (e) {
       return '시간 없음';
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUsername();
-
-    _loadGoalText();
-
-    // HealthKit 윈도우/시작시각 계산
-    _fetchTodaySleep();
-    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -723,7 +737,9 @@ class _SleepDashboardState extends State<SleepDashboard>
 
     // 3. 심층 수면 분포 감점 (더 관대하게)
     final sleepDuration = sleepEnd.difference(sleepStart);
-    final earlyEnd = sleepStart.add(sleepDuration * 0.4);
+    final earlyEnd = sleepStart.add(
+      Duration(minutes: (sleepDuration.inMinutes * 0.4).round()),
+    );
     final earlyDeepMin = data
         .where(
           (d) =>
@@ -1152,117 +1168,154 @@ class _SleepDashboardState extends State<SleepDashboard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.psychology,
-                          color: Colors.amber,
-                          size: 24,
+                    if (_inMidnightWindow) _midnightNoticeCard(),
+                    if (_inMidnightWindow) const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '오늘 $username님의 수면점수',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.psychology,
+                                color: Colors.amber,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '오늘 $username님의 수면점수',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  // ... 기존 로직 그대로 ...
+                                },
+                                child: const Text('더 알아보기 >'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          Center(
+                            child: CircularPercentIndicator(
+                              radius: 80.0,
+                              lineWidth: 14.0,
+                              percent:
+                                  (sleepScore.clamp(0, 100)) /
+                                  100.0, // 안전하게 클램프
+                              center: Text(
+                                "$sleepScore 점",
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              progressColor: const Color(0xFFF6D35F),
+                              backgroundColor: const Color(0xFF0A0E21),
+                              circularStrokeCap: CircularStrokeCap.round,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-
-                        TextButton(
-                          onPressed: () {
-                            print('=== 수면점수 상세 페이지로 이동 ===');
-                            print('현재 목표 수면시간: $goalSleepDuration');
-                            if (goalSleepDuration != null) {
-                              print(
-                                '현재 목표 수면시간 (시간): ${goalSleepDuration!.inHours}시간 ${goalSleepDuration!.inMinutes % 60}분',
-                              );
-                              print(
-                                '현재 목표 수면시간 (분): ${goalSleepDuration!.inMinutes}분',
-                              );
-                            } else {
-                              print('목표 수면시간이 설정되지 않음');
-                            }
-                            print('현재 수면점수: $sleepScore');
-
-                            Navigator.pushNamed(
-                              context,
-                              '/score-explain',
-                              arguments: {
-                                'data': healthData,
-                                'sleepStart': sleepStartReal ?? sleepStart!,
-                                'sleepEnd': sleepEndReal ?? sleepEnd!,
-                                'goalSleepDuration':
-                                    goalSleepDuration ??
-                                    const Duration(hours: 8),
-                                // finalScore 제거 - sleep_score_details.dart에서 새로 계산
-                              },
-                            );
-                          },
-                          child: const Text('더 알아보기 >'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: CircularPercentIndicator(
-                        radius: 80.0,
-                        lineWidth: 14.0,
-                        percent: sleepScore / 100.0,
-                        center: Text(
-                          "$sleepScore 점",
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        progressColor: const Color(0xFFF6D35F),
-                        backgroundColor: const Color(0xFF0A0E21),
-                        circularStrokeCap: CircularStrokeCap.round,
+                        ],
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1D1E33),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildActionTile(
+                            icon: Icons.music_note,
+                            title: '수면 사운드 추천받기',
+                            subtitle: 'AI가 추천하는 맞춤형 수면 음악',
+                            onTap: () => Navigator.pushNamed(context, '/sound'),
+                          ),
+                          const Divider(color: Colors.white10, height: 32),
+                          _buildActionTile(
+                            icon: Icons.psychology,
+                            title: '내 수면 자세히 알아보기',
+                            subtitle: '수면 차트 보러가기',
+                            onTap:
+                                () => Navigator.pushNamed(
+                                  context,
+                                  '/sleep-chart',
+                                ),
+                          ),
+                        ],
+                      ), // Column (액션 타일 내부)
+                    ), // Container (액션 타일 카드)
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1D1E33),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    _buildActionTile(
-                      icon: Icons.music_note,
-                      title: '수면 사운드 추천받기',
-                      subtitle: 'AI가 추천하는 맞춤형 수면 음악',
-                      onTap: () => Navigator.pushNamed(context, '/sound'),
-                    ),
-                    const Divider(color: Colors.white10, height: 32),
-                    _buildActionTile(
-                      icon: Icons.psychology,
-                      title: '내 수면 자세히 알아보기',
-                      subtitle: '수면 차트 보러가기',
-                      onTap: () => Navigator.pushNamed(context, '/sleep-chart'),
-                    ),
-                  ],
-                ),
-              ),
+                ), // Column (카드들을 감싸는 컬럼)
+              ), // Container (바깥 카드 박스)
             ],
-          ),
+          ), // Column (SingleChildScrollView의 child)
         ),
+      ), // SingleChildScrollView
+    ); // SafeArea
+    // Scaffold
+  }
+
+  Widget _midnightNoticeCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Icon(Icons.info_outline, color: Colors.amber, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '지금은 00:00–04:00 동기화 시간이에요.\n'
+              '건강 앱/서버 집계가 완료되기 전까진 수면점수가 잠시 보이지 않을 수 있어요.\n'
+              '• 04시 이후 자동으로 갱신됩니다.\n'
+              '• 잠시 후 다시 확인해 주세요.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

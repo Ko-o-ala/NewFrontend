@@ -22,6 +22,24 @@ class GlobalSoundService extends ChangeNotifier {
 
   // 자동 재생 콜백 함수 (이전 방식 유지하되, playlist 사용시 미사용)
   VoidCallback? _onSongFinished;
+  // NEW: 미니플레이어에서 stop 눌렀다는 신호
+  bool _autoplayStopRequested = false;
+
+  /// NEW: 미니플레이어에서 호출 — 재생 정지 + 자동재생도 중지 요청 브로드캐스트
+  Future<void> stopFromMiniPlayer() async {
+    await stop(); // 기존 stop() 호출로 플레이어 멈춤
+    _autoplayStopRequested = true;
+    notifyListeners(); // 화면들에게 알림
+  }
+
+  /// NEW: 화면에서 이 신호를 1회성으로 소비
+  bool consumeAutoplayStopRequest() {
+    if (_autoplayStopRequested) {
+      _autoplayStopRequested = false;
+      return true;
+    }
+    return false;
+  }
 
   // 노래 종료 감지를 위한 변수들
   Timer? _positionCheckTimer;
@@ -35,6 +53,50 @@ class GlobalSoundService extends ChangeNotifier {
   // 플레이리스트 보조 상태
   ConcatenatingAudioSource? _playlistSource; // NEW: 현재 플레이리스트
   int? _currentIndex; // NEW: 현재 인덱스 캐시
+
+  List<String>? _lastPlaylistFiles;
+
+  // NEW: 현재 플레이리스트가 활성인지
+  bool get hasActivePlaylist => _playlistSource != null;
+
+  // NEW: 외부에서 비교할 때 씀 (읽기 전용)
+  List<String> get lastPlaylistFiles =>
+      List.unmodifiable(_lastPlaylistFiles ?? const <String>[]);
+
+  // NEW: 동일 플레이리스트인지 비교
+  bool isSamePlaylistAs(List<String> files) {
+    final a = _lastPlaylistFiles;
+    if (a == null || a.length != files.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != files[i]) return false;
+    }
+    return true;
+  }
+
+  // 플레이리스트 시작 시 마지막 리스트 저장
+  Future<void> setPlaylistAndPlay(List<String> files) async {
+    try {
+      await player.stop();
+      _playlistSource = ConcatenatingAudioSource(
+        children:
+            files.map((f) => AudioSource.asset('assets/sounds/$f')).toList(),
+      );
+      await player.setAudioSource(_playlistSource!, initialIndex: 0);
+      await player.play();
+
+      _isPlaying = true;
+      _currentPlaying = files.isNotEmpty ? files.first : null;
+      _callbackExecuted = false;
+
+      // NEW: 마지막 플레이리스트 기록
+      _lastPlaylistFiles = List.of(files);
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[GLOBAL_SOUND] setPlaylistAndPlay 오류: $e');
+      rethrow;
+    }
+  }
 
   String? get currentPlaying => _currentPlaying;
   bool get isPlaying => _isPlaying;
@@ -62,9 +124,15 @@ class GlobalSoundService extends ChangeNotifier {
     });
 
     // NEW: 현재 인덱스 추적 (플레이리스트용)
+    // GlobalSoundService._internal() 안의 currentIndexStream 리스너 교체
     player.currentIndexStream.listen((i) {
       _currentIndex = i;
-      // (참고) _currentPlaying 업데이트는 화면쪽에서 안전하게 처리합니다.
+      if (i != null &&
+          i >= 0 &&
+          _lastPlaylistFiles != null &&
+          i < _lastPlaylistFiles!.length) {
+        _currentPlaying = _lastPlaylistFiles![i];
+      }
       notifyListeners();
     });
 
@@ -103,33 +171,6 @@ class GlobalSoundService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('[GLOBAL_SOUND] playAsset 실행 중 오류: $e');
-      rethrow;
-    }
-  }
-
-  /// NEW: 플레이리스트 세팅 후 재생 시작 (자동재생용)
-  Future<void> setPlaylistAndPlay(List<String> files) async {
-    try {
-      // 기존 재생 정리
-      await player.stop();
-
-      // ConcatenatingAudioSource 구성
-      _playlistSource = ConcatenatingAudioSource(
-        children:
-            files.map((f) => AudioSource.asset('assets/sounds/$f')).toList(),
-      );
-
-      await player.setAudioSource(_playlistSource!, initialIndex: 0);
-      await player.play();
-
-      // 상태 갱신
-      _isPlaying = true;
-      _currentPlaying = files.isNotEmpty ? files.first : null;
-      _callbackExecuted = false;
-
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[GLOBAL_SOUND] setPlaylistAndPlay 오류: $e');
       rethrow;
     }
   }
@@ -309,7 +350,7 @@ class _GlobalMiniPlayerState extends State<GlobalMiniPlayer> {
                         color: Colors.white,
                         size: 28,
                       ),
-                      onPressed: service.stop,
+                      onPressed: service.stopFromMiniPlayer,
                     ),
                   ],
                 ),
@@ -347,6 +388,20 @@ class SoundScreen extends StatefulWidget {
 
 class _SoundScreenState extends State<SoundScreen> {
   final GlobalSoundService sound = GlobalSoundService();
+  // NEW: 서비스 변경 리스너
+  void _onSoundServiceChanged() {
+    if (!mounted) return;
+
+    // 미니 플레이어에서 stop 누른 신호가 오면 자동재생도 끔
+    if (sound.consumeAutoplayStopRequest()) {
+      setState(() {
+        _isAutoPlaying = false;
+        _userStoppedAutoPlay = true;
+      });
+    }
+    // 기존처럼 UI도 갱신
+    setState(() {});
+  }
 
   Timer? _execDebounce;
   bool executing = false;
@@ -522,13 +577,14 @@ class _SoundScreenState extends State<SoundScreen> {
   List<String> _autoPlayQueue = [];
   bool _isAutoPlaying = false;
   bool _userStoppedAutoPlay = false;
+  bool _autoplayStopRequested = false;
 
   StreamSubscription<int?>? _indexSub; // NEW: 현재 인덱스 구독
 
   @override
   void initState() {
     super.initState();
-    sound.addListener(() => mounted ? setState(() {}) : null);
+    sound.addListener(_onSoundServiceChanged);
 
     // NEW: 플레이리스트 인덱스 구독 → UI 업데이트
     _indexSub = sound.player.currentIndexStream.listen((i) {
@@ -613,7 +669,8 @@ class _SoundScreenState extends State<SoundScreen> {
     sound.clearAutoPlayCallback();
     _indexSub?.cancel(); // NEW
 
-    sound.removeListener(() {});
+    sound.removeListener(_onSoundServiceChanged);
+
     super.dispose();
   }
 
@@ -971,6 +1028,11 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
+  List<String> _buildAutoQueue() {
+    final top3 = topRecommended.take(3).toList();
+    return [...top3, ...top3]; // TOP3 × 2바퀴
+  }
+
   /// ==============================
   /// NEW: 자동 재생 시작 (플레이리스트 기반)
   /// ==============================
@@ -979,23 +1041,29 @@ class _SoundScreenState extends State<SoundScreen> {
     if (!mounted) return;
     if (topRecommended.isEmpty) return;
 
-    _isAutoPlaying = true;
-    _autoPlayQueue.clear();
-    _currentAutoPlayIndex = 0;
+    final queue = _buildAutoQueue();
 
-    final top3Songs = topRecommended.take(3).toList();
-
-    // 2바퀴
-    for (int round = 0; round < 2; round++) {
-      for (String song in top3Songs) {
-        _autoPlayQueue.add(song);
+    // 재생 중이면 건드리지 않음 (같은 플레이리스트면 UI만 싱크)
+    if (sound.isPlaying) {
+      if (sound.hasActivePlaylist && sound.isSamePlaylistAs(queue)) {
+        setState(() {
+          _isAutoPlaying = true;
+          _autoPlayQueue = queue;
+          _currentAutoPlayIndex = sound.currentIndex ?? 0;
+          if (_currentAutoPlayIndex < _autoPlayQueue.length) {
+            sound._currentPlaying = _autoPlayQueue[_currentAutoPlayIndex];
+          }
+        });
       }
+      return;
     }
 
-    // 콜백 기반 정리는 유지하되, playlist 사용하므로 콜백은 필요 없음
-    sound.clearAutoPlayCallback();
+    // 아무 것도 안 나오면 자동재생 시작
+    _isAutoPlaying = true;
+    _autoPlayQueue = queue;
+    _currentAutoPlayIndex = 0;
 
-    // 플레이리스트 세팅 후 재생
+    sound.clearAutoPlayCallback();
     await sound.setPlaylistAndPlay(_autoPlayQueue);
   }
 

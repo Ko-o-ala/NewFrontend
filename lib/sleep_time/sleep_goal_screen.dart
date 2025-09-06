@@ -320,7 +320,7 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
                                               ],
                                     ),
                                     child: Text(
-                                      'Go to bed at',
+                                      '목표 취침 시간',
                                       style: TextStyle(
                                         color:
                                             isWakeUpMode
