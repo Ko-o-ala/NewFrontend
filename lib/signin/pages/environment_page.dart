@@ -20,7 +20,12 @@ const Map<String, String> lightColorTemperatureMap = {
 const Map<String, String> noisePreferenceMap = {
   '완전한 무음': 'silence',
   '백색소음': 'whiteNoise',
-  '유튜브': 'youtube',
+  '빗소리': 'rainsound',
+  '장작소리': 'firesoudn',
+  '가사 없는 음악': 'nolyricssound',
+  '가사 있는 음악': 'yeslyricssound',
+  '드라마 영화 영상': 'drama',
+  '라디오 토크방송': 'radio',
   '기타': 'other',
 };
 
@@ -69,15 +74,22 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
     );
   }
 
-  bool get isValid =>
-      sleepLightUsage != null &&
-      lightColorTemperature != null &&
-      noisePreference != null &&
-      youtubeContentType != null &&
-      (noisePreference != '기타' ||
-          (userInputNoise != null && userInputNoise!.isNotEmpty)) &&
-      (youtubeContentType != '기타' ||
-          (userInputYoutube != null && userInputYoutube!.isNotEmpty));
+  bool get isValid {
+    final needsCustomNoise = noisePreference == '기타';
+    final result =
+        sleepLightUsage != null &&
+        lightColorTemperature != null &&
+        noisePreference != null &&
+        (!needsCustomNoise ||
+            (userInputNoise != null && userInputNoise!.trim().isNotEmpty));
+
+    debugPrint('EnvironmentPage isValid: $result');
+    debugPrint('  sleepLightUsage: $sleepLightUsage');
+    debugPrint('  lightColorTemperature: $lightColorTemperature');
+    debugPrint('  noisePreference: $noisePreference');
+    debugPrint('  userInputNoise: $userInputNoise');
+    return result;
+  }
 
   Widget _buildQuestionCard(
     String title,
@@ -328,7 +340,17 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
             // Q3 - 수면시 소리 선호
             _buildQuestionCard(
               'Q3. 잠잘 때 주변 소리는 어떻게 두시나요?',
-              ['완전한 무음', '백색소음', '유튜브', '기타'],
+              [
+                '완전한 무음',
+                '백색소음',
+                '빗소리',
+                '장작소리',
+                '가사 없는 음악',
+                '가사 있는 음악',
+                '드라마 영화 영상',
+                '라디오 토크방송',
+                '기타',
+              ],
               noisePreference,
               (v) => setState(() {
                 noisePreference = v;
@@ -523,17 +545,9 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                               lightColorTemperatureMap[lightColorTemperature];
                           m['noisePreference'] =
                               noisePreferenceMap[noisePreference];
-                          m['youtubeContentType'] =
-                              youtubeContentTypeMap[youtubeContentType];
 
-                          // 만약 '기타' 선택 시 사용자가 텍스트로 입력한 값이 있다면 저장:
                           if (noisePreference == '기타') {
-                            m['noisePreferenceOther'] =
-                                userInputNoise; // 사용자가 입력한 값
-                          }
-                          if (youtubeContentType == '기타') {
-                            m['youtubeContentTypeOther'] =
-                                userInputYoutube; // 사용자가 입력한 값
+                            m['noisePreferenceOther'] = userInputNoise;
                           }
 
                           await storage.write(
@@ -550,15 +564,11 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                             key: 'noisePreference',
                             value: noisePreferenceMap[noisePreference] ?? '',
                           );
-                          await storage.write(
-                            key: 'youtubeContentType',
-                            value:
-                                youtubeContentTypeMap[youtubeContentType] ?? '',
-                          );
 
                           widget.onNext();
                         }
                         : null,
+
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6C63FF),
                   minimumSize: const Size(double.infinity, 56),

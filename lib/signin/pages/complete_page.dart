@@ -7,9 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class CompletePage extends StatelessWidget {
-  final VoidCallback onSubmit;
-  const CompletePage({Key? key, required this.onSubmit}) : super(key: key);
-
+  const CompletePage({super.key}); // ← 추가
+  @override
   @override
   Widget build(BuildContext context) {
     // 시스템 UI 스타일 설정 (상태바, 네비게이션바 색상)

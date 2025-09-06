@@ -158,6 +158,8 @@ class _MyAppState extends State<MyApp> {
             return MaterialPageRoute(builder: (_) => const LightControlPage());
           case '/monthly':
             return MaterialPageRoute(builder: (_) => MonthlySleepScreen());
+          case '/complete':
+            return MaterialPageRoute(builder: (_) => CompletePage());
           case '/setting':
             return MaterialPageRoute(builder: (_) => const SettingsScreen());
           case '/notice':

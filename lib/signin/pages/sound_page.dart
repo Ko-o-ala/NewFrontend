@@ -6,14 +6,6 @@ import '../onboarding_data.dart';
 final storage = FlutterSecureStorage();
 // 파일 상단 아무 데나(클래스 밖) 추가
 
-const Map<String, String> preferredSleepSoundMap = {
-  '자연 소리': 'nature',
-  '음악': 'music',
-  '저주파/백색소음': 'lowFreq', // ← 옵션/라벨 이 이름으로 고정
-  '목소리 (ASMR)': 'voice',
-  '무음': 'silence',
-};
-
 const Map<String, String> calmingSoundTypeMap = {
   '비 오는 소리': 'rain',
   '파도/물소리': 'waves',
@@ -38,7 +30,6 @@ class _SoundPageState extends State<SoundPage> {
   double preferenceBalance = 0.5; // 0.0 ~ 1.0
 
   bool get isValid =>
-      preferredSleepSoundLabel != null &&
       calmingSoundTypeLabel != null &&
       (calmingSoundTypeLabel != '기타' ||
           (calmingSoundOtherInput != null &&
@@ -280,7 +271,7 @@ class _SoundPageState extends State<SoundPage> {
 
               // Q16 - 마음을 안정시키는 사운드
               _buildQuestionCard(
-                'Q15. 마음을 안정시키는 사운드는 어떤 것인가요?',
+                '15. 마음을 안정시키는 사운드는 어떤 것인가요?',
                 calmingSoundTypeMap.keys.toList(),
                 calmingSoundTypeLabel,
                 (v) => setState(() => calmingSoundTypeLabel = v),
@@ -485,9 +476,6 @@ class _SoundPageState extends State<SoundPage> {
                           ? () async {
                             final m = OnboardingData.answers;
 
-                            // 라벨 → enum 값 변환
-                            final preferredEnum =
-                                preferredSleepSoundMap[preferredSleepSoundLabel]!;
                             final calmingEnum =
                                 calmingSoundTypeMap[calmingSoundTypeLabel]!;
                             if (calmingSoundTypeLabel == '기타' &&
@@ -498,18 +486,14 @@ class _SoundPageState extends State<SoundPage> {
                             }
 
                             // 서버 스펙에 맞게 저장
-                            m['preferredSleepSound'] =
-                                preferredEnum; // ex) 'nature'
+                            // ex) 'nature'
                             m['calmingSoundType'] = calmingEnum; // ex) 'rain'
                             m['preferenceBalance'] = preferenceBalance;
                             // 만약 서버가 0~100 정수를 요구한다면:
                             // m['preferenceBalance'] = (preferenceBalance * 100).round();
 
                             // 보조 저장
-                            await storage.write(
-                              key: 'preferredSleepSound',
-                              value: preferredEnum,
-                            );
+
                             await storage.write(
                               key: 'calmingSoundType',
                               value: calmingEnum,
