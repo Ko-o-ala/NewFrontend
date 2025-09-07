@@ -48,30 +48,6 @@ DateTime _parseTimeWithDate(String timeStr, DateTime date) {
   }
 }
 
-DateTime _parseTs(dynamic v) {
-  // null 체크 추가
-  if (v == null) {
-    throw FormatException('DateTime 값이 null입니다');
-  }
-
-  if (v is int) {
-    // epoch(ms) 가정
-    return DateTime.fromMillisecondsSinceEpoch(v, isUtc: true).toLocal();
-  }
-  if (v is String) {
-    if (v.trim().isEmpty) {
-      throw FormatException('DateTime 문자열이 비어있습니다: "$v"');
-    }
-    final p = DateTime.tryParse(v);
-    if (p != null) return p.toLocal();
-    final asInt = int.tryParse(v);
-    if (asInt != null) {
-      return DateTime.fromMillisecondsSinceEpoch(asInt, isUtc: true).toLocal();
-    }
-  }
-  throw FormatException('Invalid datetime: $v (타입: ${v.runtimeType})');
-}
-
 SleepStage _parseStage(dynamic v) {
   if (v == null) {
     debugPrint('[SLEEP] 수면 단계가 null입니다. 기본값 light 사용');
@@ -179,6 +155,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   List<SleepLog> _logs = [];
   String? _userId;
   Duration? _totalSleepDuration; // 서버의 totalSleepDuration 저장
+  Duration? _awakeDuration; // 서버의 awakeDuration 저장
   bool _fallbackFromTwoDaysAgo = false; // 이틀 전 데이터 사용 여부
   DateTime? _actualDataDate; // 실제 가져온 데이터의 날짜
 
@@ -277,8 +254,15 @@ class _SleepChartScreenState extends State<SleepChartScreen>
           final dur = item['Duration'] as Map<String, dynamic>?;
           if (dur == null) return null;
           final total = (dur['totalSleepDuration'] as int?) ?? 0;
+          return Duration(minutes: total);
+        }();
+
+        // 깨어있던 시간도 별도 저장
+        _awakeDuration ??= () {
+          final dur = item['Duration'] as Map<String, dynamic>?;
+          if (dur == null) return null;
           final awake = (dur['awakeDuration'] as int?) ?? 0;
-          return Duration(minutes: total + awake);
+          return Duration(minutes: awake);
         }();
 
         final segments = item['segments'] as List? ?? [];
@@ -308,7 +292,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       // 데이터가 완전히 비면 false (폴백 대상)
       final hasAny =
           logs.isNotEmpty ||
-          (totalSleepDuration != null && totalSleepDuration!.inMinutes > 0);
+          (totalSleepDuration != null && totalSleepDuration.inMinutes > 0);
       if (!hasAny) return false;
 
       // 성공적으로 불러온 경우 화면 상태 갱신
@@ -402,7 +386,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       // 애니메이션 시작
       _fadeController.forward();
       _slideController.forward();
-    } catch (e, st) {
+    } catch (e) {
       if (!mounted) return;
 
       setState(() {
@@ -415,12 +399,13 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   /// baseTime = 선택 날짜의 00:00 - 6시간 (전날 18시) ~ 다음날 12:00 까지 18시간 윈도우
   /// 예: 21일을 선택하면 20일 18시 ~ 22일 12시까지의 수면 데이터를 표시
   Duration get _totalSleep {
-    // 서버의 totalSleepDuration을 우선 사용 (수면분석과 동일한 값)
-    if (_totalSleepDuration != null) {
+    // 서버의 totalSleepDuration + awakeDuration을 우선 사용 (수면분석과 동일한 값)
+    if (_totalSleepDuration != null && _awakeDuration != null) {
+      final totalInBed = _totalSleepDuration! + _awakeDuration!;
       debugPrint(
-        '[SLEEP] totalSleepDuration 사용: ${_totalSleepDuration!.inMinutes}분',
+        '[SLEEP] 서버 데이터 사용: totalSleep=${_totalSleepDuration!.inMinutes}분 + awake=${_awakeDuration!.inMinutes}분 = ${totalInBed.inMinutes}분',
       );
-      return _totalSleepDuration!;
+      return totalInBed;
     }
     // fallback: segments 기반 계산
     final calculated = _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
@@ -439,8 +424,11 @@ class _SleepChartScreenState extends State<SleepChartScreen>
   double get _sleepEfficiency {
     if (_totalSleep.inMinutes == 0) return 0.0;
 
-    final totalInBed = _logs.fold(Duration.zero, (sum, e) => sum + e.duration);
-    final awakeTime = _byStage[SleepStage.awake] ?? Duration.zero;
+    // 서버 데이터가 있으면 서버의 awakeDuration 사용, 없으면 segments 기반 계산
+    final awakeTime =
+        _awakeDuration ?? (_byStage[SleepStage.awake] ?? Duration.zero);
+    final totalInBed =
+        _totalSleep; // 이미 totalSleepDuration + awakeDuration으로 계산됨
 
     if (totalInBed.inMinutes == 0) return 0.0;
 

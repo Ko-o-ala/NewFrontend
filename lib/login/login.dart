@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleSignUp() {
-    Navigator.pushNamed(context, '/sign-in');
+    Navigator.pushNamed(context, '/onboarding');
   }
 
   Future<void> _login() async {
@@ -103,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('loginName', username);
         await prefs.setString('loginAt', DateTime.now().toIso8601String());
         if (tokenExp != null) {
-          await prefs.setInt('tokenExp', tokenExp!); // 만료 epoch seconds
+          await prefs.setInt('tokenExp', tokenExp); // 만료 epoch seconds
         }
 
         if (kDebugMode) {

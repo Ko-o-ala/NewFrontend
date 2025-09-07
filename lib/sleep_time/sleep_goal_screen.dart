@@ -386,52 +386,250 @@ class _SleepGoalScreenState extends State<SleepGoalScreen> {
 
                   const SizedBox(height: 24),
 
-                  // 정보 배너
+                  // 현재 수면시간 표시 카드
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2C2C72), Color(0xFF1F1F4C)],
+                      gradient: LinearGradient(
+                        colors:
+                            sleepDuration != null && sleepDuration.inHours >= 7
+                                ? [
+                                  const Color(0xFF6C63FF),
+                                  const Color(0xFF4B47BD),
+                                ] // 충분한 수면 (7시간 이상)
+                                : sleepDuration != null &&
+                                    sleepDuration.inHours >= 6
+                                ? [
+                                  const Color(0xFFFF9800),
+                                  const Color(0xFFE65100),
+                                ] // 보통 수면 (6-7시간)
+                                : [
+                                  const Color(0xFF2C2C72),
+                                  const Color(0xFF1F1F4C),
+                                ], // 부족한 수면 (6시간 미만)
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF2C2C72).withOpacity(0.3),
+                          color: (sleepDuration != null &&
+                                      sleepDuration.inHours >= 7
+                                  ? const Color(0xFF6C63FF)
+                                  : sleepDuration != null &&
+                                      sleepDuration.inHours >= 6
+                                  ? const Color(0xFFFF9800)
+                                  : const Color(0xFF2C2C72))
+                              .withOpacity(0.3),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(
-                            Icons.info_outline,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                sleepDuration != null &&
+                                        sleepDuration.inHours >= 7
+                                    ? Icons
+                                        .check_circle_outline // 충분한 수면
+                                    : sleepDuration != null &&
+                                        sleepDuration.inHours >= 6
+                                    ? Icons
+                                        .warning_amber_outlined // 보통 수면
+                                    : Icons.info_outline, // 부족한 수면
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '현재 설정된 수면시간',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    durationText,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  if (bedTime != null && wakeTime != null) ...[
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(
+                                              0.2,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.bedtime,
+                                                color: Colors.white,
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '취침 ${formatTime(bedTime!)}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(
+                                              0.2,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.wb_sunny,
+                                                color: Colors.white,
+                                                size: 16,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '기상 ${formatTime(wakeTime!)}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            isWakeUpMode
-                                ? '$durationText 수면을 취하실 수 있습니다'
-                                : '오늘 주무실 시간을 선택해주세요',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
+                        if (isWakeUpMode && sleepDuration != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      sleepDuration.inHours >= 7
+                                          ? Icons.thumb_up
+                                          : sleepDuration.inHours >= 6
+                                          ? Icons.thumbs_up_down
+                                          : Icons.thumb_down,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      sleepDuration.inHours >= 7
+                                          ? '충분한 수면시간입니다!'
+                                          : sleepDuration.inHours >= 6
+                                          ? '적당한 수면시간입니다'
+                                          : '수면시간이 부족합니다',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        sleepDuration.inHours >= 7
+                                            ? const Color(
+                                              0xFF6C63FF,
+                                            ).withOpacity(0.3)
+                                            : sleepDuration.inHours >= 6
+                                            ? Colors.orange.withOpacity(0.3)
+                                            : Colors.red.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    sleepDuration.inHours >= 7
+                                        ? '좋음'
+                                        : sleepDuration.inHours >= 6
+                                        ? '보통'
+                                        : '부족',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

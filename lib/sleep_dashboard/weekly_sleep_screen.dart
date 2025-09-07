@@ -3,8 +3,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:my_app/sleep_dashboard/monthly_sleep_screen.dart';
-import 'package:my_app/sleep_dashboard/sleep_dashboard.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class WeeklySleepScreen extends StatefulWidget {

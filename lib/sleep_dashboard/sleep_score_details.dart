@@ -7,6 +7,7 @@ class SleepScoreDetailsPage extends StatefulWidget {
   final DateTime sleepStart;
   final DateTime sleepEnd;
   final Duration goalSleepDuration;
+  final bool fallbackFromTwoDaysAgo;
 
   const SleepScoreDetailsPage({
     super.key,
@@ -14,6 +15,7 @@ class SleepScoreDetailsPage extends StatefulWidget {
     required this.sleepStart,
     required this.sleepEnd,
     required this.goalSleepDuration,
+    this.fallbackFromTwoDaysAgo = false,
   });
 
   @override
@@ -27,13 +29,13 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   // 수면 데이터 변수들
   int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
   int totalSleepMin = 0, inBedMinutes = 0;
-  int wakeEpisodes = 0, transitions = 0, longDeepSegments = 0;
+  int wakeEpisodes = 0, transitions = 0;
   double deepPct = 0, remPct = 0, lightPct = 0, earlyDeepRatio = 0;
   double transitionRate = 0;
+  // _SleepScoreDetailsPageState 안에
+  double sleepEfficiency = 0.0; // 실제수면/침대시간
 
-  // 감점 변수들
-  int timePenalty = 0, structurePenalty = 0, earlyDeepPenalty = 0;
-  int wakePenalty = 0, transitionPenalty = 0, deepSegPenalty = 0;
+  // UI 표시용 변수들 (감점 방식에서 가중치 방식으로 변경됨)
 
   // 애니메이션 컨트롤러
   late AnimationController _scoreController;
@@ -41,11 +43,163 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   late Animation<double> _scoreAnimation;
   late Animation<double> _fadeAnimation;
 
+  // ✅ 목표가 없을 때 기본 8시간(480분)을 내부 타깃으로 사용
+  int get _targetMinutes {
+    final m = widget.goalSleepDuration.inMinutes;
+    return m > 0 ? m : 480;
+  }
+
+  bool get _usingDefaultTarget => widget.goalSleepDuration.inMinutes <= 0;
+
+  // sleep_dashboard.dart와 동일한 수면점수 계산 함수
+  int _calculateSleepScore({
+    required List<HealthDataPoint> data,
+    required DateTime sleepStart,
+    required DateTime sleepEnd,
+    required Duration goalSleepDuration,
+  }) {
+    int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
+    int wakeEpisodes = 0, transitions = 0;
+
+    HealthDataPoint? prev;
+    for (final d in data) {
+      final minutes = d.dateTo.difference(d.dateFrom).inMinutes;
+      switch (d.type) {
+        case HealthDataType.SLEEP_DEEP:
+          deepMin += minutes;
+          break;
+        case HealthDataType.SLEEP_REM:
+          remMin += minutes;
+          break;
+        case HealthDataType.SLEEP_LIGHT:
+        case HealthDataType.SLEEP_ASLEEP:
+          lightMin += minutes;
+          break;
+        case HealthDataType.SLEEP_AWAKE:
+          awakeMin += minutes;
+          wakeEpisodes++;
+          break;
+        default:
+          break;
+      }
+      if (prev != null && prev.type != d.type) transitions++;
+      prev = d;
+    }
+
+    final asleepMin = deepMin + remMin + lightMin; // 실제 수면
+    final inBedMin = asleepMin + awakeMin; // 침대에 있던 전체 시간
+    if (asleepMin <= 0) return 0;
+
+    // --- 1) Duration score (목표 대비) ---
+    final goalMinutes = goalSleepDuration.inMinutes.toDouble();
+
+    // ⬇️ targetMinutes를 항상 갖게 만듭니다. (목표 없으면 8h)
+    final targetMinutes = goalMinutes > 0 ? goalMinutes : 480.0;
+
+    double wDur = 0.40,
+        wEff = 0.20,
+        wStruct = 0.20,
+        wFrag = 0.15,
+        wEarly = 0.05;
+
+    final durRatio = (deepMin + remMin + lightMin) / targetMinutes;
+    double durScore;
+    if (durRatio >= 1.0) {
+      durScore = 90 + (((durRatio - 1.0).clamp(0.0, 0.2)) / 0.2) * 10;
+    } else {
+      durScore = (durRatio.clamp(0.0, 1.0)) * 90;
+    }
+
+    // --- 2) Efficiency score (실제수면/침대시간) ---
+    final eff = inBedMin > 0 ? asleepMin / inBedMin : 0.0;
+    double effScore;
+    if (eff <= 0.75) {
+      // 0.60→0 ~ 0.75→50
+      effScore = 50 * ((eff - 0.60) / 0.15).clamp(0.0, 1.0);
+    } else if (eff <= 0.85) {
+      // 0.75→50 ~ 0.85→80
+      effScore = 50 + 30 * ((eff - 0.75) / 0.10).clamp(0.0, 1.0);
+    } else if (eff <= 0.92) {
+      // 0.85→80 ~ 0.92→95
+      effScore = 80 + 15 * ((eff - 0.85) / 0.07).clamp(0.0, 1.0);
+    } else {
+      // 0.92→95 ~ 0.97→100
+      effScore = 95 + 5 * ((eff - 0.92) / 0.05).clamp(0.0, 1.0);
+    }
+    effScore = effScore.clamp(0, 100).toDouble();
+
+    // --- 3) Structure score (깊/REM/얕 비율) ---
+    final deepPct = asleepMin > 0 ? deepMin / asleepMin : 0.0;
+    final remPct = asleepMin > 0 ? remMin / asleepMin : 0.0;
+    final lightPct = asleepMin > 0 ? lightMin / asleepMin : 0.0;
+    // 목표 비율: 깊 22%, REM 22%, 얕 56%
+    final dev =
+        (deepPct - 0.22).abs() +
+        (remPct - 0.22).abs() +
+        (lightPct - 0.56).abs();
+    // dev=0 → 100점, dev=0.5 → 0점 (상한/하한 클램프)
+    double structScore = (100 - (dev / 0.5) * 100).clamp(0, 100).toDouble();
+
+    // --- 4) Fragmentation score (깸/전환) ---
+    final hours = asleepMin / 60.0;
+    final transitionRate = hours > 0 ? transitions / hours : 0.0;
+    double fragScore = 100.0;
+    fragScore -= (wakeEpisodes * 6).clamp(0, 36); // 깸 1회당 -6, 최대 -36
+    if (transitionRate > 12)
+      fragScore -= (transitionRate - 12) * 3; // 전환률 12/h 초과부터 감점
+    fragScore = fragScore.clamp(0, 100).toDouble();
+
+    // --- 5) Early-deep score (첫 40% 구간의 깊은수면 분포) ---
+    final sleepDuration = sleepEnd.difference(sleepStart);
+    final earlyEnd = sleepStart.add(
+      Duration(minutes: (sleepDuration.inMinutes * 0.4).round()),
+    );
+    final earlyDeepMin = data
+        .where(
+          (d) =>
+              d.type == HealthDataType.SLEEP_DEEP &&
+              d.dateFrom.isBefore(earlyEnd),
+        )
+        .fold<int>(
+          0,
+          (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
+        );
+    final earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0.0;
+    double earlyScore;
+    if (earlyDeepRatio <= 0.2) {
+      earlyScore = 40;
+    } else if (earlyDeepRatio < 0.4) {
+      earlyScore = 40 + 50 * ((earlyDeepRatio - 0.2) / 0.2);
+    } else if (earlyDeepRatio < 0.5) {
+      earlyScore = 90 + 10 * ((earlyDeepRatio - 0.4) / 0.1);
+    } else {
+      earlyScore = 100;
+    }
+    earlyScore = earlyScore.clamp(0, 100).toDouble();
+
+    // --- 가중 합산 ---
+    // 목표 없을 때 가중치 정규화
+    final sumW = wDur + wEff + wStruct + wFrag + wEarly;
+    wDur /= sumW;
+    wEff /= sumW;
+    wStruct /= sumW;
+    wFrag /= sumW;
+    wEarly /= sumW;
+
+    final score =
+        wDur * durScore +
+        wEff * effScore +
+        wStruct * structScore +
+        wFrag * fragScore +
+        wEarly * earlyScore;
+
+    return score.round().clamp(0, 100);
+  }
+
   @override
   void initState() {
     super.initState();
 
-    // 애니메이션 컨트롤러 초기화
     _scoreController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -80,7 +234,10 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   @override
   void didUpdateWidget(SleepScoreDetailsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.goalSleepDuration != widget.goalSleepDuration) {
+    if (oldWidget.goalSleepDuration != widget.goalSleepDuration ||
+        oldWidget.data != widget.data ||
+        oldWidget.sleepStart != widget.sleepStart ||
+        oldWidget.sleepEnd != widget.sleepEnd) {
       _compute();
       _startAnimations();
     }
@@ -94,12 +251,32 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   }
 
   void _compute() {
-    if (widget.data.isEmpty) return;
+    if (widget.data.isEmpty) {
+      debugPrint('[SleepScoreDetails] 데이터가 비어있습니다');
+      return;
+    }
 
-    // 수면 데이터 분석
+    debugPrint('[SleepScoreDetails] 데이터 분석 시작 - ${widget.data.length}개');
+    debugPrint(
+      '[SleepScoreDetails] 수면 시간: ${widget.sleepStart} ~ ${widget.sleepEnd}',
+    );
+    debugPrint(
+      '[SleepScoreDetails] 목표 수면(분): ${widget.goalSleepDuration.inMinutes} '
+      '(사용 타깃=${_targetMinutes}분${_usingDefaultTarget ? ", 기본값" : ""})',
+    );
+
+    // sleep_dashboard.dart와 동일한 계산 로직 사용
+    recalculatedScore = _calculateSleepScore(
+      data: widget.data,
+      sleepStart: widget.sleepStart,
+      sleepEnd: widget.sleepEnd,
+      goalSleepDuration: widget.goalSleepDuration,
+    );
+
+    // 기존 변수들도 계산 (UI 표시용)
     final data = widget.data;
     deepMin = remMin = lightMin = awakeMin = 0;
-    wakeEpisodes = transitions = longDeepSegments = 0;
+    wakeEpisodes = transitions = 0;
 
     HealthDataPoint? prev;
     for (final d in data) {
@@ -108,7 +285,6 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
       switch (d.type) {
         case HealthDataType.SLEEP_DEEP:
           deepMin += duration;
-          if (duration >= 30) longDeepSegments++;
           break;
         case HealthDataType.SLEEP_REM:
           remMin += duration;
@@ -128,45 +304,21 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
       prev = d;
     }
 
-    totalSleepMin = deepMin + remMin + lightMin;
-    inBedMinutes = totalSleepMin + awakeMin;
+    totalSleepMin = deepMin + remMin + lightMin; // 실제 수면
+    inBedMinutes = totalSleepMin + awakeMin; // 침대에 있던 전체
 
-    // 점수 계산
-    final totalMinutes =
-        widget.sleepEnd.difference(widget.sleepStart).inMinutes;
-    final goalMinutes = widget.goalSleepDuration.inMinutes;
+    // UI 표시용 변수들 계산
+    sleepEfficiency = inBedMinutes > 0 ? totalSleepMin / inBedMinutes : 0.0;
+    deepPct = totalSleepMin > 0 ? deepMin / totalSleepMin : 0.0;
+    remPct = totalSleepMin > 0 ? remMin / totalSleepMin : 0.0;
+    lightPct = totalSleepMin > 0 ? lightMin / totalSleepMin : 0.0;
 
-    int score = 100;
+    // 초반 deep 분포 계산
+    final sleepDurWindow = widget.sleepEnd.difference(widget.sleepStart);
+    final earlyEnd = widget.sleepStart.add(
+      Duration(minutes: (sleepDurWindow.inMinutes * 0.4).round()),
+    );
 
-    // 1. 수면 시간 감점 (더 관대하게)
-    if (totalMinutes < goalMinutes) {
-      final hourDiff = ((goalMinutes - totalMinutes) / 60).ceil();
-      timePenalty = (hourDiff * 5).clamp(0, 15); // 10 → 5, 25 → 15
-      score -= timePenalty;
-    } else {
-      timePenalty = 0;
-    }
-
-    // 2. 수면 구조 감점 (더 관대하게)
-    if (totalSleepMin > 0) {
-      deepPct = deepMin / totalSleepMin;
-      remPct = remMin / totalSleepMin;
-      lightPct = lightMin / totalSleepMin;
-      final diffSum =
-          (deepPct - 0.2).abs() + (remPct - 0.2).abs() + (lightPct - 0.6).abs();
-      structurePenalty = ((diffSum / 0.3).round() * 3).clamp(
-        0,
-        10,
-      ); // 0.2 → 0.3, 5 → 3, 15 → 10
-      score -= structurePenalty;
-    } else {
-      structurePenalty = 10; // 15 → 10
-      score -= structurePenalty;
-    }
-
-    // 3. 초반 deep 분포 감점 (더 관대하게)
-    final sleepDuration = widget.sleepEnd.difference(widget.sleepStart);
-    final earlyEnd = widget.sleepStart.add(sleepDuration * 0.4);
     final earlyDeepMin = data
         .where(
           (d) =>
@@ -178,38 +330,21 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
           (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
         );
 
-    earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0;
-    if (earlyDeepRatio < 0.4) {
-      // 0.6 → 0.4
-      earlyDeepPenalty = 3; // 5 → 3
-      score -= 3;
-    } else {
-      earlyDeepPenalty = 0;
-    }
+    earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0.0;
+    transitionRate =
+        (totalSleepMin / 60.0) > 0 ? transitions / (totalSleepMin / 60.0) : 0.0;
 
-    // 4. 깸 횟수 감점 (더 관대하게)
-    wakePenalty = (wakeEpisodes * 2).clamp(0, 6); // 3 → 2, 8 → 6
-    score -= wakePenalty;
-
-    // 5. 수면 통합성 감점 (더 관대하게)
-    final hours = totalSleepMin / 60;
-    transitionRate = hours > 0 ? transitions / hours : 0;
-    if (transitionRate >= 10) {
-      // 8 → 10
-      transitionPenalty = 2; // 3 → 2
-      score -= 2;
-    } else {
-      transitionPenalty = 0;
-    }
-
-    if (longDeepSegments == 0) {
-      deepSegPenalty = 3; // 5 → 3
-      score -= 3;
-    } else {
-      deepSegPenalty = 0;
-    }
-
-    recalculatedScore = score.clamp(0, 100);
+    debugPrint('[SleepScoreDetails] 계산 완료:');
+    debugPrint(
+      '  - 실제 수면: ${totalSleepMin ~/ 60}h ${totalSleepMin % 60}m (target ${_targetMinutes}m)',
+    );
+    debugPrint(
+      '  - 깊:${deepMin}m(${(deepPct * 100).toStringAsFixed(1)}%), '
+      'REM:${remMin}m(${(remPct * 100).toStringAsFixed(1)}%), '
+      '코어:${lightMin}m(${(lightPct * 100).toStringAsFixed(1)}%)',
+    );
+    debugPrint('  - 깨어있음: ${awakeMin}m, 깸: $wakeEpisodes회, 전환: $transitions회');
+    debugPrint('  - 최종 점수: $recalculatedScore점');
   }
 
   @override
@@ -239,19 +374,12 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 메인 점수 카드
               _buildMainScoreCard(),
               const SizedBox(height: 24),
-
-              // 수면 요약 카드
               _buildSleepSummaryCard(),
               const SizedBox(height: 24),
-
-              // 점수 분석 카드
               _buildScoreAnalysisCard(),
               const SizedBox(height: 24),
-
-              // 개선 제안 카드
               _buildImprovementCard(),
             ],
           ),
@@ -306,6 +434,16 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               fontWeight: FontWeight.w500,
             ),
           ),
+          const SizedBox(height: 8),
+          if (_usingDefaultTarget)
+            Text(
+              '(목표 미설정 → 기본 8시간 기준)',
+              style: TextStyle(
+                color: Colors.white60,
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -330,8 +468,9 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   Widget _buildSleepSummaryCard() {
     final h = totalSleepMin ~/ 60;
     final m = totalSleepMin % 60;
-    final goalH = widget.goalSleepDuration.inHours;
-    final goalM = widget.goalSleepDuration.inMinutes % 60;
+
+    final tH = _targetMinutes ~/ 60;
+    final tM = _targetMinutes % 60;
 
     return Container(
       width: double.infinity,
@@ -372,8 +511,8 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               ),
               Expanded(
                 child: _buildSummaryItem(
-                  '목표 수면',
-                  '$goalH시간 $goalM분',
+                  _usingDefaultTarget ? '목표 수면(기본값)' : '목표 수면',
+                  '$tH시간 $tM분',
                   Colors.blue,
                 ),
               ),
@@ -467,37 +606,40 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
             ],
           ),
           const SizedBox(height: 20),
-          _buildPenaltyItem('시간', timePenalty, '목표 수면시간 달성 여부'),
-          _buildPenaltyItem('수면 구조', structurePenalty, '깊은수면, REM, 코어수면 비율'),
-          _buildPenaltyItem('초반 deep', earlyDeepPenalty, '수면 초반 깊은수면 분포'),
-          _buildPenaltyItem('깸 횟수', wakePenalty, '수면 중 깨어난 횟수'),
-          _buildPenaltyItem('전환율', transitionPenalty, '수면 단계 전환 빈도'),
-          _buildPenaltyItem('deep 세그먼트', deepSegPenalty, '30분 이상 깊은수면 지속'),
+          _buildScoreFactorItem('수면 시간', '목표 대비 실제 수면량 (40%)'),
+          _buildScoreFactorItem('수면 효율', '실제 수면 / 침대 시간 (20%)'),
+          _buildScoreFactorItem('수면 구조', '깊은수면, REM, 코어수면 비율 (20%)'),
+          _buildScoreFactorItem('수면 단편화', '깸 횟수 및 전환 빈도 (15%)'),
+          _buildScoreFactorItem('초기 깊은수면', '수면 초반 깊은수면 분포 (5%)'),
         ],
       ),
     );
   }
 
-  Widget _buildPenaltyItem(String label, int penalty, String description) {
-    if (penalty == 0) return const SizedBox.shrink();
-
+  Widget _buildScoreFactorItem(String label, String description) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
+        color: const Color(0xFF6C63FF).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.2),
+              color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: const Icon(Icons.remove, color: Colors.red, size: 16),
+            child: const Icon(
+              Icons.analytics,
+              color: Color(0xFF6C63FF),
+              size: 16,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -505,9 +647,9 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$label 감점: -$penalty점',
+                  label,
                   style: const TextStyle(
-                    color: Colors.red,
+                    color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -571,56 +713,65 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   List<Widget> _getImprovementSuggestions() {
     final suggestions = <Widget>[];
 
-    if (timePenalty > 0) {
+    // 점수 기반 개선 제안
+    if (recalculatedScore < 60) {
       suggestions.add(
         _buildSuggestionItem(
-          '⏰ 수면 시간 부족',
-          '목표 수면시간을 달성하기 위해 취침 시간을 앞당기거나 기상 시간을 늦추세요.',
+          '💤 전반적인 수면 개선',
+          '수면 시간, 효율, 구조를 종합적으로 개선해보세요. 규칙적인 수면 패턴과 쾌적한 환경이 중요합니다.',
+          Colors.red,
+        ),
+      );
+    } else if (recalculatedScore < 80) {
+      suggestions.add(
+        _buildSuggestionItem(
+          '⭐ 수면 품질 향상',
+          '수면 점수를 더 높이기 위해 취침 전 스마트폰 사용을 줄이고, 침실 환경을 개선해보세요.',
+          Colors.orange,
+        ),
+      );
+    } else {
+      suggestions.add(
+        _buildSuggestionItem(
+          '🎉 훌륭한 수면!',
+          '좋은 수면 패턴을 유지하고 계세요. 현재의 수면 습관을 계속 지켜나가면 됩니다.',
+          Colors.green,
+        ),
+      );
+    }
+
+    // 수면 효율성 기반 제안
+    if (sleepEfficiency < 0.8) {
+      suggestions.add(
+        _buildSuggestionItem(
+          '⏳ 수면 효율 개선',
+          '침대에 있는 시간 대비 실제 수면이 부족해요. 중간 각성/뒤척임을 줄이면 좋아져요.',
           Colors.orange,
         ),
       );
     }
 
-    if (structurePenalty > 0) {
+    // 수면 구조 기반 제안
+    if (deepPct < 0.15 || remPct < 0.15) {
       suggestions.add(
         _buildSuggestionItem(
           '🏗️ 수면 구조 개선',
-          '규칙적인 수면 패턴과 적절한 수면 환경을 만들어 깊은수면과 REM 수면을 늘리세요.',
+          '깊은수면이나 REM 수면이 부족해요. 규칙적인 수면 패턴과 쾌적한 환경이 도움이 됩니다.',
           Colors.purple,
         ),
       );
     }
 
-    if (earlyDeepPenalty > 0) {
+    // 깸 횟수 기반 제안
+    if (wakeEpisodes > 3) {
       suggestions.add(
         _buildSuggestionItem(
-          '🌅 초반 깊은수면 부족',
-          '수면 초반에 깊은수면을 늘리려면 취침 전 스마트폰 사용을 줄이고 편안한 환경을 만드세요.',
-          Colors.blue,
-        ),
-      );
-    }
-
-    if (wakePenalty > 0) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '😴 수면 중 깸 횟수',
-          '수면 중 깨어나는 것을 줄이려면 방을 어둡게 하고, 소음을 차단하며, 편안한 온도를 유지하세요.',
+          '😴 수면 중 깸 줄이기',
+          '수면 중 깨어나는 횟수가 많아요. 소음 차단, 암실, 쾌적한 온도로 깸을 줄여보세요.',
           Colors.red,
         ),
       );
     }
-
-    if (deepSegPenalty > 0) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '🔴 깊은수면 지속성',
-          '30분 이상 지속되는 깊은수면을 위해 스트레스를 줄이고, 규칙적인 운동을 하세요.',
-          Colors.indigo,
-        ),
-      );
-    }
-
     if (suggestions.isEmpty) {
       suggestions.add(
         _buildSuggestionItem(
@@ -630,7 +781,6 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
         ),
       );
     }
-
     return suggestions;
   }
 
@@ -669,23 +819,23 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   }
 
   Color _getScoreColor(int score) {
-    if (score >= 70) return Colors.green; // 80 → 70
-    if (score >= 50) return Colors.orange; // 60 → 50
-    if (score >= 30) return Colors.deepOrange; // 40 → 30
+    if (score >= 70) return Colors.green;
+    if (score >= 50) return Colors.orange;
+    if (score >= 30) return Colors.deepOrange;
     return Colors.red;
   }
 
   String _getScoreMessage(int score) {
-    if (score >= 70) return '훌륭한 수면!'; // 80 → 70
-    if (score >= 50) return '좋은 수면'; // 60 → 50
-    if (score >= 30) return '개선이 필요해요'; // 40 → 30
+    if (score >= 70) return '훌륭한 수면!';
+    if (score >= 50) return '좋은 수면';
+    if (score >= 30) return '개선이 필요해요';
     return '수면 관리가 필요해요';
   }
 
   String _getScoreDescription(int score) {
-    if (score >= 70) return '전문가 수준의 수면'; // 80 → 70
-    if (score >= 50) return '일반적인 수면 품질'; // 60 → 50
-    if (score >= 30) return '수면 패턴 개선 필요'; // 40 → 30
+    if (score >= 70) return '전문가 수준의 수면';
+    if (score >= 50) return '일반적인 수면 품질';
+    if (score >= 30) return '수면 패턴 개선 필요';
     return '수면 전문의 상담 권장';
   }
 }

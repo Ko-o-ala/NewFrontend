@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-import '../signin/onboarding_data.dart';
 import 'pages/welcome_page.dart';
 import 'pages/nickname_greeting_page.dart';
 import 'pages/intro_question.dart';
@@ -15,7 +11,6 @@ import 'pages/sound_page.dart';
 import 'pages/device_page.dart';
 import 'pages/health_page.dart';
 import 'pages/goal_page.dart';
-import 'pages/complete_page.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({Key? key}) : super(key: key);
@@ -43,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     HealthPage(onNext: _next),
     GoalPage(
       onNext: () {
-        Navigator.pushReplacementNamed(context, '/sign-in');
+        Navigator.pushReplacementNamed(context, '/home');
       },
     ),
   ];

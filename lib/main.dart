@@ -159,7 +159,7 @@ class _MyAppState extends State<MyApp> {
           case '/monthly':
             return MaterialPageRoute(builder: (_) => MonthlySleepScreen());
           case '/complete':
-            return MaterialPageRoute(builder: (_) => CompletePage());
+            return MaterialPageRoute(builder: (_) => const CompletePage());
           case '/setting':
             return MaterialPageRoute(builder: (_) => const SettingsScreen());
           case '/notice':
@@ -185,6 +185,7 @@ class _MyAppState extends State<MyApp> {
           case '/delete-account':
             return MaterialPageRoute(builder: (_) => DeleteAccountPage());
           case '/start':
+          case '/onboarding':
             return MaterialPageRoute(builder: (_) => OnboardingScreen());
           case '/test':
             return MaterialPageRoute(builder: (_) => MP3TestPage());
@@ -202,6 +203,8 @@ class _MyAppState extends State<MyApp> {
                       goalSleepDuration:
                           args?['goalSleepDuration'] ??
                           const Duration(hours: 8),
+                      fallbackFromTwoDaysAgo:
+                          args?['fallbackFromTwoDaysAgo'] ?? false,
                     ),
               );
             }
