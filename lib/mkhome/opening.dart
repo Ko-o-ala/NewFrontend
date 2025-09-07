@@ -21,8 +21,8 @@ class opening extends StatelessWidget {
               child: Column(
                 children: [
                   SizedBox(
-                    height: screenHeight * 0.65,
-                  ), // 🔸 버튼 위치 조정 (0.75 → 0.65)
+                    height: screenHeight * 0.70,
+                  ), // 🔸 버튼 위치 조정 (조금 더 위로)
                   // 🔸 홈으로 버튼
                   // Padding(
                   //   padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -41,7 +41,6 @@ class opening extends StatelessWidget {
                   //     child: const Text("홈으로"),
                   //   ),
                   // ),
-                  const SizedBox(height: 12), // 🔸 버튼 간격 (16 → 12)
                   // 🔸 이미 계정이 있나요? 링크
                   Center(
                     child: GestureDetector(
@@ -59,8 +58,7 @@ class opening extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 12), // 🔸 링크와 버튼 간격 (16 → 12)
+                  const SizedBox(height: 16), // 🔸 링크와 버튼 간격
                   // 🔸 시작하기 버튼
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32.0),
