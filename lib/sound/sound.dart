@@ -159,18 +159,25 @@ class GlobalSoundService extends ChangeNotifier {
       // NEW: playlist 모드에서 수동 재생 시 충돌 방지
       _playlistSource = null;
 
+      // UI 업데이트를 위해 먼저 _currentPlaying 설정
+      _currentPlaying = file;
+      _isPlaying = true;
+      _callbackExecuted = false;
+      notifyListeners(); // 즉시 UI 업데이트
+
       await player.stop(); // pause 대신 stop으로 초기화가 안전
       await player.setAsset('assets/sounds/$file');
       await player.play();
 
-      _isPlaying = true;
-      _currentPlaying = file;
       _currentDuration = player.duration;
-      _callbackExecuted = false;
-
+      // 재생 시작 후 한 번 더 UI 업데이트
       notifyListeners();
     } catch (e) {
       debugPrint('[GLOBAL_SOUND] playAsset 실행 중 오류: $e');
+      // 오류 발생 시 상태 초기화
+      _currentPlaying = null;
+      _isPlaying = false;
+      notifyListeners();
       rethrow;
     }
   }
@@ -703,47 +710,6 @@ class _SoundScreenState extends State<SoundScreen> {
     }
   }
 
-  Future<void> _patchPreferredSoundsRank() async {
-    try {
-      final url = Uri.parse(
-        'https://kooala.tassoo.uk/users/modify/preferred/sounds/rank',
-      );
-      final headers = await _authHeaders();
-
-      final preferred = <Map<String, dynamic>>[
-        for (int i = 0; i < soundFiles.length; i++)
-          {"filename": soundFiles[i], "rank": i + 1},
-      ];
-
-      final body = json.encode({"preferredSounds": preferred});
-
-      final resp = await http.patch(url, headers: headers, body: body);
-
-      if (resp.statusCode == 401) {
-        await storage.delete(key: 'jwt');
-        throw Exception('Unauthorized (401)');
-      }
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('정렬 저장 실패: $e')));
-      }
-    }
-  }
-
-  void _onReorder(int oldIdx, int newIdx) async {
-    setState(() {
-      if (newIdx > oldIdx) newIdx -= 1; // ✅ Flutter 인덱스 보정
-      final item = soundFiles.removeAt(oldIdx);
-      soundFiles.insert(newIdx, item);
-    });
-    await _patchPreferredSoundsRank(); // ✅ 서버에 정렬 저장
-  }
-
   // 추천 실행
   Future<void> _executeRecommendation() async {
     if (userId == null) return;
@@ -1186,6 +1152,11 @@ class _SoundScreenState extends State<SoundScreen> {
 
       final body = json.encode({"preferredSounds": preferred});
 
+      debugPrint('[SOUND_RANK] 사운드 순서 변경 중...');
+      debugPrint(
+        '[SOUND_RANK] 새로운 순서: ${preferred.map((e) => '${e['rank']}: ${e['filename']}').join(', ')}',
+      );
+
       final resp = await http.patch(url, headers: headers, body: body);
 
       if (resp.statusCode == 401) {
@@ -1193,9 +1164,14 @@ class _SoundScreenState extends State<SoundScreen> {
         throw Exception('Unauthorized (401)');
       }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        debugPrint(
+          '[SOUND_RANK] ❌ 서버 응답 오류: HTTP ${resp.statusCode}: ${resp.body}',
+        );
         throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
       }
+      debugPrint('[SOUND_RANK] ✅ 사운드 순서 저장 성공');
     } catch (e) {
+      debugPrint('[SOUND_RANK] ❌ 사운드 순서 저장 오류: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1978,6 +1954,9 @@ class _SoundScreenState extends State<SoundScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           itemCount: soundFiles.length,
                           onReorder: (oldIndex, newIndex) {
+                            debugPrint(
+                              '[SOUND_REORDER] ReorderableListView 순서 변경: $oldIndex → $newIndex',
+                            );
                             setState(() {
                               if (oldIndex < newIndex) {
                                 newIndex -= 1;
