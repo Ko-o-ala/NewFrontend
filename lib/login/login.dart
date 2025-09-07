@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart'; // kDebugMode
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ 로컬 플래그 저장
 
 final storage = FlutterSecureStorage();
 
@@ -41,56 +43,96 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     setState(() => _isLoading = true);
 
-    final response = await http.post(
-      Uri.parse('https://kooala.tassoo.uk/users/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'userID': idController.text.trim(),
-        'password': passwordController.text.trim(),
-      }),
-    );
-    print('📦 로그인 응답: ${response.body}');
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final decoded = json.decode(response.body);
-      final token = decoded['data']['token'];
-      final responseUserId = decoded['data']['userID']; // ✅ 수정
-      final username = decoded['data']['name'] as String;
-
+    try {
+      final response = await http.post(
+        Uri.parse('https://kooala.tassoo.uk/users/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userID': idController.text.trim(),
+          'password': passwordController.text.trim(),
+        }),
+      );
       if (kDebugMode) {
-        // 전체 토큰 출력 (개발용)
-        debugPrint('🔐 JWT token: $token', wrapWidth: 1024);
-
-        // JWT payload 디코드해서 보기
-        final parts = token.split('.');
-        if (parts.length == 3) {
-          final payloadJson = utf8.decode(
-            base64Url.decode(base64Url.normalize(parts[1])),
-          );
-          debugPrint('📦 JWT payload: $payloadJson', wrapWidth: 1024);
-        }
-      }
-      await storage.write(key: 'jwt', value: token);
-      await storage.write(key: 'userID', value: responseUserId); // 로그인 후
-      await storage.write(key: 'username', value: username);
-      // 저장된 값 검증 로그
-      if (kDebugMode) {
-        final savedJwt = await storage.read(key: 'jwt');
-        final savedUserId = await storage.read(key: 'userID');
         debugPrint(
-          '💾 saved jwt length=${savedJwt?.length}, userID=$savedUserId',
+          '📦 로그인 응답: ${response.statusCode} ${response.body}',
+          wrapWidth: 1024,
         );
       }
 
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('로그인 실패. 아이디 또는 비밀번호를 확인하세요.')),
-      );
-    }
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = json.decode(response.body);
+        final data =
+            (decoded is Map<String, dynamic>)
+                ? decoded['data'] as Map<String, dynamic>?
+                : null;
 
-    setState(() => _isLoading = false);
+        final token = data?['token'] as String?;
+        final responseUserId = data?['userID']?.toString();
+        final username = (data?['name'] as String?) ?? '사용자';
+
+        if (token == null || responseUserId == null) {
+          throw Exception('서버 응답에 필수 필드가 없습니다.');
+        }
+
+        // 개발 시 JWT 디코드 로그
+        int? tokenExp;
+        if (kDebugMode) {
+          debugPrint('🔐 JWT token: $token', wrapWidth: 1024);
+          final parts = token.split('.');
+          if (parts.length == 3) {
+            final payloadJson = utf8.decode(
+              base64Url.decode(base64Url.normalize(parts[1])),
+            );
+            debugPrint('📦 JWT payload: $payloadJson', wrapWidth: 1024);
+            try {
+              final payload = json.decode(payloadJson) as Map<String, dynamic>;
+              tokenExp = (payload['exp'] is int) ? payload['exp'] as int : null;
+            } catch (_) {}
+          }
+        }
+
+        // ✅ SecureStorage (민감정보)
+        await storage.write(key: 'jwt', value: token);
+        await storage.write(key: 'userID', value: responseUserId);
+        await storage.write(key: 'username', value: username);
+
+        // ✅ SharedPreferences (세션 플래그/비민감)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('loginUserID', responseUserId);
+        await prefs.setString('loginName', username);
+        await prefs.setString('loginAt', DateTime.now().toIso8601String());
+        if (tokenExp != null) {
+          await prefs.setInt('tokenExp', tokenExp!); // 만료 epoch seconds
+        }
+
+        if (kDebugMode) {
+          final savedJwt = await storage.read(key: 'jwt');
+          final savedUserId = await storage.read(key: 'userID');
+          debugPrint(
+            '💾 saved jwt length=${savedJwt?.length}, userID=$savedUserId',
+          );
+          debugPrint('💾 isLoggedIn=${prefs.getBool('isLoggedIn')}');
+        }
+
+        if (!mounted) return;
+        // ✅ 스택 정리 후 홈으로
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인 실패. 아이디 또는 비밀번호를 확인하세요.')),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN][ERR] $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인 중 오류가 발생했습니다. 다시 시도해주세요.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -112,7 +154,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     size: 28,
                   ),
                   onPressed: () {
-                    Navigator.pushReplacementNamed(context, '/');
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/opening',
+                      (route) => false,
+                    );
                   },
                 ),
               ),
@@ -440,7 +486,26 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class HomeScreen extends StatelessWidget {
-  final storage = FlutterSecureStorage();
+  HomeScreen({super.key});
+  final storage = const FlutterSecureStorage();
+
+  Future<void> _logout(BuildContext context) async {
+    // ✅ 모든 저장값 정리
+    await storage.delete(key: 'jwt');
+    await storage.delete(key: 'username');
+    await storage.delete(key: 'userID');
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('loginUserID');
+    await prefs.remove('loginName');
+    await prefs.remove('loginAt');
+    await prefs.remove('tokenExp');
+    await prefs.setBool('isLoggedIn', false);
+
+    // ✅ 스택 비우고 오프닝으로
+    // ignore: use_build_context_synchronously
+    Navigator.pushNamedAndRemoveUntil(context, '/opening', (r) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -450,11 +515,7 @@ class HomeScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await storage.delete(key: 'jwt');
-              await storage.delete(key: 'username');
-              Navigator.pushReplacementNamed(context, '/home');
-            },
+            onPressed: () => _logout(context),
           ),
         ],
       ),
@@ -464,14 +525,13 @@ class HomeScreen extends StatelessWidget {
 }
 
 class SleepScreen extends StatelessWidget {
-  final storage = FlutterSecureStorage();
+  SleepScreen({super.key});
+  final storage = const FlutterSecureStorage();
 
   Future<String> _loadUsername() async {
     try {
       final token = await storage.read(key: 'jwt');
-      if (token == null) {
-        return '사용자';
-      }
+      if (token == null) return '사용자';
 
       final headers = {
         'Authorization': 'Bearer $token',

@@ -49,7 +49,7 @@ class opening extends StatelessWidget {
                         Navigator.pushNamed(context, '/login');
                       },
                       child: Text(
-                        '이미 계정이 있나요?',
+                        '로그인하기',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 16,

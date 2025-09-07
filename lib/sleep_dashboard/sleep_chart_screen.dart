@@ -252,7 +252,7 @@ class _SleepChartScreenState extends State<SleepChartScreen>
       throw Exception('토큰이 없습니다. 다시 로그인해주세요.');
     }
     final tokenOnly =
-        raw.startsWith(RegExp(r'Bearer\\s', caseSensitive: false))
+        raw.startsWith(RegExp(r'Bearer\\s+', caseSensitive: false))
             ? raw.split(' ').last
             : raw;
 
@@ -263,6 +263,9 @@ class _SleepChartScreenState extends State<SleepChartScreen>
     };
   }
 
+  DateTime _apiDate(DateTime d) =>
+      DateTime(d.year, d.month, d.day).subtract(const Duration(days: 1));
+
   Future<void> _fetch() async {
     try {
       setState(() {
@@ -270,16 +273,22 @@ class _SleepChartScreenState extends State<SleepChartScreen>
         _error = null;
       });
 
-      // 수정된 날짜 계산: 선택된 날짜 그대로 사용
-      // 예: 8월 31일을 선택했다면 → 8월 31일 데이터 조회
-      final dateStr = _ymd(widget.selectedDate);
+      final apiDay = _apiDate(widget.selectedDate);
+      final dateStr = _ymd(apiDay);
 
-      debugPrint('[SLEEP] 선택된 날짜: ${_ymd(widget.selectedDate)}');
-      debugPrint('[SLEEP] 조회할 날짜: $dateStr');
+      debugPrint('[SLEEP] 선택된 날짜(표시용): ${_ymd(widget.selectedDate)}');
+      debugPrint('[SLEEP] API 조회 날짜(전날): $dateStr');
       debugPrint('[SLEEP] 사용자 ID: $_userId');
 
+      final uid = _userId;
+      if (uid == null || uid.trim().isEmpty) {
+        setState(() {
+          _error = '로그인이 필요합니다. (userID 없음)';
+        });
+        return;
+      }
       final url = Uri.parse(
-        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(_userId!)}/$dateStr',
+        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(uid)}/$dateStr',
       );
 
       debugPrint('[SLEEP] API URL: $url');

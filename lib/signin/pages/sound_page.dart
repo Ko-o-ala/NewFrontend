@@ -278,17 +278,9 @@ class _SoundPageState extends State<SoundPage> {
 
               const SizedBox(height: 30),
 
-              // Q15 - 수면 시 듣고 싶은 소리
-              _buildQuestionCard(
-                'Q15. 수면 시 듣고 싶은 소리는 어떤 것인가요?',
-                preferredSleepSoundMap.keys.toList(),
-                preferredSleepSoundLabel,
-                (v) => setState(() => preferredSleepSoundLabel = v),
-              ),
-
               // Q16 - 마음을 안정시키는 사운드
               _buildQuestionCard(
-                'Q16. 마음을 안정시키는 사운드는 어떤 것인가요?',
+                'Q15. 마음을 안정시키는 사운드는 어떤 것인가요?',
                 calmingSoundTypeMap.keys.toList(),
                 calmingSoundTypeLabel,
                 (v) => setState(() => calmingSoundTypeLabel = v),

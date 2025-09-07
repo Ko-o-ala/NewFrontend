@@ -43,9 +43,15 @@ class _HomePageState extends State<HomePage> {
         });
         debugPrint('[홈페이지] 사용자 이름 로드 성공: $userName');
       } else {
+        setState(() {
+          _userName = '사용자';
+        });
         debugPrint('[홈페이지] 사용자 이름이 없음');
       }
     } catch (e) {
+      setState(() {
+        _userName = '사용자';
+      });
       debugPrint('[홈페이지] 사용자 이름 로드 실패: $e');
     }
   }
@@ -507,7 +513,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      '$_userName님, 안녕하세요!',
+                      '${_userName.isNotEmpty ? _userName : "사용자"}님, 안녕하세요!',
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -516,7 +522,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      '쿠알라와 함께 더 나은 수면을 경험해보세요',
+                      '알라와 함께 더 나은 수면을 경험해보세요',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white70,

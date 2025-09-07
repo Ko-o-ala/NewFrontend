@@ -32,29 +32,28 @@ import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 import 'package:my_app/device/alarm/bedtime_provider.dart';
 import 'package:my_app/models/message.dart';
 import 'package:my_app/services/api_client.dart';
+import 'package:my_app/services/auth_service.dart';
 
 late final ApiClient apiClient;
 void main() async {
-  await dotenv.load();
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load();
 
-  // 전역 시스템 UI 스타일 설정
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
-      statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
-      systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
-      systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+      statusBarColor: Color(0xFF0A0E21),
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF0A0E21),
+      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
-  apiClient = ApiClient(baseUrl: dotenv.env['API_BASE_URL']!);
-  //Hive 초기화
+  final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'https://kooala.tassoo.uk';
+  apiClient = ApiClient(baseUrl: apiBaseUrl);
+
   await Hive.initFlutter();
-
   Hive.registerAdapter(MessageAdapter());
-
-  await Hive.openBox<Message>('chatBox'); // ✅ 여기서 1회만 오픈
+  await Hive.openBox<Message>('chatBox');
 
   runApp(
     MultiProvider(
@@ -67,27 +66,82 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isLoggedIn = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    try {
+      final isLoggedIn = await AuthService.isLoggedIn();
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = isLoggedIn;
+        _isLoading = false;
+      });
+      debugPrint('[MyApp] 로그인 상태: $_isLoggedIn');
+    } catch (e) {
+      debugPrint('[MyApp] 로그인 상태 확인 실패: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = false;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 앱 전체 시스템 UI 스타일 설정
+    // 시스템 UI 스타일 유지
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
-        statusBarColor: Color(0xFF0A0E21), // 상태바 배경색
-        statusBarIconBrightness: Brightness.light, // 상태바 아이콘 색상 (밝게)
-        systemNavigationBarColor: Color(0xFF0A0E21), // 하단 네비게이션바 배경색
-        systemNavigationBarIconBrightness: Brightness.light, // 하단 아이콘 색상 (밝게)
+        statusBarColor: Color(0xFF0A0E21),
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Color(0xFF0A0E21),
+        systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
 
+    // 1) 로딩 중이면 로딩 화면
+    if (_isLoading) {
+      return MaterialApp(
+        title: 'Sleep App',
+        debugShowCheckedModeBanner: false,
+        home: const Scaffold(
+          backgroundColor: Color(0xFF0A0E21),
+          body: Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 2) 초기 라우트 대신, 로그인 여부로 home을 바로 정함
     return MaterialApp(
       title: 'Sleep App',
       debugShowCheckedModeBanner: false,
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
+
+      /// ✅ 여기! 로그인 상태면 HomePage, 아니면 opening 위젯로 시작
+      home: _isLoggedIn ? const HomePage() : const opening(),
+
+      /// 나머지 라우팅은 그대로(onGenerateRoute)
+      onGenerateRoute: (RouteSettings settings) {
         switch (settings.name) {
+          case '/opening':
+            return MaterialPageRoute(builder: (_) => const opening());
           case '/':
             return MaterialPageRoute(builder: (_) => const opening());
           case '/setup':
@@ -128,76 +182,27 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (_) => ManageAccountPage());
           case '/delete-account':
             return MaterialPageRoute(builder: (_) => DeleteAccountPage());
-
           case '/start':
             return MaterialPageRoute(builder: (_) => OnboardingScreen());
-
           case '/test':
             return MaterialPageRoute(builder: (_) => MP3TestPage());
           case '/score-explain':
-            final args = settings.arguments as Map<String, dynamic>?;
-            if (args != null) {
-              return MaterialPageRoute(
-                builder:
-                    (_) => SleepScoreDetailsPage(
-                      data: args['data'] ?? [],
-                      sleepStart: args['sleepStart'] ?? DateTime.now(),
-                      sleepEnd: args['sleepEnd'] ?? DateTime.now(),
-                      goalSleepDuration:
-                          args['goalSleepDuration'] ?? const Duration(hours: 8),
-                    ),
-              );
-            } else {
-              // arguments가 없는 경우 기본값으로 페이지 생성
-              final now = DateTime.now();
-              return MaterialPageRoute(
-                builder:
-                    (_) => SleepScoreDetailsPage(
-                      data: [],
-                      sleepStart: now,
-                      sleepEnd: now,
-                      goalSleepDuration: const Duration(hours: 8),
-                    ),
-              );
-            }
-
           case '/sleep-score':
-            final args = settings.arguments as Map<String, dynamic>?;
-            if (args != null) {
-              return MaterialPageRoute(
-                builder:
-                    (_) => SleepScoreDetailsPage(
-                      data: args['data'] ?? [],
-                      sleepStart: args['sleepStart'] ?? DateTime.now(),
-                      sleepEnd: args['sleepEnd'] ?? DateTime.now(),
-                      goalSleepDuration:
-                          args['goalSleepDuration'] ?? const Duration(hours: 8),
-                    ),
-              );
-            } else {
-              // arguments가 없는 경우 기본값으로 페이지 생성
+            {
+              final args = settings.arguments as Map<String, dynamic>?;
               final now = DateTime.now();
               return MaterialPageRoute(
                 builder:
                     (_) => SleepScoreDetailsPage(
-                      data: [],
-                      sleepStart: now,
-                      sleepEnd: now,
-                      goalSleepDuration: const Duration(hours: 8),
+                      data: args?['data'] ?? [],
+                      sleepStart: args?['sleepStart'] ?? now,
+                      sleepEnd: args?['sleepEnd'] ?? now,
+                      goalSleepDuration:
+                          args?['goalSleepDuration'] ??
+                          const Duration(hours: 8),
                     ),
               );
             }
-
-          case '/complete':
-            return MaterialPageRoute(
-              builder:
-                  (_) => CompletePage(
-                    onSubmit: () {
-                      // TODO: 원하는 submit 동작을 여기에 정의하거나 다른 곳에서 주입
-                    },
-                  ),
-            );
-
           case '/sleep-chart':
             {
               final args = settings.arguments as Map<String, dynamic>?;
@@ -207,7 +212,6 @@ class MyApp extends StatelessWidget {
                 builder: (_) => SleepChartScreen(selectedDate: selectedDate),
               );
             }
-
           default:
             return MaterialPageRoute(
               builder:

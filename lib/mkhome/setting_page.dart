@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:my_app/services/auth_service.dart';
 import 'package:my_app/user_model.dart';
 import 'package:my_app/connect_settings/manage_account.dart';
 import 'package:my_app/connect_settings/notification.dart';
 import 'package:my_app/connect_settings/faq.dart';
 import 'package:my_app/connect_settings/ask_bug.dart';
 import 'package:my_app/device/light_control_page.dart';
-import 'package:my_app/device/alarm/alarm_dashboard_page.dart';
 
 // 임시 사용자 정보 (나중에 서버 연동 시 수정)
 Future<UserModel> fetchUserInfo() async {
@@ -168,8 +168,9 @@ class SettingsScreen extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                               ),
-                              onPressed: () {
+                              onPressed: () async {
                                 Navigator.pop(context);
+                                await AuthService.logout();
                                 Navigator.pushNamedAndRemoveUntil(
                                   context,
                                   '/',

@@ -990,6 +990,70 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
                       const SizedBox(height: 24),
 
+                      // 대화 안내 카드 (보라색 상자 밖)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D1E33),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFF6C63FF).withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C63FF).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.info_outline,
+                                color: Color(0xFF6C63FF),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '💡 대화 안내',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    '한번 마이크 버튼 누르고 나면 이후에는 알라얘기가 끝나면 자동으로 마이크가 활성화되니, 눈을 감고 편하게 대화해보세요.\n\n졸리다고 말하면 알라와의 대화를 종료하고 추천사운드를 들을 수 있습니다.\n아예 말을 하지 않을 경우 알라는 사용자분이 잠에 들었다고 판단하고 자동으로 대화를 종료합니다.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white70,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
                       // 음성 인식 텍스트 표시 영역
                       Container(
                         width: double.infinity,

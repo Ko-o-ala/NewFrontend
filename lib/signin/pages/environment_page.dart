@@ -311,7 +311,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
 
             // Q1 - 수면 시 조명 사용
             _buildQuestionCard(
-              'Q1. 수면 시 조명을 어떻게 사용하나요?',
+              'Q1. 주무실 때 조명은 보통 어떻게 하시나요?',
               ['완전히 끄고 잔다', '무드등 또는 약한 조명', '형광등/밝은 조명'],
               sleepLightUsage,
               (v) => setState(() => sleepLightUsage = v),
@@ -319,7 +319,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
 
             // Q2 - 조명 색온도
             _buildQuestionCard(
-              'Q2. 조명의 색온도는 어떤 것을 선호하시나요?',
+              'Q2. 자기 전 조명을 켠다면, 어떤 색감을 선호하시나요? ',
               ['차가운 하얀색(6500K)', '중간 톤(4000K)', '따뜻한 노란색(2700K)', '모르겠어요'],
               lightColorTemperature,
               (v) => setState(() => lightColorTemperature = v),
@@ -327,7 +327,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
 
             // Q3 - 수면시 소리 선호
             _buildQuestionCard(
-              'Q3. 수면시에 어떤 소리를 좋아하시나요?',
+              'Q3. 잠잘 때 주변 소리는 어떻게 두시나요?',
               ['완전한 무음', '백색소음', '유튜브', '기타'],
               noisePreference,
               (v) => setState(() {
@@ -420,17 +420,6 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                   ],
                 ),
               ),
-
-            // Q4 - 유튜브 콘텐츠 선호
-            _buildQuestionCard(
-              'Q4. 유튜브 콘텐츠를 틀면 무엇을 선호하시나요?',
-              ['ASMR', '음악', '라디오', '드라마', '기타'],
-              youtubeContentType,
-              (v) => setState(() {
-                youtubeContentType = v;
-                if (v != '기타') userInputYoutube = null;
-              }),
-            ),
 
             // 기타 유튜브 콘텐츠 입력 필드
             if (youtubeContentType == '기타')

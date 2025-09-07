@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_app/services/auth_service.dart';
 
 class DeleteAccountPage extends StatefulWidget {
   const DeleteAccountPage({super.key});
@@ -12,43 +13,45 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
 
   void _handleDelete() {
     if (!_agreed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("먼저 안내사항에 동의해주세요.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("먼저 안내사항에 동의해주세요.")));
       return;
     }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("계정을 정말 탈퇴할까요?"),
-        content: const Text("계정을 탈퇴하면 모든 데이터가 삭제되며, 복구할 수 없습니다."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("취소"),
+      builder:
+          (context) => AlertDialog(
+            title: const Text("계정을 정말 탈퇴할까요?"),
+            content: const Text("계정을 탈퇴하면 모든 데이터가 삭제되며, 복구할 수 없습니다."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("취소"),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // 다이얼로그 닫기
+                  _performDelete();
+                },
+                child: const Text("탈퇴하기"),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // 다이얼로그 닫기
-              _performDelete();
-            },
-            child: const Text("탈퇴하기"),
-          ),
-        ],
-      ),
     );
   }
 
   void _performDelete() async {
     // TODO: 나중에 서버에 탈퇴 요청 보내기 (DELETE API)
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("계정이 탈퇴되었습니다.")),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("계정이 탈퇴되었습니다.")));
 
-    // TODO: 로그아웃 처리 및 초기 화면으로 이동
-    Navigator.popUntil(context, (route) => route.isFirst);
+    // 로그아웃 처리 및 초기 화면으로 이동
+    await AuthService.logout();
+    Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
   }
 
   @override
@@ -113,7 +116,10 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                 ),
-                child: const Text("계속하기", style: TextStyle(color: Colors.white)),
+                child: const Text(
+                  "계속하기",
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
             ),
           ],
