@@ -293,7 +293,7 @@ class _HabitPage1State extends State<HabitPage1> {
                 (v) => setState(() => usualWakeupTime = v),
               ),
               _buildQuestionCard(
-                'Q7. 하루 중 언제 가장 졸리거나 피곤하세요?',
+                'Q7. 하루 중 어느 활동이 더 많은가요?',
                 ['실내 활동', '실외 활동', '비슷함'],
                 dayActivityType,
                 (v) => setState(() => dayActivityType = v),

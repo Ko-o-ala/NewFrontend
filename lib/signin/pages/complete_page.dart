@@ -194,6 +194,7 @@ class CompletePage extends StatelessWidget {
                         '16~20시': '16to20',
                         '20~24시': '20to24',
                         '새벽': 'night',
+                        '안함': 'none',
                         '8시 ~ 12시': '8to12', // 공백 포함 버전
                         '12시 ~ 16시': '12to16', // 공백 포함 버전
                         '16시 ~ 20시': '16to20', // 공백 포함 버전
@@ -220,19 +221,39 @@ class CompletePage extends StatelessWidget {
 
                     String? _coerceMostDrowsyTime(String? v) {
                       if (v == null) return null;
+                      final vv = v.trim();
+
+                      // 서버가 허용하는 값이면 그대로 반환
+                      const allowed = {
+                        'morningWakeup',
+                        'afterLunch',
+                        'afternoon',
+                        'afterDinner',
+                        'night',
+                        'random',
+                      };
+                      if (allowed.contains(vv)) return vv;
+
+                      // 한글/레거시 라벨 보정
                       const m = {
+                        // 현재 UI 라벨
+                        '아침 기상 직후': 'morningWakeup',
+                        '점심 시간 후': 'afterLunch',
+                        '오후 활동 시간': 'afternoon',
+                        '저녁 식사 후': 'afterDinner',
+                        '밤/늦은 시간': 'night',
+                        '일정하지 않음': 'random',
+                        // 예전/다른 라벨
+                        '일정 없음': 'random',
                         '오전': 'morningWakeup',
                         '오후': 'afternoon',
                         '저녁': 'afterDinner',
                         '새벽': 'night',
-                        '일정 없음': 'random',
                         'morning': 'morningWakeup',
-                        'afternoon': 'afternoon',
                         'evening': 'afterDinner',
-                        'night': 'night',
-                        'random': 'random',
+                        'morningWakeUp': 'morningWakeup', // 레거시 값 보정
                       };
-                      return m[v];
+                      return m[vv];
                     }
 
                     String? _coerceCalmingSoundToPreferredSleepSound(

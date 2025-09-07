@@ -1,7 +1,8 @@
 name: my_app
 description: "A new Flutter project."
 publish_to: 'none'
-version: 1.0.0+1
+# 버그픽스 2차 베타(권장: 버전 유지, 빌드만 업)
+version: 1.0.0+4
 
 environment:
   sdk: ^3.7.2
@@ -55,12 +56,16 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
   # 코드 생성 도구
   hive_generator: ^2.0.1
   build_runner: ^2.3.3
   flutter_lints: ^5.0.0
-
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
 flutter:
   uses-material-design: true
   assets:

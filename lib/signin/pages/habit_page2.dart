@@ -12,18 +12,20 @@ const Map<String, String> napFrequencyMap = {
 };
 
 const Map<String, String> napDurationMap = {
-  '15분 이하': 'under15',
+  '안잠': 'none',
+  '15분 이내': 'under15',
   '15~30분': '15to30',
   '30분~1시간': '30to60',
   '1시간 이상': 'over60',
 };
 
 const Map<String, String> mostDrowsyTimeMap = {
-  '오전': 'morning',
-  '오후': 'afternoon',
-  '저녁': 'evening',
-  '새벽': 'night',
-  '일정 없음': 'random',
+  '아침 기상 직후': 'morningWakeup',
+  '점심 시간 후': 'afterLunch',
+  '오후 활동 시간': 'afternoon',
+  '저녁 식사 후': 'afterDinner',
+  '밤/늦은 시간': 'night',
+  '일정하지 않음': 'random',
 };
 
 const Map<String, String> averageSleepDurationMap = {
@@ -280,20 +282,27 @@ class _HabitPage2State extends State<HabitPage2> {
 
               // 질문들
               _buildQuestionCard(
-                'Q9. 낮잠 빈도는 어떻게 되시나요?',
+                'Q9. 낮잠은 얼마나 자주 주무시나요?',
                 ['매일', '주 3~4회', '주 1~2회', '거의 안 잠'],
                 napFrequency,
                 (v) => setState(() => napFrequency = v),
               ),
               _buildQuestionCard(
                 'Q10. 평소에 낮잠은 얼마나 주무시나요?',
-                ['15분 이하', '15~30분', '30분~1시간', '1시간 이상'],
+                ['안잠', '15분 이내', '15~30분', '30분~1시간', '1시간 이상'],
                 napDuration,
                 (v) => setState(() => napDuration = v),
               ),
               _buildQuestionCard(
                 'Q11. 가장 졸리거나 피곤한 시간대는 어떻게 되나요?',
-                ['오전', '오후', '저녁', '새벽', '일정 없음'],
+                [
+                  '아침 기상 직후',
+                  '점심 시간 후',
+                  '오후 활동 시간',
+                  '저녁 식사 후',
+                  '밤/늦은 시간',
+                  '일정하지 않음',
+                ],
                 mostDrowsyTime,
                 (v) => setState(() => mostDrowsyTime = v),
               ),

@@ -8,14 +8,14 @@ const Map<String, String> timeToFallAsleepMap = {
   '5분 이하': 'under5min',
   '5~15분': '5to15min',
   '15~30분': '15to30min',
-  '30분~1시간': 'over30min',
+  '30~1시간': 'over30min',
   '1시간 이상': 'over1h',
 };
 
 const Map<String, String> caffeineIntakeLevelMap = {
   '안 마심': 'none',
-  '1~2잔': '1to2cups',
-  '3잔~4잔': 'over3cups',
+  '하루 1~2잔': '1to2cups',
+  '하루 3~4잔': 'over3cups',
   '하루 5잔 이상': 'over5cups',
 };
 
@@ -41,11 +41,12 @@ const Map<String, String> stressLevelMap = {
 };
 const Map<String, String> exerciseWhenMap = {
   '8시 이전': 'before8',
-  '8시~12시': '8to12',
-  '12시~16시': '12to16',
+  '8~12시': '8to12',
+  '12~16시': '12to16',
   '16~20시': '16to20',
   '20~24시': '20to24',
   '새벽': 'night',
+  '안함': 'none',
 };
 
 class HealthPage extends StatefulWidget {
@@ -301,13 +302,13 @@ class _HealthPageState extends State<HealthPage> {
               // 질문들
               _buildQuestionCard(
                 'Q19. 잠들끼까지 걸리는 시간은 보통 어떻게 되시나요?',
-                ['5분 이하', '5~15분', '15~30분', '30분~1시간', '1시간 이상'],
+                ['5분 이하', '5~15분', '15~30분', '30~1시간', '1시간 이상'],
                 timeToFallAsleep,
                 (v) => setState(() => timeToFallAsleep = v),
               ),
               _buildQuestionCard(
                 'Q20. 커피(카페인)는 보통 하루에 몇잔정도 드시나요?',
-                ['안 마심', '1~2잔', '3잔 이상'],
+                ['안 마심', '하루 1~2잔', '하루 3~4잔', '하루 5잔 이상'],
                 caffeineIntakeLevel,
                 (v) => setState(() => caffeineIntakeLevel = v),
               ),
@@ -318,8 +319,8 @@ class _HealthPageState extends State<HealthPage> {
                 (v) => setState(() => exerciseFrequency = v),
               ),
               _buildQuestionCard(
-                'Q22. 운동을 언제 하시나요?',
-                ['8시 이전', '8시~12시', '12시~16시', '16시~20시', '20시~24시', '새벽'],
+                'Q22. 운동은 언제 하시나요?',
+                ['8시 이전', '8~12시', '12~16시', '16~20시', '20~24시', '새벽', '안함'],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
               ),
