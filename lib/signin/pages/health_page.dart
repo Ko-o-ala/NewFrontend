@@ -40,8 +40,8 @@ const Map<String, String> stressLevelMap = {
   '낮음': 'low',
 };
 const Map<String, String> exerciseWhenMap = {
-  '8시 이전': 'before 8',
-  '8~12시': '8to12',
+  '8시 이전': 'before8',
+  '8시~12시': '8to12',
   '12시~16시': '12to16',
   '16~20시': '16to20',
   '20~24시': '20to24',
@@ -319,14 +319,7 @@ class _HealthPageState extends State<HealthPage> {
               ),
               _buildQuestionCard(
                 'Q22. 운동을 언제 하시나요?',
-                [
-                  '8시 이전',
-                  '8시 ~ 12시',
-                  '12시 ~ 16시',
-                  '16시 ~ 20시',
-                  '20시 ~ 24시',
-                  '새벽',
-                ],
+                ['8시 이전', '8시~12시', '12시~16시', '16시~20시', '20시~24시', '새벽'],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
               ),

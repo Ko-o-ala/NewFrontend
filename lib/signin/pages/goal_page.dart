@@ -272,16 +272,35 @@ class _GoalPageState extends State<GoalPage> {
                       isValid
                           ? () async {
                             final m = OnboardingData.answers;
-                            m['sleepGoal'] = improveSleepQuality;
 
+                            // 1) 라벨 → 서버 토큰 매핑
+                            final apiValue = sleepGoalMap[improveSleepQuality];
+
+                            if (apiValue == null || apiValue.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('수면 목표 매핑에 실패했어요. 다시 선택해 주세요.'),
+                                ),
+                              );
+                              return;
+                            }
+
+                            // 2) 서버 전송용 값은 영어 토큰으로 저장
+                            m['sleepGoal'] = apiValue;
+
+                            // (선택) UI 표시용 라벨은 따로 저장
+                            m['sleepGoalLabel'] = improveSleepQuality;
+
+                            // 3) 스토리지에도 토큰 저장(유지)
                             await storage.write(
                               key: 'sleepGoal',
-                              value: sleepGoalMap[improveSleepQuality] ?? '',
+                              value: apiValue,
                             );
 
                             widget.onNext();
                           }
                           : null,
+
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6C63FF),
                     minimumSize: const Size(double.infinity, 56),

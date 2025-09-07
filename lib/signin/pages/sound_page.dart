@@ -415,8 +415,12 @@ class _SoundPageState extends State<SoundPage> {
                     const SizedBox(height: 20),
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: const Color(0xFF6C63FF),
-                        inactiveTrackColor: Colors.white.withOpacity(0.2),
+                        activeTrackColor: Colors.white.withOpacity(
+                          0.3,
+                        ), // 왼쪽 실선
+                        inactiveTrackColor: Colors.white.withOpacity(
+                          0.3,
+                        ), // 오른쪽 실선
                         thumbColor: const Color(0xFF6C63FF),
                         overlayColor: const Color(0xFF6C63FF).withOpacity(0.2),
                         valueIndicatorColor: const Color(0xFF6C63FF),
@@ -424,6 +428,7 @@ class _SoundPageState extends State<SoundPage> {
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
+                        trackHeight: 2.0, // 실선 두께
                       ),
                       child: Slider(
                         min: 0.0,

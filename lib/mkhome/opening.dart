@@ -24,23 +24,23 @@ class opening extends StatelessWidget {
                     height: screenHeight * 0.65,
                   ), // 🔸 버튼 위치 조정 (0.75 → 0.65)
                   // 🔸 홈으로 버튼
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/home');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black87,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        minimumSize: const Size(double.infinity, 50),
-                      ),
-                      child: const Text("홈으로"),
-                    ),
-                  ),
+                  // Padding(
+                  //   padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  //   child: ElevatedButton(
+                  //     onPressed: () {
+                  //       Navigator.pushNamed(context, '/home');
+                  //     },
+                  //     style: ElevatedButton.styleFrom(
+                  //       backgroundColor: Colors.white,
+                  //       foregroundColor: Colors.black87,
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(24),
+                  //       ),
+                  //       minimumSize: const Size(double.infinity, 50),
+                  //     ),
+                  //     child: const Text("홈으로"),
+                  //   ),
+                  // ),
                   const SizedBox(height: 12), // 🔸 버튼 간격 (16 → 12)
                   // 🔸 이미 계정이 있나요? 링크
                   Center(

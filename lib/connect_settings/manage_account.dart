@@ -17,6 +17,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
   late TextEditingController currentPasswordController;
   late TextEditingController newPasswordController;
   late TextEditingController confirmPasswordController;
+  late TextEditingController birthdateController;
 
   bool isPasswordVisible = false;
   bool isNewPasswordVisible = false;
@@ -33,6 +34,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
     currentPasswordController = TextEditingController();
     newPasswordController = TextEditingController();
     confirmPasswordController = TextEditingController();
+    birthdateController = TextEditingController();
     _loadUserData();
   }
 
@@ -42,6 +44,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
       final userData = await fetchUserInfo();
       setState(() {
         nameController.text = userData.name;
+        birthdateController.text = _formatBirthdate(userData.birthdate) ?? '';
         // email 필드는 API에서 제공하지 않으므로 제거
         user = userData;
       });
@@ -56,6 +59,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
+    birthdateController.dispose();
     super.dispose();
   }
 
@@ -130,6 +134,22 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
           return;
         }
         profileData['name'] = trimmedName;
+      }
+
+      // 생년월일을 바꾼 경우에만 PATCH 바디에 포함
+      final trimmedBirthdate = birthdateController.text.trim();
+      if (user == null ||
+          trimmedBirthdate != (_formatBirthdate(user!.birthdate) ?? '')) {
+        if (trimmedBirthdate.isEmpty) {
+          _showSnackBar('생년월일을 입력해주세요.', false);
+          return;
+        }
+        // 생년월일 형식 검증
+        if (!_isValidBirthdate(trimmedBirthdate)) {
+          _showSnackBar('생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD)', false);
+          return;
+        }
+        profileData['birthdate'] = trimmedBirthdate;
       }
 
       // ===== 비밀번호 변경 유효성 검사 =====
@@ -459,10 +479,12 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                             Icons.person,
                           ),
                           const SizedBox(height: 20),
-                          _buildReadOnlyField(
+                          _buildEditableField(
                             "생년월일",
-                            _formatBirthdate(user.birthdate) ?? '불러오는 중...',
+                            birthdateController,
                             Icons.calendar_today,
+                            keyboardType: TextInputType.datetime,
+                            hintText: 'YYYY-MM-DD',
                           ),
                         ],
                       ),
@@ -725,8 +747,10 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
   Widget _buildEditableField(
     String label,
     TextEditingController controller,
-    IconData icon,
-  ) {
+    IconData icon, {
+    TextInputType? keyboardType,
+    String? hintText,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -756,6 +780,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
           ),
           child: TextField(
             controller: controller,
+            keyboardType: keyboardType,
             style: const TextStyle(color: Colors.white, fontSize: 16),
             decoration: InputDecoration(
               border: InputBorder.none,
@@ -763,62 +788,11 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                 horizontal: 20,
                 vertical: 16,
               ),
-              hintText: label,
+              hintText: hintText ?? label,
               hintStyle: TextStyle(
                 color: Colors.white.withOpacity(0.5),
                 fontSize: 16,
               ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReadOnlyField(String label, String value, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: const Color(0xFF6C63FF), size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF0A0E21),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFF6C63FF).withOpacity(0.3),
-              width: 1,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ],
             ),
           ),
         ),
@@ -895,5 +869,16 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
     }
     final dateTime = DateTime.parse(birthdate);
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+  }
+
+  bool _isValidBirthdate(String birthdate) {
+    try {
+      final dateTime = DateTime.parse(birthdate);
+      final formatted =
+          '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+      return formatted == birthdate;
+    } catch (e) {
+      return false;
+    }
   }
 }

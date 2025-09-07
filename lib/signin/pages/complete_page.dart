@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 import '../onboarding_data.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class CompletePage extends StatelessWidget {
@@ -189,14 +188,17 @@ class CompletePage extends StatelessWidget {
                     String? _coerceExerciseWhen(String? v) {
                       if (v == null) return null;
                       const m = {
-                        '아침': 'morning',
-                        '낮': 'day',
-                        '밤': 'night',
-                        '안 함': 'none',
-                        'morning': 'morning',
-                        'day': 'day',
-                        'night': 'night',
-                        'none': 'none',
+                        '8시 이전': 'before8',
+                        '8~12시': '8to12',
+                        '12시~16시': '12to16',
+                        '16~20시': '16to20',
+                        '20~24시': '20to24',
+                        '새벽': 'night',
+                        '8시 ~ 12시': '8to12', // 공백 포함 버전
+                        '12시 ~ 16시': '12to16', // 공백 포함 버전
+                        '16시 ~ 20시': '16to20', // 공백 포함 버전
+                        '20시 ~ 24시': '20to24', // 공백 포함 버전
+                        'before8': 'before8',
                       };
                       return m[v];
                     }
@@ -204,14 +206,91 @@ class CompletePage extends StatelessWidget {
                     String? _coerceExerciseFrequency(String? v) {
                       if (v == null) return null;
                       const m = {
+                        '하지 않음': 'none',
+                        '주2~3회': '2to3week',
+                        '매일': 'dailyMorning',
                         '안 함': 'none',
                         '주 2-3회': '2to3week',
-                        '매일': 'daily',
                         'none': 'none',
                         '2to3week': '2to3week',
-                        'daily': 'daily',
+                        'daily': 'dailyMorning',
                       };
                       return m[v];
+                    }
+
+                    String? _coerceMostDrowsyTime(String? v) {
+                      if (v == null) return null;
+                      const m = {
+                        '오전': 'morningWakeup',
+                        '오후': 'afternoon',
+                        '저녁': 'afterDinner',
+                        '새벽': 'night',
+                        '일정 없음': 'random',
+                        'morning': 'morningWakeup',
+                        'afternoon': 'afternoon',
+                        'evening': 'afterDinner',
+                        'night': 'night',
+                        'random': 'random',
+                      };
+                      return m[v];
+                    }
+
+                    String? _coerceCalmingSoundToPreferredSleepSound(
+                      String? v,
+                    ) {
+                      if (v == null) return null;
+                      const m = {
+                        'rain': 'nature', // 비 오는 소리 -> 자연음
+                        'waves': 'nature', // 파도/물소리 -> 자연음
+                        'piano': 'music', // 잔잔한 피아노 -> 음악
+                        'humanVoice': 'voice', // 사람의 말소리 -> 음성
+                        'other': 'nature', // 기타 -> 자연음 (기본값)
+                      };
+                      return m[v];
+                    }
+
+                    List<String> _coerceSleepIssues(List<String> issues) {
+                      const m = {
+                        '잠들기 어려움': 'fallAsleepHard',
+                        '자주 깨요': 'wakeOften',
+                        '일찍 깨요': 'wakeEarly',
+                        '낮 졸림': 'daySleepy',
+                        '악몽/불안': 'nightmares',
+                        '수면 중 움직임 많음': 'movesALot',
+                        '아침에 개운하지 않음': 'notRested',
+                        '수면제/수면 보조제 사용함': 'useSleepingPills',
+                        '없음': 'none',
+                        'fallAsleepHard': 'fallAsleepHard',
+                        'wakeOften': 'wakeOften',
+                        'wakeEarly': 'wakeEarly',
+                        'daySleepy': 'daySleepy',
+                        'nightmares': 'nightmares',
+                        'movesALot': 'movesALot',
+                        'notRested': 'notRested',
+                        'useSleepingPills': 'useSleepingPills',
+                        'none': 'none',
+                      };
+                      return issues.map((issue) => m[issue] ?? issue).toList();
+                    }
+
+                    List<String> _coerceEmotionalSleepInterference(
+                      List<String> emotions,
+                    ) {
+                      const m = {
+                        '스트레스': 'stress',
+                        '불안감': 'anxiety',
+                        '외로움': 'loneliness',
+                        '긴장': 'tension',
+                        '기타': 'other',
+                        'stress': 'stress',
+                        'anxiety': 'anxiety',
+                        'loneliness': 'loneliness',
+                        'tension': 'tension',
+                        'other': 'other',
+                      };
+                      return emotions
+                          .map((emotion) => m[emotion] ?? emotion)
+                          .toList();
                     }
                     // --- /helpers ---
 
@@ -230,9 +309,9 @@ class CompletePage extends StatelessWidget {
                       'morningSunlightExposure',
                       'napFrequency',
                       'napDuration',
-                      'mostDrowsyTime',
+                      // 'mostDrowsyTime', // 변환 함수 사용하므로 제외
                       'averageSleepDuration',
-                      'preferredSleepSound',
+                      // 'preferredSleepSound', // 변환 함수 사용하므로 제외
                       'calmingSoundType',
 
                       'soundAutoOffType',
@@ -252,27 +331,49 @@ class CompletePage extends StatelessWidget {
                     // ✅ 반드시 배열로 넣어야 하는 것들
                     final sleepIssues =
                         await _readList('sleepIssues') ?? const <String>[];
-                    surveyData['sleepIssues'] = _normalizeNone(sleepIssues);
+                    surveyData['sleepIssues'] = _coerceSleepIssues(
+                      _normalizeNone(sleepIssues),
+                    );
 
                     final emo =
                         await _readList('emotionalSleepInterference') ??
                         const <String>[];
-                    surveyData['emotionalSleepInterference'] = emo;
+                    surveyData['emotionalSleepInterference'] =
+                        _coerceEmotionalSleepInterference(emo);
 
                     final sleepDevices =
                         await _readList('sleepDevicesUsed') ?? const <String>[];
                     surveyData['sleepDevicesUsed'] = sleepDevices;
 
-                    final sleepGoal =
-                        await _readList('sleepGoal') ?? const <String>[];
-                    surveyData['sleepGoal'] = sleepGoal;
+                    // sleepGoal은 단일 값으로 저장됨 (goal_page.dart에서 확인)
+                    final sleepGoalRaw = await _readStringWithStorageFirst(
+                      'sleepGoal',
+                    );
+                    if (sleepGoalRaw != null) {
+                      // 이미 서버 형식으로 저장되어 있으므로 그대로 사용
+                      surveyData['sleepGoal'] = sleepGoalRaw;
+                    }
 
                     // ✅ enum 보정이 필요한 것들
                     final exWhenRaw = await _readStringWithStorageFirst(
                       'exerciseWhen',
                     );
-                    final exWhen = _coerceExerciseWhen(exWhenRaw);
-                    if (exWhen != null) surveyData['exerciseWhen'] = exWhen;
+                    const allowed = {
+                      'before8',
+                      '8to12',
+                      '12to16',
+                      '16to20',
+                      '20to24',
+                      'night',
+                    };
+                    debugPrint('=== exerciseWhen 디버그 ===');
+                    debugPrint('원본 값: $exWhenRaw (${exWhenRaw.runtimeType})');
+                    if (exWhenRaw != null && allowed.contains(exWhenRaw)) {
+                      surveyData['exerciseWhen'] = exWhenRaw;
+                      debugPrint('surveyData.exerciseWhen = $exWhenRaw');
+                    } else {
+                      debugPrint('❌ exerciseWhen 누락/잘못된 값: $exWhenRaw');
+                    }
 
                     final exFreqRaw = await _readStringWithStorageFirst(
                       'exerciseFrequency',
@@ -280,6 +381,27 @@ class CompletePage extends StatelessWidget {
                     final exFreq = _coerceExerciseFrequency(exFreqRaw);
                     if (exFreq != null)
                       surveyData['exerciseFrequency'] = exFreq;
+
+                    // preferredSleepSound 변환 (calmingSoundType에서 매핑)
+                    final calmingSoundRaw = await _readStringWithStorageFirst(
+                      'calmingSoundType',
+                    );
+                    final preferredSound =
+                        _coerceCalmingSoundToPreferredSleepSound(
+                          calmingSoundRaw,
+                        );
+                    if (preferredSound != null)
+                      surveyData['preferredSleepSound'] = preferredSound;
+
+                    // mostDrowsyTime 변환
+                    final mostDrowsyTimeRaw = await _readStringWithStorageFirst(
+                      'mostDrowsyTime',
+                    );
+                    final mostDrowsyTime = _coerceMostDrowsyTime(
+                      mostDrowsyTimeRaw,
+                    );
+                    if (mostDrowsyTime != null)
+                      surveyData['mostDrowsyTime'] = mostDrowsyTime;
 
                     // ✅ 숫자
                     final prefBalStr =
@@ -300,6 +422,22 @@ class CompletePage extends StatelessWidget {
                     surveyData.forEach(
                       (k, v) => debugPrint('$k => ${v.runtimeType} : $v'),
                     );
+
+                    // 문제가 되는 필드들 특별 확인
+                    debugPrint('=== 문제 필드 확인 ===');
+                    debugPrint(
+                      'preferredSleepSound: ${surveyData['preferredSleepSound']}',
+                    );
+                    debugPrint('exerciseWhen: ${surveyData['exerciseWhen']}');
+                    debugPrint('sleepGoal: ${surveyData['sleepGoal']}');
+                    debugPrint('sleepIssues: ${surveyData['sleepIssues']}');
+                    debugPrint(
+                      'emotionalSleepInterference: ${surveyData['emotionalSleepInterference']}',
+                    );
+                    debugPrint(
+                      'calmingSoundType: ${surveyData['calmingSoundType']}',
+                    );
+                    debugPrint('==================');
 
                     final resp = await http.patch(
                       Uri.parse('https://kooala.tassoo.uk/users/survey'),

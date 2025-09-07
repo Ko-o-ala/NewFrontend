@@ -38,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     HealthPage(onNext: _next),
     GoalPage(
       onNext: () {
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushReplacementNamed(context, '/sign-in');
       },
     ),
   ];
@@ -54,17 +54,84 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final progress = (_currentIndex + 1) / pages.length;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Container(
           color: const Color(0xFF0A0E21),
-          child: PageView(
-            controller: _controller,
-            physics: const NeverScrollableScrollPhysics(),
-            onPageChanged: (i) => setState(() => _currentIndex = i),
-            children: pages,
+          child: Column(
+            children: [
+              // 진행률 표시
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+                child: Column(
+                  children: [
+                    // 진행률 텍스트
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '설문조사',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          '${_currentIndex + 1} / ${pages.length}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // 진행률 바
+                    Container(
+                      width: double.infinity,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: progress,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 페이지 내용
+              Expanded(
+                child: PageView(
+                  controller: _controller,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  children: pages,
+                ),
+              ),
+            ],
           ),
         ),
       ),
