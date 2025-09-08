@@ -116,57 +116,27 @@ class _IntroQuestionPageState extends State<IntroQuestionPage> {
             const SizedBox(height: 30),
 
             // 코알라 이미지와 설명
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1D1E33),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
+            Column(
+              children: [
+                Center(
+                  child: Image.asset(
+                    'lib/assets/koala.png',
                     width: 130,
                     height: 130,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'lib/assets/koala.png',
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                    fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    '어려운 건 없어요.\n차근차근 같이 해봐요 :)',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      height: 1.6,
-                    ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  '어려운 건 없어요.\n차근차근 같이 해봐요 :)',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    height: 1.6,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 30),

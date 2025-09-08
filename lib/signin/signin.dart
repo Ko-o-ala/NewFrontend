@@ -439,9 +439,9 @@ class _SignInScreenState extends State<SignInScreen> {
                   children: [
                     Image.asset(
                       'lib/assets/koala.png',
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
+                      width: 130,
+                      height: 130,
+                      fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 16),
                     const Text(

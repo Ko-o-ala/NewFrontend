@@ -130,41 +130,12 @@ class _GoalPageState extends State<GoalPage> {
               const SizedBox(height: 30),
 
               // 코알라 이미지
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1D1E33),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Container(
+              Center(
+                child: Image.asset(
+                  'lib/assets/koala.png',
                   width: 130,
                   height: 130,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: Image.asset(
-                      'lib/assets/koala.png',
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+                  fit: BoxFit.contain,
                 ),
               ),
 
@@ -203,12 +174,15 @@ class _GoalPageState extends State<GoalPage> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Text(
-                          "Q25. 현재 가장 중점적으로 두고 싶은 수면 목표를 알려주세요",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                        const Expanded(
+                          child: Text(
+                            "Q25. 가장 중점적으로 두고 싶은\n수면 목표를 알려주세요",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              height: 1.3,
+                            ),
                           ),
                         ),
                       ],
