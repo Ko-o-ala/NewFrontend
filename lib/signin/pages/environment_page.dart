@@ -313,7 +313,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                     'lib/assets/koala.png',
                     width: 80,
                     height: 80,
-                    fit: BoxFit.contain,
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -339,7 +339,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
 
             // Q3 - 수면시 소리 선호
             _buildQuestionCard(
-              'Q3. 잠잘 때 주변 소리는 어떻게 두시나요?',
+              'Q3. 잠잘 때 어떤 소리가 들리는걸 선호하시나요?',
               [
                 '완전한 무음',
                 '백색소음',

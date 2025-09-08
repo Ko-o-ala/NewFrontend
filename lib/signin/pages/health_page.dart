@@ -291,7 +291,7 @@ class _HealthPageState extends State<HealthPage> {
                       'lib/assets/koala.png',
                       width: 80,
                       height: 80,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),

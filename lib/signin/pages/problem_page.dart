@@ -366,7 +366,7 @@ class _ProblemPageState extends State<ProblemPage> {
                       'lib/assets/koala.png',
                       width: 80,
                       height: 80,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),

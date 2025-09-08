@@ -136,7 +136,7 @@ class CompletePage extends StatelessWidget {
                       'lib/assets/koala.png',
                       width: 100,
                       height: 100,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),

@@ -272,7 +272,7 @@ class _HabitPage2State extends State<HabitPage2> {
                       'lib/assets/koala.png',
                       width: 80,
                       height: 80,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),

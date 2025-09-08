@@ -142,7 +142,7 @@ class _WelcomePageState extends State<WelcomePage> {
                         'lib/assets/koala.png',
                         width: 80,
                         height: 80,
-                        fit: BoxFit.contain,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),

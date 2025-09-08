@@ -19,8 +19,8 @@ const Map<String, String> usualWakeupTimeMap = {
 };
 
 const Map<String, String> dayActivityTypeMap = {
-  '실내 활동': 'indoor',
-  '실외 활동': 'outdoor',
+  '실내 활동 시': 'indoor',
+  '실외 활동 시': 'outdoor',
   '비슷함': 'mixed',
 };
 
@@ -271,7 +271,7 @@ class _HabitPage1State extends State<HabitPage1> {
                       'lib/assets/koala.png',
                       width: 80,
                       height: 80,
-                      fit: BoxFit.contain,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),
@@ -294,7 +294,7 @@ class _HabitPage1State extends State<HabitPage1> {
               ),
               _buildQuestionCard(
                 'Q7. 하루 중 어느 활동이 더 많은가요?',
-                ['실내 활동', '실외 활동', '비슷함'],
+                ['실내 활동 시', '실외 활동 시', '비슷함'],
                 dayActivityType,
                 (v) => setState(() => dayActivityType = v),
               ),

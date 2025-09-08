@@ -1,6 +1,7 @@
 // lib/mkhome/real_home.dart
 import 'dart:async';
 import 'dart:io'; // ← 임시파일 폴백용
+import 'dart:math'; // sin 함수 사용을 위해
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -1536,172 +1537,164 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
-                        // 항상 메인 화면 표시 (로그인 체크는 백그라운드에서)
-                        ...[
-                          // 코알라 캐릭터 이미지
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(32),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF6C63FF,
-                                  ).withOpacity(0.25),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 12),
-                                ),
-                              ],
+                        // 인사말 (보라색 배경)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                            child: Column(
-                              children: [
-                                // 코알라 이미지
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF6C63FF,
+                                ).withOpacity(0.25),
+                                blurRadius: 20,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              // 인사말
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.waving_hand,
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(80),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 5),
-                                      ),
-                                    ],
+                                    size: 24,
                                   ),
-                                  child: Image.asset(
-                                    'lib/assets/koala.png',
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.waving_hand,
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _username.isNotEmpty
+                                        ? '$_username님, 안녕하세요!'
+                                        : '안녕하세요!',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
                                       color: Colors.white,
-                                      size: 24,
                                     ),
-                                    const SizedBox(width: 8),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '오늘 하루는 어땠나요?\n코알라와 대화해보세요!',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white70,
+                                  height: 1.4,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // 대화 안내 카드
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1D1E33),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color:
+                                  _isConversationBlocked
+                                      ? Colors.red.withOpacity(0.3)
+                                      : const Color(
+                                        0xFF6C63FF,
+                                      ).withOpacity(0.3),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color:
+                                      _isConversationBlocked
+                                          ? Colors.red.withOpacity(0.2)
+                                          : const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  _isConversationBlocked
+                                      ? Icons.block
+                                      : Icons.info_outline,
+                                  color:
+                                      _isConversationBlocked
+                                          ? Colors.red
+                                          : const Color(0xFF6C63FF),
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      _username.isNotEmpty
-                                          ? '$_username님, 안녕하세요!'
-                                          : '안녕하세요!',
+                                      _isConversationBlocked
+                                          ? '🚫 대화 제한'
+                                          : '💡 대화 안내',
                                       style: const TextStyle(
-                                        fontSize: 24,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
                                       ),
                                     ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _isConversationBlocked
+                                          ? '무료 대화 횟수(10회)를 모두 사용했습니다.\n알라와의 대화를 계속하려면 유료 결제가 필요합니다.'
+                                          : '대화가 끝나면 자동으로 마이크가 활성화되니, 눈을 감고 편하게 대화해보세요.\n\n졸리다고 말하면 추천사운드를 들을 수 있습니다.\n 말을 하지 않을 경우 알라는 사용자분이 잠에 들었다고 판단하고 자동으로 대화를 종료합니다.',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white70,
+                                        height: 1.3,
+                                      ),
+                                    ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  '오늘 하루는 어땠나요?\n코알라와 대화해보세요!',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white70,
-                                    height: 1.4,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // 대화 안내 카드 (보라색 상자 밖)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1D1E33),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color:
-                                    _isConversationBlocked
-                                        ? Colors.red.withOpacity(0.3)
-                                        : const Color(
-                                          0xFF6C63FF,
-                                        ).withOpacity(0.3),
-                                width: 1,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _isConversationBlocked
-                                            ? Colors.red.withOpacity(0.2)
-                                            : const Color(
-                                              0xFF6C63FF,
-                                            ).withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    _isConversationBlocked
-                                        ? Icons.block
-                                        : Icons.info_outline,
-                                    color:
-                                        _isConversationBlocked
-                                            ? Colors.red
-                                            : const Color(0xFF6C63FF),
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _isConversationBlocked
-                                            ? '🚫 대화 제한'
-                                            : '💡 대화 안내',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _isConversationBlocked
-                                            ? '무료 대화 횟수(10회)를 모두 사용했습니다.\n알라와의 대화를 계속하려면 유료 결제가 필요합니다.'
-                                            : '한번 마이크 버튼 누르고 나면 이후에는 알라 얘기가 끝나면 자동으로 마이크가 활성화되니, 눈을 감고 편하게 대화해보세요.\n\n졸리다고 말하면 알라와의 대화를 종료하고 추천사운드를 들을 수 있습니다.\n아예 말을 하지 않을 경우 알라는 사용자분이 잠에 들었다고 판단하고 자동으로 대화를 종료합니다.',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white70,
-                                          height: 1.3,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+                            ],
                           ),
+                        ),
 
+                        const SizedBox(height: 24),
+
+                        // 코알라 이미지 (보라색 배경에서 분리)
+                        Center(
+                          child: Image.asset(
+                            'lib/assets/koala.png',
+                            width: 180,
+                            height: 180,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // 항상 메인 화면 표시 (로그인 체크는 백그라운드에서)
+                        ...[
                           const SizedBox(height: 24),
 
                           // 음성 인식 텍스트 표시 영역

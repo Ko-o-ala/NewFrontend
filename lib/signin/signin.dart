@@ -441,6 +441,7 @@ class _SignInScreenState extends State<SignInScreen> {
                       'lib/assets/koala.png',
                       width: 100,
                       height: 100,
+                      fit: BoxFit.cover,
                     ),
                     const SizedBox(height: 16),
                     const Text(

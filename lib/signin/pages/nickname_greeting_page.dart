@@ -187,7 +187,7 @@ class _NicknameGreetPageState extends State<NicknameGreetPage> {
                         'lib/assets/koala.png',
                         width: 80,
                         height: 80,
-                        fit: BoxFit.contain,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),

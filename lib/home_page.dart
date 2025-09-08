@@ -844,7 +844,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     'lib/assets/koala.png',
                     width: 120,
                     height: 120,
-                    fit: BoxFit.contain,
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 24),
