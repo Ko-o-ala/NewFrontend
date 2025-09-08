@@ -55,6 +55,39 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
   String _hex(Color c) =>
       '#${c.value.toRadixString(16).padLeft(8, '0')}'; // AARRGGBB
 
+  late ScrollController _scrollController;
+  final GlobalKey _question1Key = GlobalKey();
+  final GlobalKey _question2Key = GlobalKey();
+  final GlobalKey _question3Key = GlobalKey();
+  final GlobalKey _question4Key = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   void _logRadioColors(BuildContext context) {
     final theme = Theme.of(context);
     final fill = theme.radioTheme.fillColor; // Theme에서 지정된 경우
@@ -95,9 +128,12 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
     String title,
     List<String> options,
     String? groupValue,
-    Function(String?) onChanged,
-  ) {
+    Function(String?) onChanged, {
+    GlobalKey? key,
+    VoidCallback? onTitleTap,
+  }) {
     return Container(
+      key: key,
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -115,32 +151,37 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.quiz,
-                  color: Color(0xFFFFD700),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.quiz,
+                    color: Color(0xFFFFD700),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (onTitleTap != null)
+                  const Icon(Icons.touch_app, color: Colors.white54, size: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           ...options.map(
@@ -212,6 +253,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -278,19 +320,7 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
               ),
             ),
 
-            const SizedBox(height: 30),
-
-            // 코알라 이미지
-            Center(
-              child: Image.asset(
-                'lib/assets/koala.png',
-                width: 130,
-                height: 130,
-                fit: BoxFit.contain,
-              ),
-            ),
-
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
 
             // Q1 - 수면 시 조명 사용
             _buildQuestionCard(
@@ -298,6 +328,8 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
               ['완전히 끄고 잔다', '무드등 또는 약한 조명', '형광등/밝은 조명'],
               sleepLightUsage,
               (v) => setState(() => sleepLightUsage = v),
+              key: _question1Key,
+              onTitleTap: () => _scrollToQuestion(_question1Key),
             ),
 
             // Q2 - 조명 색온도
@@ -306,6 +338,8 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
               ['차가운 하얀색(6500K)', '중간 톤(4000K)', '따뜻한 노란색(2700K)', '모르겠어요'],
               lightColorTemperature,
               (v) => setState(() => lightColorTemperature = v),
+              key: _question2Key,
+              onTitleTap: () => _scrollToQuestion(_question2Key),
             ),
 
             // Q3 - 수면시 소리 선호
@@ -327,6 +361,8 @@ class _EnvironmentPageState extends State<EnvironmentPage> {
                 noisePreference = v;
                 if (v != '기타') userInputNoise = null;
               }),
+              key: _question3Key,
+              onTitleTap: () => _scrollToQuestion(_question3Key),
             ),
 
             // 기타 소리 입력 필드

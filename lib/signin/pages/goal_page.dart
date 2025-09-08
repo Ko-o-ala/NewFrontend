@@ -31,7 +31,37 @@ class GoalPage extends StatefulWidget {
 class _GoalPageState extends State<GoalPage> {
   String? improveSleepQuality;
 
+  late ScrollController _scrollController;
+  final GlobalKey _question25Key = GlobalKey();
+
   bool get isValid => improveSleepQuality != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +86,7 @@ class _GoalPageState extends State<GoalPage> {
       body: Container(
         decoration: const BoxDecoration(color: Color(0xFF0A0E21)),
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: EdgeInsets.only(
             top: MediaQuery.of(context).padding.top + 80, // 상태바 높이 + AppBar 높이
             left: 20,
@@ -127,19 +158,7 @@ class _GoalPageState extends State<GoalPage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // 질문 카드
               Container(
@@ -159,33 +178,42 @@ class _GoalPageState extends State<GoalPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFD700).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.quiz,
-                            color: Color(0xFFFFD700),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            "Q25. 가장 중점적으로 두고 싶은\n수면 목표를 알려주세요",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                              height: 1.3,
+                    GestureDetector(
+                      onTap: () => _scrollToQuestion(_question25Key),
+                      child: Row(
+                        key: _question25Key,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD700).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.quiz,
+                              color: Color(0xFFFFD700),
+                              size: 20,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              "Q25. 가장 중점적으로 두고 싶은\n수면 목표를 알려주세요",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.touch_app,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     ...[

@@ -107,14 +107,14 @@ class _WelcomePageState extends State<WelcomePage> {
 
             const SizedBox(height: 30),
 
-            // 코알라 이미지
+            // 코알라 이미지와 환영 메시지
             Column(
               children: [
                 Center(
                   child: Image.asset(
                     'lib/assets/koala.png',
-                    width: 130,
-                    height: 130,
+                    width: 150,
+                    height: 150,
                     fit: BoxFit.contain,
                   ),
                 ),

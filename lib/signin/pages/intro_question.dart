@@ -113,7 +113,7 @@ class _IntroQuestionPageState extends State<IntroQuestionPage> {
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
 
             // 코알라 이미지와 설명
             Column(
@@ -121,8 +121,8 @@ class _IntroQuestionPageState extends State<IntroQuestionPage> {
                 Center(
                   child: Image.asset(
                     'lib/assets/koala.png',
-                    width: 130,
-                    height: 130,
+                    width: 150,
+                    height: 150,
                     fit: BoxFit.contain,
                   ),
                 ),

@@ -101,19 +101,49 @@ class CompletePage extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
+              // 코알라 이미지와 완료 메시지
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Center(
+                      child: Image.asset(
+                        'lib/assets/koala.png',
+                        width: 180,
+                        height: 180,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '알라와 함께\n수면 관리의 여정을 시작해보세요!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
 
               // 완료 버튼
               SizedBox(
@@ -357,6 +387,7 @@ class CompletePage extends StatelessWidget {
                       '16to20',
                       '20to24',
                       'night',
+                      'none',
                     };
                     debugPrint('=== exerciseWhen 디버그 ===');
                     debugPrint('원본 값: $exWhenRaw (${exWhenRaw.runtimeType})');

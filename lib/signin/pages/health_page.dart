@@ -65,6 +65,14 @@ class _HealthPageState extends State<HealthPage> {
       stressLevel,
       exerciseWhen;
 
+  late ScrollController _scrollController;
+  final GlobalKey _question9Key = GlobalKey();
+  final GlobalKey _question10Key = GlobalKey();
+  final GlobalKey _question11Key = GlobalKey();
+  final GlobalKey _question12Key = GlobalKey();
+  final GlobalKey _question13Key = GlobalKey();
+  final GlobalKey _question14Key = GlobalKey();
+
   bool get isValid =>
       timeToFallAsleep != null &&
       caffeineIntakeLevel != null &&
@@ -72,13 +80,43 @@ class _HealthPageState extends State<HealthPage> {
       screenTimeBeforeSleep != null &&
       stressLevel != null;
 
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   Widget _buildQuestionCard(
     String title,
     List<String> options,
     String? groupValue,
-    Function(String?) onChanged,
-  ) {
+    Function(String?) onChanged, {
+    GlobalKey? key,
+    VoidCallback? onTitleTap,
+  }) {
     return Container(
+      key: key,
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -96,32 +134,37 @@ class _HealthPageState extends State<HealthPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.quiz,
-                  color: Color(0xFFFFD700),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.quiz,
+                    color: Color(0xFFFFD700),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (onTitleTap != null)
+                  const Icon(Icons.touch_app, color: Colors.white54, size: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           ...options.map(
@@ -190,6 +233,7 @@ class _HealthPageState extends State<HealthPage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -256,19 +300,7 @@ class _HealthPageState extends State<HealthPage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // 질문들
               _buildQuestionCard(
@@ -276,36 +308,48 @@ class _HealthPageState extends State<HealthPage> {
                 ['5분 이하', '5~15분', '15~30분', '30~1시간', '1시간 이상'],
                 timeToFallAsleep,
                 (v) => setState(() => timeToFallAsleep = v),
+                key: _question9Key,
+                onTitleTap: () => _scrollToQuestion(_question9Key),
               ),
               _buildQuestionCard(
                 'Q20. 커피(카페인)는 보통 하루에 몇잔정도 드시나요?',
                 ['안 마심', '하루 1~2잔', '하루 3~4잔', '하루 5잔 이상'],
                 caffeineIntakeLevel,
                 (v) => setState(() => caffeineIntakeLevel = v),
+                key: _question10Key,
+                onTitleTap: () => _scrollToQuestion(_question10Key),
               ),
               _buildQuestionCard(
                 'Q21. 운동을 얼마나 자주 하시나요?',
                 ['하지 않음', '주2~3회', '매일'],
                 exerciseFrequency,
                 (v) => setState(() => exerciseFrequency = v),
+                key: _question11Key,
+                onTitleTap: () => _scrollToQuestion(_question11Key),
               ),
               _buildQuestionCard(
                 'Q22. 운동은 언제 하시나요?',
                 ['8시 이전', '8~12시', '12~16시', '16~20시', '20~24시', '새벽', '안함'],
                 exerciseWhen,
                 (v) => setState(() => exerciseWhen = v),
+                key: _question12Key,
+                onTitleTap: () => _scrollToQuestion(_question12Key),
               ),
               _buildQuestionCard(
                 'Q23. 잠들기 전에 전자기기는 얼마나 사용하시나요?',
                 ['없음', '30분 미만', '30분~1시간', '1시간~2시간', '2시간~3시간', '3시간 이상'],
                 screenTimeBeforeSleep,
                 (v) => setState(() => screenTimeBeforeSleep = v),
+                key: _question13Key,
+                onTitleTap: () => _scrollToQuestion(_question13Key),
               ),
               _buildQuestionCard(
                 'Q24. 요즘 스트레스는 어느 정도라고 느끼시나요?',
                 ['높음', '보통', '낮음'],
                 stressLevel,
                 (v) => setState(() => stressLevel = v),
+                key: _question14Key,
+                onTitleTap: () => _scrollToQuestion(_question14Key),
               ),
 
               const SizedBox(height: 20),

@@ -679,7 +679,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         });
       }
 
-      // WebSocket 연결 종료
+      // WebSocket 연결 종료 (재시작을 위해 완전히 끊지 않음)
       voiceService.disconnect();
 
       // 상태 초기화
@@ -702,7 +702,18 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       _autoSendTimer?.cancel();
       _autoSendTimer = null;
 
-      debugPrint('[CONVERSATION] 대화가 중단되었습니다');
+      // 재시작을 위한 초기화 완료 후 연결 재설정
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _initializeConnection();
+          // 사용자에게 재시작 가능하다는 피드백 제공
+          setState(() {
+            _text = '✅ 대화가 중단되었습니다.\n마이크 버튼을 눌러 새로운 대화를 시작하세요.';
+          });
+        }
+      });
+
+      debugPrint('[CONVERSATION] 대화가 중단되었습니다 - 재시작 준비 완료');
     } catch (e) {
       debugPrint('[CONVERSATION] 중단 중 오류: $e');
     }
@@ -1205,7 +1216,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     switch (state) {
       case AppLifecycleState.resumed:
-        debugPrint('[LIFECYCLE] 앱이 다시 활성화됨 - WebSocket 연결 확인');
+        debugPrint('[LIFECYCLE] 앱이 다시 활성화됨 - 대화 상태 복원');
         // 앱이 다시 활성화될 때 WebSocket 연결 상태 확인
         if (!voiceService.isConnected) {
           debugPrint('[LIFECYCLE] WebSocket 연결 끊어짐 - 재연결 시도');
@@ -1213,6 +1224,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         }
         // GlobalSoundService 상태도 체크
         _onGlobalSoundChanged();
+
+        // 대화 상태 복원: 마이크가 비활성화되어 있지 않다면 대화 준비 상태로 복원
+        if (!_isConversationBlocked &&
+            !_isMicDisabled &&
+            !_isListening &&
+            !_isPlaying &&
+            !_isThinking) {
+          setState(() {
+            _text = '마이크 버튼을 눌러 대화를 시작하세요.';
+          });
+        }
         break;
       case AppLifecycleState.paused:
         debugPrint('[LIFECYCLE] 앱이 일시정지됨');
@@ -1312,14 +1334,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           _text = '🎙️ 듣고 있어요...';
         });
 
-        debugPrint('[MIC] 마이크 시작 - 5초 조용함 후 자동 종료 설정');
+        debugPrint('[MIC] 마이크 시작 - 10초 조용함 후 자동 종료 설정');
         _animationController.forward();
 
-        // 5초 후 자동 전송 타이머 시작
+        // 10초 후 자동 전송 타이머 시작 (더 길게 조정)
         _autoSendTimer?.cancel();
-        _autoSendTimer = Timer(const Duration(seconds: 5), () {
+        _autoSendTimer = Timer(const Duration(seconds: 10), () {
           if (_isListening && _text.trim().isNotEmpty) {
-            debugPrint('[MIC] 5초 타이머 - 자동 전송 실행');
+            debugPrint('[MIC] 10초 타이머 - 자동 전송 실행');
             _sendCurrentText();
           }
         });
@@ -1328,6 +1350,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           onResult: (val) {
             if (val.finalResult) {
               setState(() => _text = val.recognizedWords);
+              // 음성 인식 결과가 들어오면 타이머 연장
+              _autoSendTimer?.cancel();
+              _autoSendTimer = Timer(const Duration(seconds: 10), () {
+                if (_isListening && _text.trim().isNotEmpty) {
+                  debugPrint('[MIC] 10초 타이머 - 자동 전송 실행');
+                  _sendCurrentText();
+                }
+              });
             }
           },
           pauseFor: const Duration(seconds: 5),
@@ -1685,8 +1715,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                         Center(
                           child: Image.asset(
                             'lib/assets/koala.png',
-                            width: 180,
-                            height: 180,
+                            width: 200,
+                            height: 200,
                             fit: BoxFit.contain,
                           ),
                         ),

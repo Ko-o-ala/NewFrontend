@@ -64,19 +64,52 @@ class _ProblemPageState extends State<ProblemPage> {
   final Set<String> sleepIssues = {};
   final Set<String> emotionalSleepInterference = {};
 
+  late ScrollController _scrollController;
+  final GlobalKey _question13Key = GlobalKey();
+  final GlobalKey _question14Key = GlobalKey();
+
   bool get isValid =>
       sleepIssues.isNotEmpty &&
       emotionalSleepInterference.isNotEmpty &&
       (!emotionalSleepInterference.contains('기타') ||
           (emotionalOtherInput != null && emotionalOtherInput!.isNotEmpty));
 
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   /// 공용 멀티 셀렉트 위젯
   Widget _buildMultiSelectCard(
     String title,
     List<String> options,
     Set<String> selected,
-    void Function(String, bool) onChanged,
-  ) {
+    void Function(String, bool) onChanged, {
+    GlobalKey? key,
+    VoidCallback? onTitleTap,
+  }) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
@@ -95,32 +128,38 @@ class _ProblemPageState extends State<ProblemPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.quiz,
-                  color: Color(0xFFFFD700),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              key: key,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.quiz,
+                    color: Color(0xFFFFD700),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (onTitleTap != null)
+                  const Icon(Icons.touch_app, color: Colors.white70, size: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           ...options.map((option) {
@@ -265,6 +304,7 @@ class _ProblemPageState extends State<ProblemPage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -331,19 +371,7 @@ class _ProblemPageState extends State<ProblemPage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // Q13 - 수면 관련 어려움
               _buildMultiSelectCard(
@@ -352,6 +380,8 @@ class _ProblemPageState extends State<ProblemPage> {
                 sleepIssues,
                 (value, checked) =>
                     _toggleSelection(sleepIssues, value, checked),
+                key: _question13Key,
+                onTitleTap: () => _scrollToQuestion(_question13Key),
               ),
 
               // Q14 - 수면 방해 감정
@@ -364,6 +394,8 @@ class _ProblemPageState extends State<ProblemPage> {
                   value,
                   checked,
                 ),
+                key: _question14Key,
+                onTitleTap: () => _scrollToQuestion(_question14Key),
               ),
 
               // 기타 감정 입력 필드

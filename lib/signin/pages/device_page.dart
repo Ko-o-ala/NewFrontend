@@ -74,9 +74,39 @@ class DevicePage extends StatefulWidget {
 }
 
 class _DevicePageState extends State<DevicePage> {
-  bool get isValid => selectedDevices.isNotEmpty != null;
+  bool get isValid => selectedDevices.isNotEmpty;
 
   final deviceOptions = ['스마트워치', '스마트폰 앱', '스마트 조명', '사운드 기기', '없음'];
+
+  late ScrollController _scrollController;
+  final GlobalKey _question18Key = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +134,7 @@ class _DevicePageState extends State<DevicePage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -170,19 +201,7 @@ class _DevicePageState extends State<DevicePage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // 기기 선택 카드
               Container(
@@ -202,32 +221,41 @@ class _DevicePageState extends State<DevicePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFD700).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.quiz,
-                            color: Color(0xFFFFD700),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: const Text(
-                            "Q18. 평소에 수면을 도와주는 기기를 사용하시나요? 있다면 어떤 기기를 사용하시나요? (모두 고르시오)",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                    GestureDetector(
+                      onTap: () => _scrollToQuestion(_question18Key),
+                      child: Row(
+                        key: _question18Key,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD700).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.quiz,
+                              color: Color(0xFFFFD700),
+                              size: 20,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: const Text(
+                              "Q18. 평소에 수면을 도와주는 기기를 사용하시나요? 있다면 어떤 기기를 사용하시나요? (모두 고르시오)",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.touch_app,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     ...deviceOptions.map(

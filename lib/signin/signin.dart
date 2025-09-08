@@ -355,7 +355,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
 
               // 헤더 섹션
               Container(
@@ -419,45 +419,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1D1E33),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Image.asset(
-                      'lib/assets/koala.png',
-                      width: 130,
-                      height: 130,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '코알라와 함께\n수면 관리의 여정을 시작해보세요!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // 회원가입 폼
               Container(

@@ -29,18 +29,51 @@ class _SoundPageState extends State<SoundPage> {
   String? calmingSoundTypeLabel; // 라벨(한국어) 보관
   double preferenceBalance = 0.5; // 0.0 ~ 1.0
 
+  late ScrollController _scrollController;
+  final GlobalKey _question15Key = GlobalKey();
+  final GlobalKey _question17Key = GlobalKey();
+
   bool get isValid =>
       calmingSoundTypeLabel != null &&
       (calmingSoundTypeLabel != '기타' ||
           (calmingSoundOtherInput != null &&
               calmingSoundOtherInput!.isNotEmpty));
 
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   Widget _buildQuestionCard(
     String title,
     List<String> options,
     String? groupValue,
-    Function(String?) onChanged,
-  ) {
+    Function(String?) onChanged, {
+    GlobalKey? key,
+    VoidCallback? onTitleTap,
+  }) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
@@ -59,32 +92,38 @@ class _SoundPageState extends State<SoundPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.quiz,
-                  color: Color(0xFFFFD700),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              key: key,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.quiz,
+                    color: Color(0xFFFFD700),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (onTitleTap != null)
+                  const Icon(Icons.touch_app, color: Colors.white70, size: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
 
@@ -160,6 +199,7 @@ class _SoundPageState extends State<SoundPage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -226,19 +266,7 @@ class _SoundPageState extends State<SoundPage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // Q16 - 마음을 안정시키는 사운드
               _buildQuestionCard(
@@ -246,6 +274,8 @@ class _SoundPageState extends State<SoundPage> {
                 calmingSoundTypeMap.keys.toList(),
                 calmingSoundTypeLabel,
                 (v) => setState(() => calmingSoundTypeLabel = v),
+                key: _question15Key,
+                onTitleTap: () => _scrollToQuestion(_question15Key),
               ),
 
               // 기타 입력 필드
@@ -356,32 +386,41 @@ class _SoundPageState extends State<SoundPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF6C63FF).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.balance,
-                            color: Color(0xFF6C63FF),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: const Text(
-                            "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                    GestureDetector(
+                      onTap: () => _scrollToQuestion(_question17Key),
+                      child: Row(
+                        key: _question17Key,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6C63FF).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.balance,
+                              color: Color(0xFF6C63FF),
+                              size: 20,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: const Text(
+                              "Q17. 선호하는 사운드 vs 알고리즘이 추천해주는 사운드?",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.touch_app,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
                     SliderTheme(

@@ -18,14 +18,24 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
   String username = '사용자';
   bool _isLoggedIn = false;
 
-  /// 보고 있는 달(년/월 단위)
-  DateTime _cursorMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  /// 보고 있는 달(년/월 단위) - 전날 기준으로 설정
+  DateTime _cursorMonth = DateTime(
+    DateTime.now().subtract(const Duration(days: 1)).year,
+    DateTime.now().subtract(const Duration(days: 1)).month,
+  );
 
   @override
   void initState() {
     super.initState();
     _loadUsername();
     _checkProfileUpdate();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 페이지 진입 시마다 데이터 새로고침
+    setState(() {});
   }
 
   Future<void> _loadUsername() async {
@@ -205,471 +215,491 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // 헤더 섹션
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF6C63FF).withOpacity(0.25),
-                    blurRadius: 20,
-                    offset: const Offset(0, 12),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+        },
+        color: const Color(0xFF6C63FF),
+        backgroundColor: const Color(0xFF1D1E33),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              // 헤더 섹션
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF6C63FF).withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.calendar_month,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      '${username}님의 월간 수면',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '이번 달 수면 패턴을 확인해보세요',
+                      style: TextStyle(fontSize: 16, color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
+
+              const SizedBox(height: 30),
+
+              // 월 선택 컨트롤
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _cursorMonth = DateTime(
+                            _cursorMonth.year,
+                            _cursorMonth.month - 1,
+                          );
+                        });
+                      },
+                      icon: const Icon(
+                        Icons.chevron_left,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    Text(
+                      DateFormat('yyyy년 M월').format(_cursorMonth),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _cursorMonth = DateTime(
+                            _cursorMonth.year,
+                            _cursorMonth.month + 1,
+                          );
+                        });
+                      },
+                      icon: const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 월간 통계 카드
+              FutureBuilder<Map<String, int?>>(
+                future: fetchMonthlyAverageData(_cursorMonth),
+                builder: (context, snapshot) {
+                  final data = snapshot.data ?? {};
+                  final avgDuration = data['duration'];
+                  final avgScore = data['score'];
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: const Color(0xFF1D1E33),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.black.withOpacity(0.2),
                           blurRadius: 10,
                           offset: const Offset(0, 5),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.calendar_month,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    '${username}님의 월간 수면',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '이번 달 수면 패턴을 확인해보세요',
-                    style: TextStyle(fontSize: 16, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // 월 선택 컨트롤
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1D1E33),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _cursorMonth = DateTime(
-                          _cursorMonth.year,
-                          _cursorMonth.month - 1,
-                        );
-                      });
-                    },
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('yyyy년 M월').format(_cursorMonth),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _cursorMonth = DateTime(
-                          _cursorMonth.year,
-                          _cursorMonth.month + 1,
-                        );
-                      });
-                    },
-                    icon: const Icon(
-                      Icons.chevron_right,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // 월간 통계 카드
-            FutureBuilder<Map<String, int?>>(
-              future: fetchMonthlyAverageData(_cursorMonth),
-              builder: (context, snapshot) {
-                final data = snapshot.data ?? {};
-                final avgDuration = data['duration'];
-                final avgScore = data['score'];
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1D1E33),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF4CAF50).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4CAF50).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.analytics,
+                                color: Color(0xFF4CAF50),
+                                size: 20,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.analytics,
-                              color: Color(0xFF4CAF50),
-                              size: 20,
+                            const SizedBox(width: 12),
+                            const Text(
+                              "월간 평균 통계",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            "월간 평균 통계",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text(
-                                  '평균 수면 시간',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white70,
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    '평균 수면 시간',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white70,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  avgDuration != null
-                                      ? '${(avgDuration / 60).toStringAsFixed(1)}시간'
-                                      : '데이터 없음',
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF4CAF50),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    avgDuration != null
+                                        ? '${(avgDuration / 60).toStringAsFixed(1)}시간'
+                                        : '데이터 없음',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF4CAF50),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text(
-                                  '평균 수면 점수',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white70,
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    '평균 수면 점수',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white70,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  avgScore != null ? '${avgScore}점' : '데이터 없음',
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF6C63FF),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    avgScore != null
+                                        ? '${avgScore}점'
+                                        : '데이터 없음',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF6C63FF),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 30),
-
-            // 월간 캘린더 차트
-            FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
-              future: fetchSleepData(_cursorMonth),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
+                          ],
+                        ),
+                      ],
+                    ),
                   );
-                }
+                },
+              ),
 
-                final data = snapshot.data ?? {};
-                final year = _cursorMonth.year;
-                final month = _cursorMonth.month;
-                final daysInMonth = DateUtils.getDaysInMonth(year, month);
-                final firstDayOfMonth = DateTime(year, month, 1);
-                final firstWeekday = firstDayOfMonth.weekday;
+              const SizedBox(height: 30),
 
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1D1E33),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
+              // 월간 캘린더 차트
+              FutureBuilder<Map<DateTime, Map<String, dynamic>>>(
+                future: fetchSleepData(_cursorMonth),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF6C63FF),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6C63FF).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
+                    );
+                  }
+
+                  final data = snapshot.data ?? {};
+                  final year = _cursorMonth.year;
+                  final month = _cursorMonth.month;
+                  final daysInMonth = DateUtils.getDaysInMonth(year, month);
+                  final firstDayOfMonth = DateTime(year, month, 1);
+                  final firstWeekday = firstDayOfMonth.weekday;
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6C63FF).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_view_month,
+                                color: Color(0xFF6C63FF),
+                                size: 20,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.calendar_view_month,
-                              color: Color(0xFF6C63FF),
-                              size: 20,
+                            const SizedBox(width: 12),
+                            const Text(
+                              "월간 수면 캘린더",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            "월간 수면 캘린더",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
 
-                      // 요일 헤더
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children:
-                            ['월', '화', '수', '목', '금', '토', '일']
-                                .map(
-                                  (day) => SizedBox(
-                                    width: 40,
-                                    child: Text(
-                                      day,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white70,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // 캘린더 그리드
-                      ...List.generate(
-                        ((firstWeekday - 1 + daysInMonth) / 7).ceil(),
-                        (weekIndex) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: List.generate(7, (dayIndex) {
-                                final dayOfWeek = dayIndex + 1;
-                                final weekOffset = weekIndex * 7;
-                                final dayOfMonth =
-                                    weekOffset +
-                                    dayIndex -
-                                    (firstWeekday - 1) +
-                                    1;
-
-                                if (dayOfMonth < 1 ||
-                                    dayOfMonth > daysInMonth) {
-                                  return const SizedBox(width: 40, height: 40);
-                                }
-
-                                final date = DateTime(year, month, dayOfMonth);
-                                final dayData = data[date];
-                                final score = dayData?['score'] ?? 0;
-                                final duration = dayData?['duration'] ?? 0;
-
-                                Color getColor() {
-                                  if (score >= 80)
-                                    return const Color(0xFF4CAF50);
-                                  if (score >= 60)
-                                    return const Color(0xFFFFA726);
-                                  if (score > 0) return const Color(0xFFEF5350);
-                                  return Colors.transparent;
-                                }
-
-                                return Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    color: getColor(),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.1),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          dayOfMonth.toString(),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color:
-                                                score > 0
-                                                    ? Colors.white
-                                                    : Colors.white70,
-                                          ),
+                        // 요일 헤더
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children:
+                              ['월', '화', '수', '목', '금', '토', '일']
+                                  .map(
+                                    (day) => SizedBox(
+                                      width: 40,
+                                      child: Text(
+                                        day,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white70,
+                                          fontWeight: FontWeight.w600,
                                         ),
-                                        if (score > 0)
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // 캘린더 그리드
+                        ...List.generate(
+                          ((firstWeekday - 1 + daysInMonth) / 7).ceil(),
+                          (weekIndex) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: List.generate(7, (dayIndex) {
+                                  final dayOfWeek = dayIndex + 1;
+                                  final weekOffset = weekIndex * 7;
+                                  final dayOfMonth =
+                                      weekOffset +
+                                      dayIndex -
+                                      (firstWeekday - 1) +
+                                      1;
+
+                                  if (dayOfMonth < 1 ||
+                                      dayOfMonth > daysInMonth) {
+                                    return const SizedBox(
+                                      width: 40,
+                                      height: 40,
+                                    );
+                                  }
+
+                                  final date = DateTime(
+                                    year,
+                                    month,
+                                    dayOfMonth,
+                                  );
+                                  final dayData = data[date];
+                                  final score = dayData?['score'] ?? 0;
+                                  final duration = dayData?['duration'] ?? 0;
+
+                                  Color getColor() {
+                                    if (score >= 80)
+                                      return const Color(0xFF4CAF50);
+                                    if (score >= 60)
+                                      return const Color(0xFFFFA726);
+                                    if (score > 0)
+                                      return const Color(0xFFEF5350);
+                                    return Colors.transparent;
+                                  }
+
+                                  return Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: getColor(),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.1),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
                                           Text(
-                                            '${score.toStringAsFixed(0)}',
-                                            style: const TextStyle(
-                                              fontSize: 8,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
+                                            dayOfMonth.toString(),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  score > 0
+                                                      ? Colors.white
+                                                      : Colors.white70,
                                             ),
                                           ),
-                                      ],
+                                          if (score > 0)
+                                            Text(
+                                              '${score.toStringAsFixed(0)}',
+                                              style: const TextStyle(
+                                                fontSize: 8,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }),
+                                  );
+                                }),
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // 범례
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildLegendItem(
+                              '우수 (80점+)',
+                              const Color(0xFF4CAF50),
                             ),
-                          );
-                        },
-                      ),
+                            _buildLegendItem(
+                              '보통 (60-79점)',
+                              const Color(0xFFFFA726),
+                            ),
+                            _buildLegendItem(
+                              '미흡 (1-59점)',
+                              const Color(0xFFEF5350),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
 
-                      const SizedBox(height: 20),
+              const SizedBox(height: 30),
 
-                      // 범례
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildLegendItem(
-                            '우수 (80점+)',
-                            const Color(0xFF4CAF50),
-                          ),
-                          _buildLegendItem(
-                            '보통 (60-79점)',
-                            const Color(0xFFFFA726),
-                          ),
-                          _buildLegendItem(
-                            '미흡 (1-59점)',
-                            const Color(0xFFEF5350),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 30),
-
-            // 액션 버튼들
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/weekly'),
-                    icon: const Icon(Icons.calendar_view_week),
-                    label: const Text('주간 보기'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+              // 액션 버튼들
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.pushNamed(context, '/weekly'),
+                      icon: const Icon(Icons.calendar_view_week),
+                      label: const Text('주간 보기'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6C63FF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/sleep'),
-                    icon: const Icon(Icons.bedtime),
-                    label: const Text('수면 대시보드'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1D1E33),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.pushNamed(context, '/sleep'),
+                      icon: const Icon(Icons.bedtime),
+                      label: const Text('수면 대시보드'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1D1E33),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

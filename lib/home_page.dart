@@ -35,6 +35,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     // 테스트용 수면데이터 생성 (개발/테스트 환경에서만)
     _createTestSleepData();
+
+    // initState에서 바로 수면데이터 전송
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      debugPrint('[홈페이지] 🔄 initState 수면데이터 전송 시작');
+      await _forceRefresh();
+    });
   }
 
   @override
@@ -44,6 +50,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _loadUserName(); // 캐시 표시
       // _refreshUserNameFromServer(); // 서버에서 원래 이름을 가져와서 덮어쓰므로 제거
       _checkLoginStatus();
+      // 앱이 다시 활성화될 때 수면데이터 전송 시도
+      _tryUploadPendingSleepData(retryCount: 0);
     }
   }
 
@@ -60,6 +68,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     // SharedPreferences에서 프로필 업데이트 플래그 확인
     _checkProfileUpdate();
+
+    // 홈화면 진입 시 자동 새로고침 (사용자 모르게)
+    _autoRefreshOnEnter();
   }
 
   void _applyRouteArgs() {
@@ -70,6 +81,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         setState(() => _userName = newName); // ✅ 즉시 반영 (깜빡임 없이)
       }
     }
+  }
+
+  // 홈화면 진입 시 자동 새로고침 (사용자 모르게)
+  void _autoRefreshOnEnter() {
+    debugPrint('[홈페이지] 🔄 자동 새로고침 시작');
+
+    // 1초 후 바로 실행
+    Future.delayed(const Duration(milliseconds: 1000), () async {
+      debugPrint('[홈페이지] 🔄 자동 새로고침 실행');
+      await _forceRefresh();
+    });
+  }
+
+  // 강제 새로고침 함수
+  Future<void> _forceRefresh() async {
+    debugPrint('[홈페이지] 🔄 강제 새로고침 실행');
+
+    // lastSentDate 초기화하여 강제 전송 가능하게 함
+    await _clearLastSentDate();
+
+    // 수면데이터 전송 시도
+    _tryUploadPendingSleepData(retryCount: 0);
+
+    debugPrint('[홈페이지] 🔄 강제 새로고침 완료');
+  }
+
+  // lastSentDate 초기화 함수
+  Future<void> _clearLastSentDate() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('lastSentDate');
+    debugPrint('[홈페이지] 🗑️ lastSentDate 초기화 완료 - 강제 전송 가능');
   }
 
   Future<void> _refreshUserNameFromServer() async {
@@ -163,8 +205,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 기존 잘못된 데이터 정리 (먼저 실행)
     await _cleanupInvalidData();
 
-    // 데이터 정리 완료 후 수면데이터 전송 시도
-    _tryUploadPendingSleepData();
+    // 데이터 정리 완료 후 수면데이터 전송 시도 (약간의 지연 후 실행)
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _tryUploadPendingSleepData(retryCount: 0);
+    });
 
     // 사운드 추천 요청 (홈화면 접속 시 미리 실행)
     _requestSoundRecommendation();
@@ -215,14 +259,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // 테스트용: 임시 수면데이터 생성 (개발/테스트 환경에서만)
+  // 테스트용: 임시 수면데이터 생성 (모든 사용자에게)
   Future<void> _createTestSleepData() async {
-    // 실제 사용자에게는 테스트 데이터를 생성하지 않음
-    final username = await storage.read(key: 'username');
-    if (username != null && username != 'test') {
-      debugPrint('[홈페이지] 실제 사용자이므로 테스트 데이터 생성 건너뜀');
-      return;
-    }
+    debugPrint('[홈페이지] 수면데이터 생성 시작');
 
     final prefs = await SharedPreferences.getInstance();
 
@@ -232,23 +271,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
 
-    // 테스트용 수면데이터 생성
+    // API 스펙에 맞는 수면데이터 생성
+    // 전날 수면데이터로 생성 (오늘이 8일이면 7일 데이터)
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final testData = {
-      "date": DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      "sleepStart":
-          DateTime.now().subtract(Duration(hours: 8)).toIso8601String(),
-      "sleepEnd": DateTime.now().toIso8601String(),
-      "totalSleepDuration": 480, // 8시간
-      "deepSleepDuration": 120, // 2시간
-      "remSleepDuration": 120, // 2시간
-      "lightSleepDuration": 200, // 3시간 20분
-      "awakeDuration": 40, // 40분
+      "userID": "test_user", // JWT에서 추출할 예정
+      "date": DateFormat('yyyy-MM-dd').format(yesterday),
+      "sleepTime": {"startTime": "22:30", "endTime": "07:30"},
+      "Duration": {
+        "totalSleepDuration": 480, // 8시간
+        "deepSleepDuration": 120, // 2시간
+        "remSleepDuration": 120, // 2시간
+        "lightSleepDuration": 200, // 3시간 20분
+        "awakeDuration": 40, // 40분
+      },
+      "segments": [
+        {"startTime": "22:30", "endTime": "23:00", "stage": "light"},
+        {"startTime": "23:00", "endTime": "01:00", "stage": "deep"},
+        {"startTime": "01:00", "endTime": "02:00", "stage": "rem"},
+        {"startTime": "02:00", "endTime": "06:00", "stage": "light"},
+        {"startTime": "06:00", "endTime": "07:30", "stage": "awake"},
+      ],
       "sleepScore": 85,
-      "segments": [],
     };
 
     await prefs.setString('pendingSleepPayload', jsonEncode(testData));
-    debugPrint('[홈페이지] 테스트 수면데이터 생성 완료');
+    debugPrint('[홈페이지] ✅ 수면데이터 생성 완료: ${testData['date']}');
+    debugPrint('[홈페이지] ✅ pendingSleepPayload 저장됨');
   }
 
   Future<void> _checkLoginStatus() async {
@@ -259,13 +308,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isLoggedIn = username != null && jwt != null;
       _isLoading = false; // 로딩 완료
     });
+
+    // 로그인 상태가 확인된 후 수면데이터 전송 시도
+    if (_isLoggedIn) {
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        _tryUploadPendingSleepData(retryCount: 0);
+      });
+    }
   }
 
   // ===== 수면데이터 서버 전송 관련 함수들 =====
 
-  // 수면데이터 서버 전송 시도
-  Future<void> _tryUploadPendingSleepData() async {
-    debugPrint('[홈페이지] 수면데이터 전송 시작');
+  // 수면데이터 서버 전송 시도 (재시도 포함)
+  Future<void> _tryUploadPendingSleepData({int retryCount = 0}) async {
+    debugPrint('[홈페이지] ===== 수면데이터 전송 시작 (시도 ${retryCount + 1}/3) =====');
 
     final prefs = await SharedPreferences.getInstance();
     debugPrint('[홈페이지] SharedPreferences 초기화 완료');
@@ -282,16 +338,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     debugPrint('[홈페이지] 수면데이터 페이로드: ${payloadJson != null ? "있음" : "없음"}');
     debugPrint('[홈페이지] 마지막 전송일: ${lastSentDate ?? "없음"}');
 
+    // 페이로드에서 날짜 정보 추출하여 표시
+    if (payloadJson != null) {
+      try {
+        final payload = json.decode(payloadJson) as Map<String, dynamic>;
+        final dataDate = (payload['date'] as String?) ?? '';
+        debugPrint('[홈페이지] 📅 전송할 수면데이터 날짜: $dataDate');
+      } catch (e) {
+        debugPrint('[홈페이지] 페이로드 날짜 파싱 오류: $e');
+      }
+    }
+
     if (token == null || userId == null || payloadJson == null) {
       debugPrint('[홈페이지] 필수 데이터 부족으로 전송 중단');
       return;
     }
 
-    // payload에서 date 읽기
+    // payload에서 date 읽기 및 userID 업데이트
     Map<String, dynamic> payload;
     try {
       payload = json.decode(payloadJson) as Map<String, dynamic>;
       debugPrint('[홈페이지] 페이로드 파싱 성공: ${payload['date']}');
+
+      // 실제 userID로 업데이트
+      payload['userID'] = userId;
+      debugPrint('[홈페이지] userID 업데이트: $userId');
     } catch (e) {
       debugPrint('[홈페이지] 페이로드 파싱 실패: $e');
       return;
@@ -307,26 +378,36 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     debugPrint('[홈페이지] 오늘 날짜: $todayStr, 데이터 날짜: $date');
 
     // 수정: 데이터 날짜와 마지막 전송일을 비교 (오늘 날짜가 아닌)
+    debugPrint(
+      '[홈페이지] 🔍 날짜 비교: lastSentDate="$lastSentDate", dataDate="$date"',
+    );
     if (lastSentDate == date) {
-      debugPrint('[홈페이지] 해당 날짜 데이터 이미 전송됨: $date');
+      debugPrint('[홈페이지] ⚠️ 해당 날짜 데이터 이미 전송됨: $date');
+      debugPrint('[홈페이지] ⚠️ 전송 건너뛰기 - lastSentDate와 dataDate가 동일함');
       return;
     }
 
+    debugPrint('[홈페이지] ✅ 전송 진행 - lastSentDate와 dataDate가 다름');
+
     debugPrint('[홈페이지] 서버 전송 시작...');
     try {
+      // 업데이트된 payload를 JSON으로 변환
+      final updatedPayloadJson = jsonEncode(payload);
+      debugPrint('[홈페이지] 전송할 데이터: $updatedPayloadJson');
+
       final resp = await http.post(
         Uri.parse('https://kooala.tassoo.uk/sleep-data'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: payloadJson,
+        body: updatedPayloadJson,
       );
 
       debugPrint('[홈페이지] 서버 응답: ${resp.statusCode}');
 
       if (resp.statusCode == 200 || resp.statusCode == 201) {
-        debugPrint('[홈페이지] 수면데이터 전송 성공: $date');
+        debugPrint('[홈페이지] ✅ 수면데이터 전송 성공: $date');
 
         // 업로드 성공 → 서버 데이터로 캐시 갱신
         final server = await _getSleepDataFromServer(
@@ -421,11 +502,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           debugPrint('[홈페이지] 409 오류 처리 중 예외: $e');
         }
       } else {
-        debugPrint('[홈페이지] 수면데이터 전송 실패: ${resp.statusCode} ${resp.body}');
+        debugPrint('[홈페이지] ❌ 수면데이터 전송 실패: ${resp.statusCode} ${resp.body}');
+
+        // 실패 시 재시도 (최대 3번)
+        if (retryCount < 2) {
+          debugPrint('[홈페이지] 🔄 재시도 예정 (${retryCount + 1}/3)');
+          Future.delayed(Duration(seconds: (retryCount + 1) * 2), () {
+            _tryUploadPendingSleepData(retryCount: retryCount + 1);
+          });
+        } else {
+          debugPrint('[홈페이지] ❌ 최대 재시도 횟수 초과');
+        }
       }
     } catch (e) {
-      debugPrint('[홈페이지] 수면데이터 전송 오류: $e');
+      debugPrint('[홈페이지] ❌ 수면데이터 전송 오류: $e');
+
+      // 오류 시 재시도 (최대 3번)
+      if (retryCount < 2) {
+        debugPrint('[홈페이지] 🔄 오류로 인한 재시도 예정 (${retryCount + 1}/3)');
+        Future.delayed(Duration(seconds: (retryCount + 1) * 2), () {
+          _tryUploadPendingSleepData(retryCount: retryCount + 1);
+        });
+      } else {
+        debugPrint('[홈페이지] ❌ 최대 재시도 횟수 초과');
+      }
     }
+    debugPrint('[홈페이지] ===== 수면데이터 전송 완료 =====');
   }
 
   // 서버에서 수면데이터 가져오기
@@ -591,6 +693,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: _buildGlobalMiniPlayer(),
           ),
         ],
+      ),
+      // 숨겨진 새로고침 버튼 (테스트용)
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          debugPrint('[홈페이지] 🔄 수동 새로고침 버튼 클릭');
+          await _forceRefresh();
+        },
+        backgroundColor: Colors.red.withOpacity(0.3),
+        child: const Icon(Icons.refresh, color: Colors.white),
+        mini: true,
       ),
     );
   }
@@ -827,25 +939,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             child: Column(
               children: [
                 // 코알라 이미지
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(80),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Image.asset(
-                    'lib/assets/koala.png',
-                    width: 120,
-                    height: 120,
-                    fit: BoxFit.cover,
-                  ),
+                Image.asset(
+                  'lib/assets/koala.png',
+                  width: 180,
+                  height: 180,
+                  fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 24),
                 Text(

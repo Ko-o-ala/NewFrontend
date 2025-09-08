@@ -32,6 +32,13 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
     _checkProfileUpdate();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 페이지 진입 시마다 데이터 새로고침
+    _fetchWeeklySleep();
+  }
+
   Future<void> _loadUsername() async {
     try {
       final token = await storage.read(key: 'jwt');
@@ -135,7 +142,9 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
   Future<void> _fetchWeeklySleep() async {
     setState(() => loading = true);
 
-    final now = DateTime.now().subtract(Duration(days: 7 * weekOffset));
+    // 전날 기준으로 주 계산 (오늘 포함된 주가 아닌 전날 포함된 주)
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final now = yesterday.subtract(Duration(days: 7 * weekOffset));
     final monday = now.subtract(Duration(days: now.weekday - 1));
     final userId = await storage.read(key: 'userID');
 
@@ -195,7 +204,9 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
   }
 
   String _getWeekRange() {
-    final now = DateTime.now().subtract(Duration(days: 7 * weekOffset));
+    // 전날 기준으로 주 계산
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final now = yesterday.subtract(Duration(days: 7 * weekOffset));
     final monday = now.subtract(Duration(days: now.weekday - 1));
     final sunday = monday.add(const Duration(days: 6));
     return '${monday.month}/${monday.day} - ${sunday.month}/${sunday.day}';

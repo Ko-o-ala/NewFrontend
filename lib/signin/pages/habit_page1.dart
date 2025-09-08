@@ -46,19 +46,55 @@ class _HabitPage1State extends State<HabitPage1> {
       dayActivityType,
       morningSunlightExposure;
 
+  late ScrollController _scrollController;
+  final GlobalKey _question5Key = GlobalKey();
+  final GlobalKey _question6Key = GlobalKey();
+  final GlobalKey _question7Key = GlobalKey();
+  final GlobalKey _question8Key = GlobalKey();
+
   bool get isValid =>
       usualBedTime != null &&
       usualWakeupTime != null &&
       dayActivityType != null &&
       morningSunlightExposure != null;
 
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToQuestion(GlobalKey key) {
+    final RenderBox? renderBox =
+        key.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final scrollOffset =
+          _scrollController.offset + position.dy - 200; // 200px 여백으로 증가
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   Widget _buildQuestionCard(
     String title,
     List<String> options,
     String? groupValue,
-    Function(String?) onChanged,
-  ) {
+    Function(String?) onChanged, {
+    GlobalKey? key,
+    VoidCallback? onTitleTap,
+  }) {
     return Container(
+      key: key,
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -76,32 +112,37 @@ class _HabitPage1State extends State<HabitPage1> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFD700).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.quiz,
-                  color: Color(0xFFFFD700),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.quiz,
+                    color: Color(0xFFFFD700),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                if (onTitleTap != null)
+                  const Icon(Icons.touch_app, color: Colors.white54, size: 16),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
           ...options.map(
@@ -170,6 +211,7 @@ class _HabitPage1State extends State<HabitPage1> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
@@ -236,19 +278,7 @@ class _HabitPage1State extends State<HabitPage1> {
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // 코알라 이미지
-              Center(
-                child: Image.asset(
-                  'lib/assets/koala.png',
-                  width: 130,
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
-
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               // 질문들
               _buildQuestionCard(
@@ -256,24 +286,32 @@ class _HabitPage1State extends State<HabitPage1> {
                 ['오후 9시 이전', '오후 9시~새벽 12시', '새벽 12시~새벽 2시', '새벽 2시 이후'],
                 usualBedTime,
                 (v) => setState(() => usualBedTime = v),
+                key: _question5Key,
+                onTitleTap: () => _scrollToQuestion(_question5Key),
               ),
               _buildQuestionCard(
                 'Q6. 평소 기상 시간은 어떻게 되시나요?',
                 ['오전 5시 이전', '오전 5시~오전 7시', '오전 7시~오전 9시', '오전 9시 이후'],
                 usualWakeupTime,
                 (v) => setState(() => usualWakeupTime = v),
+                key: _question6Key,
+                onTitleTap: () => _scrollToQuestion(_question6Key),
               ),
               _buildQuestionCard(
                 'Q7. 하루 중 어느 활동이 더 많은가요?',
                 ['실내 활동 시', '실외 활동 시', '비슷함'],
                 dayActivityType,
                 (v) => setState(() => dayActivityType = v),
+                key: _question7Key,
+                onTitleTap: () => _scrollToQuestion(_question7Key),
               ),
               _buildQuestionCard(
                 'Q8. 평소 아침 햇빛을 쬐는 빈도는 어떻게 되나요?',
                 ['1시간 이내', '1~3시간', '3~5시간', '5~7시간', '7시간 이상'],
                 morningSunlightExposure,
                 (v) => setState(() => morningSunlightExposure = v),
+                key: _question8Key,
+                onTitleTap: () => _scrollToQuestion(_question8Key),
               ),
 
               const SizedBox(height: 20),
