@@ -36,6 +36,8 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
     super.didChangeDependencies();
     // 페이지 진입 시마다 데이터 새로고침
     setState(() {});
+    // 수면점수 업데이트 체크
+    _checkSleepScoreUpdate();
   }
 
   Future<void> _loadUsername() async {
@@ -102,6 +104,25 @@ class _MonthlySleepScreenState extends State<MonthlySleepScreen> {
       }
     } catch (e) {
       debugPrint('[MonthlySleepScreen] 프로필 업데이트 체크 실패: $e');
+    }
+  }
+
+  Future<void> _checkSleepScoreUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sleepScoreUpdated = prefs.getBool('sleepScoreUpdated') ?? false;
+
+      if (sleepScoreUpdated) {
+        // 수면점수가 업데이트된 경우 데이터 새로고침
+        if (mounted) {
+          setState(() {});
+        }
+        // 플래그 제거
+        await prefs.remove('sleepScoreUpdated');
+        debugPrint('[MonthlySleepScreen] 수면점수 업데이트 감지 - 데이터 새로고침');
+      }
+    } catch (e) {
+      debugPrint('[MonthlySleepScreen] 수면점수 업데이트 체크 실패: $e');
     }
   }
 

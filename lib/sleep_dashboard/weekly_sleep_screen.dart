@@ -37,6 +37,8 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
     super.didChangeDependencies();
     // 페이지 진입 시마다 데이터 새로고침
     _fetchWeeklySleep();
+    // 수면점수 업데이트 체크
+    _checkSleepScoreUpdate();
   }
 
   Future<void> _loadUsername() async {
@@ -103,6 +105,29 @@ class _WeeklySleepScreenState extends State<WeeklySleepScreen> {
       }
     } catch (e) {
       debugPrint('[WeeklySleepScreen] 프로필 업데이트 체크 실패: $e');
+    }
+  }
+
+  Future<void> _checkSleepScoreUpdate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sleepScoreUpdated = prefs.getBool('sleepScoreUpdated') ?? false;
+
+      if (sleepScoreUpdated) {
+        // 수면점수가 업데이트된 경우 데이터 새로고침
+        await _fetchWeeklySleep();
+        await _loadTodayScore();
+        // 플래그 제거
+        await prefs.remove('sleepScoreUpdated');
+        debugPrint('[WeeklySleepScreen] 수면점수 업데이트 감지 - 데이터 새로고침');
+
+        // UI 업데이트
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      debugPrint('[WeeklySleepScreen] 수면점수 업데이트 체크 실패: $e');
     }
   }
 

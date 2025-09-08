@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:health/health.dart';
 import 'package:percent_indicator/percent_indicator.dart';
 
 import 'package:my_app/Top_Nav.dart';
@@ -36,90 +35,135 @@ class _SleepDashboardState extends State<SleepDashboard>
 
   bool _fallbackFromTwoDaysAgo = false;
 
-  /// 주어진 시간 범위의 수면 데이터를 로드해서 State를 갱신.
+  /// 시간 문자열을 DateTime으로 파싱 (수면차트와 동일한 로직)
+  DateTime _parseTimeWithDate(String timeStr, DateTime date) {
+    final parts = timeStr.split(":");
+    final hour = int.parse(parts[0]);
+    final minute = int.parse(parts[1]);
+
+    final dt = DateTime(date.year, date.month, date.day, hour, minute);
+
+    // 12시 이후(12:00~23:59)는 그 날짜 그대로, 12시 이전(00:00~11:59)은 다음 날짜로
+    if (hour < 12) {
+      return dt.add(const Duration(days: 1));
+    } else {
+      return dt;
+    }
+  }
+
+  /// HTTP 헤더 생성
+  Future<Map<String, String>> _getHeaders() async {
+    final raw = await storage.read(key: 'jwt');
+    if (raw == null || raw.trim().isEmpty) {
+      throw Exception('토큰이 없습니다. 다시 로그인해주세요.');
+    }
+    final tokenOnly =
+        raw.startsWith(RegExp(r'Bearer\\s+', caseSensitive: false))
+            ? raw.split(' ').last
+            : raw;
+
+    return {
+      'Authorization': 'Bearer $tokenOnly',
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json',
+    };
+  }
+
+  /// 주어진 시간 범위의 수면 데이터를 서버에서 로드해서 State를 갱신.
   /// 데이터가 없으면 false, 있으면 true 반환.
   Future<bool> _loadSleepInRange(DateTime start, DateTime end) async {
-    final health = Health();
-    final types = [
-      HealthDataType.SLEEP_ASLEEP,
-      HealthDataType.SLEEP_REM,
-      HealthDataType.SLEEP_DEEP,
-      HealthDataType.SLEEP_AWAKE,
-      HealthDataType.SLEEP_LIGHT,
-    ];
-
-    final authorized = await health.requestAuthorization(types);
-    if (!authorized) {
-      setState(() => formattedDuration = '❌ 건강 앱 접근 거부됨');
-      return false;
-    }
-
     try {
-      final data = await health.getHealthDataFromTypes(
-        types: types,
-        startTime: start,
-        endTime: end,
+      // 서버에서 수면 데이터 가져오기
+      final userId =
+          await storage.read(key: 'userID') ??
+          await storage.read(key: 'userId');
+      if (userId == null || userId.trim().isEmpty) {
+        setState(() => formattedDuration = '❌ 로그인이 필요합니다');
+        return false;
+      }
+
+      // 어제 날짜로 API 호출 (수면 데이터는 전날 기준)
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final dateStr =
+          '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+
+      final url = Uri.parse(
+        'https://kooala.tassoo.uk/sleep-data/${Uri.encodeComponent(userId)}/$dateStr',
       );
+      final headers = await _getHeaders();
 
-      if (data.isEmpty) return false;
+      debugPrint('[SLEEP_DASHBOARD] 서버에서 수면 데이터 요청: $url');
 
-      // 합산
+      final response = await http.get(url, headers: headers);
+      debugPrint('[SLEEP_DASHBOARD] 응답 상태: ${response.statusCode}');
+
+      if (response.statusCode == 401) {
+        setState(() => formattedDuration = '❌ 인증 만료됨. 다시 로그인해주세요.');
+        return false;
+      }
+
+      if (response.statusCode == 404) {
+        setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
+        return false;
+      }
+
+      if (response.statusCode != 200) {
+        setState(() => formattedDuration = '❌ 서버 오류: ${response.statusCode}');
+        return false;
+      }
+
+      final decoded = json.decode(response.body);
+      final dataList = decoded['data'] as List? ?? [];
+
+      if (dataList.isEmpty) {
+        setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
+        return false;
+      }
+
+      // 서버 데이터 파싱
       int deep = 0, rem = 0, light = 0, awake = 0;
-      for (final d in data) {
-        final mins = d.dateTo.difference(d.dateFrom).inMinutes;
-        switch (d.type) {
-          case HealthDataType.SLEEP_DEEP:
-            deep += mins;
-            break;
-          case HealthDataType.SLEEP_REM:
-            rem += mins;
-            break;
-          case HealthDataType.SLEEP_LIGHT:
-          case HealthDataType.SLEEP_ASLEEP:
-            light += mins;
-            break;
-          case HealthDataType.SLEEP_AWAKE:
-            awake += mins;
-            break;
-          default:
-            break;
+      DateTime? realStart, realEnd;
+      int serverScore = sleepScore; // 기본값은 현재 점수
+
+      for (final item in dataList) {
+        if (item is! Map<String, dynamic>) continue;
+
+        final duration = item['Duration'] as Map<String, dynamic>?;
+        if (duration != null) {
+          deep = (duration['deepSleepDuration'] as int?) ?? 0;
+          rem = (duration['remSleepDuration'] as int?) ?? 0;
+          light = (duration['lightSleepDuration'] as int?) ?? 0;
+          awake = (duration['awakeDuration'] as int?) ?? 0;
+        }
+
+        // 수면점수 파싱
+        serverScore = (item['sleepScore'] as int?) ?? sleepScore;
+
+        // 수면 시간 파싱
+        final sleepTime = item['sleepTime'] as Map<String, dynamic>?;
+        if (sleepTime != null) {
+          final startTimeStr = sleepTime['startTime'] as String?;
+          final endTimeStr = sleepTime['endTime'] as String?;
+
+          if (startTimeStr != null && endTimeStr != null) {
+            realStart = _parseTimeWithDate(startTimeStr, yesterday);
+            realEnd = _parseTimeWithDate(endTimeStr, yesterday);
+          }
         }
       }
+
       final inBedMin = deep + rem + light + awake;
-      if (inBedMin <= 0) return false;
-      final asleepMinOnly = deep + rem + light; // 실제 수면만
+      if (inBedMin <= 0) {
+        setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
+        return false;
+      }
 
-      // 실제 수면 시작/종료
-      final isSleep =
-          (HealthDataType t) =>
-              t == HealthDataType.SLEEP_ASLEEP ||
-              t == HealthDataType.SLEEP_LIGHT ||
-              t == HealthDataType.SLEEP_DEEP ||
-              t == HealthDataType.SLEEP_REM;
-
-      final realStart = data
-          .where((d) => isSleep(d.type))
-          .map((d) => d.dateFrom)
-          .fold<DateTime?>(null, (p, c) => p == null || c.isBefore(p) ? c : p);
-
-      final realEnd = data
-          .where((d) => isSleep(d.type))
-          .map((d) => d.dateTo)
-          .fold<DateTime?>(null, (p, c) => p == null || c.isAfter(p) ? c : p);
-
-      final score = calculateSleepScore(
-        data: data,
-        sleepStart: realStart ?? start,
-        sleepEnd: realEnd ?? end,
-        goalSleepDuration:
-            (goalSleepDuration ??
-                widget.goalSleepDuration ??
-                const Duration(hours: 8)),
-      );
+      // 서버에서 받아온 수면점수 사용 (재계산하지 않음)
+      final score = serverScore;
 
       // State 반영
       setState(() {
-        healthData = data;
+        // healthData는 더 이상 사용하지 않음 (서버 데이터로 변경)
         sleepStart = start;
         sleepEnd = end;
         sleepStartReal = realStart;
@@ -130,12 +174,21 @@ class _SleepDashboardState extends State<SleepDashboard>
         lightMin = light;
         awakeMin = awake;
 
-        todaySleep = Duration(minutes: asleepMinOnly);
-        formattedDuration = _fmtMin(asleepMinOnly);
+        // 수면차트와 동일하게 침대에 있던 전체 시간 표시 (깨어있음 포함)
+        todaySleep = Duration(minutes: inBedMin);
+        formattedDuration = _fmtMin(inBedMin);
         sleepScore = score;
       });
 
+      // 수면점수 업데이트 플래그 설정 (weekly, monthly 페이지에서 감지)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sleepScoreUpdated', true);
+      debugPrint(
+        '[SLEEP_DASHBOARD] _loadSleepInRange에서 수면점수 업데이트 플래그 설정: $score',
+      );
+
       await _savePendingPayload();
+
       return true;
     } catch (_) {
       setState(() => formattedDuration = '⚠️ 오류 발생');
@@ -237,12 +290,10 @@ class _SleepDashboardState extends State<SleepDashboard>
   Duration? goalSleepDuration;
   DateTime? sleepStartReal;
   DateTime? sleepEndReal;
-  bool _isLoggedIn = false;
   Duration? todaySleep;
   DateTime? sleepStart;
   DateTime? sleepEnd;
   int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
-  List<HealthDataPoint> healthData = [];
   int sleepScore = 0;
 
   Future<void> _checkForFreshServerData() async {
@@ -258,32 +309,10 @@ class _SleepDashboardState extends State<SleepDashboard>
     }
   }
 
-  // 요일별 목표 수면 시간 가져오기
-  Future<String> _getGoalTextForWeekday(DateTime date) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final weekday = date.weekday; // 1=월요일, 7=일요일
-
-      // 요일별 목표 시간 가져오기
-      final goalKey = 'sleep_goal_weekday_$weekday';
-      final goalMinutes = prefs.getInt(goalKey);
-
-      if (goalMinutes != null && goalMinutes > 0) {
-        final hours = goalMinutes ~/ 60;
-        final minutes = goalMinutes % 60;
-        return '${hours}시간 ${minutes}분';
-      } else {
-        return '시간 없음';
-      }
-    } catch (e) {
-      return '시간 없음';
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadGoalText(); // 내부에서 goalSleepDuration 갱신 + _recalcScore()
+      _loadGoalText(); // 내부에서 goalSleepDuration 갱신 (수면점수 재계산 비활성화)
     }
   }
 
@@ -291,21 +320,6 @@ class _SleepDashboardState extends State<SleepDashboard>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  void _recalcScore() {
-    if (sleepStart == null || sleepEnd == null || healthData.isEmpty) return;
-    final newScore = calculateSleepScore(
-      data: healthData,
-      sleepStart: (sleepStartReal ?? sleepStart!),
-      sleepEnd: (sleepEndReal ?? sleepEnd!),
-      goalSleepDuration:
-          (goalSleepDuration ??
-              widget.goalSleepDuration ??
-              const Duration(hours: 8)),
-    );
-    setState(() => sleepScore = newScore);
-    _savePendingPayload();
   }
 
   Future<void> _applyServerCacheIfAny() async {
@@ -316,14 +330,18 @@ class _SleepDashboardState extends State<SleepDashboard>
     try {
       final m = json.decode(jsonStr) as Map<String, dynamic>;
       final durationMin = (m['Duration']?['totalSleepDuration'] ?? 0) as int;
-      //final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
+      final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
       final inBedMin = durationMin + awakeMin;
 
       setState(() {
-        formattedDuration = _fmtMin(durationMin); // ✅ 깨어있음 제외
-        todaySleep = Duration(minutes: durationMin); // ✅ 깨어있음 제외
+        formattedDuration = _fmtMin(inBedMin); // ✅ 깨어있음 포함 (수면차트와 동일)
+        todaySleep = Duration(minutes: inBedMin); // ✅ 깨어있음 포함 (수면차트와 동일)
         sleepScore = (m['sleepScore'] as int?) ?? sleepScore;
       });
+
+      // 수면점수 업데이트 플래그 설정 (weekly, monthly 페이지에서 감지)
+      await prefs.setBool('sleepScoreUpdated', true);
+      debugPrint('[SLEEP_DASHBOARD] 캐시에서 수면점수 업데이트 플래그 설정: $sleepScore');
     } catch (_) {
       // 캐시 파싱 실패 시 조용히 무시
     }
@@ -331,64 +349,70 @@ class _SleepDashboardState extends State<SleepDashboard>
 
   // ⬇️ _SleepDashboardState 클래스 안에 추가
   List<Map<String, String>> _buildSegments() {
-    return healthData
-        .where(
-          (d) =>
-              d.type == HealthDataType.SLEEP_DEEP ||
-              d.type == HealthDataType.SLEEP_REM ||
-              d.type == HealthDataType.SLEEP_LIGHT ||
-              d.type == HealthDataType.SLEEP_ASLEEP ||
-              d.type == HealthDataType.SLEEP_AWAKE,
-        )
-        .map((d) {
-          String stage;
-          String color;
-          String label;
-          String duration;
+    // 서버 데이터로 변경 - 기본적인 수면 단계 정보를 반환
+    final segments = <Map<String, String>>[];
 
-          switch (d.type) {
-            case HealthDataType.SLEEP_DEEP:
-              stage = "deep";
-              color = "#4A90E2";
-              label = "깊은 수면";
-              break;
-            case HealthDataType.SLEEP_REM:
-              stage = "rem";
-              color = "#7B68EE";
-              label = "REM 수면";
-              break;
-            case HealthDataType.SLEEP_LIGHT:
-            case HealthDataType.SLEEP_ASLEEP:
-              stage = "light";
-              color = "#50C878";
-              label = "얕은 수면";
-              break;
-            case HealthDataType.SLEEP_AWAKE:
-              stage = "awake";
-              color = "#FF6B6B";
-              label = "깨어있음";
-              break;
-            default:
-              stage = "unknown";
-              color = "#808080";
-              label = "알 수 없음";
-          }
+    if (deepMin > 0) {
+      final hours = deepMin ~/ 60;
+      final mins = deepMin % 60;
+      final duration = hours > 0 ? '${hours}시간 ${mins}분' : '${mins}분';
 
-          final minutes = d.dateTo.difference(d.dateFrom).inMinutes;
-          final hours = minutes ~/ 60;
-          final mins = minutes % 60;
-          duration = hours > 0 ? '${hours}시간 ${mins}분' : '${mins}분';
+      segments.add({
+        "startTime": sleepStartReal?.toIso8601String().substring(11, 16) ?? '',
+        "endTime": sleepEndReal?.toIso8601String().substring(11, 16) ?? '',
+        "stage": "deep",
+        "color": "#4A90E2",
+        "label": "깊은 수면",
+        "duration": duration,
+      });
+    }
 
-          return {
-            "startTime": d.dateFrom.toIso8601String().substring(11, 16),
-            "endTime": d.dateTo.toIso8601String().substring(11, 16),
-            "stage": stage,
-            "color": color,
-            "label": label,
-            "duration": duration,
-          };
-        })
-        .toList();
+    if (remMin > 0) {
+      final hours = remMin ~/ 60;
+      final mins = remMin % 60;
+      final duration = hours > 0 ? '${hours}시간 ${mins}분' : '${mins}분';
+
+      segments.add({
+        "startTime": sleepStartReal?.toIso8601String().substring(11, 16) ?? '',
+        "endTime": sleepEndReal?.toIso8601String().substring(11, 16) ?? '',
+        "stage": "rem",
+        "color": "#7B68EE",
+        "label": "REM 수면",
+        "duration": duration,
+      });
+    }
+
+    if (lightMin > 0) {
+      final hours = lightMin ~/ 60;
+      final mins = lightMin % 60;
+      final duration = hours > 0 ? '${hours}시간 ${mins}분' : '${mins}분';
+
+      segments.add({
+        "startTime": sleepStartReal?.toIso8601String().substring(11, 16) ?? '',
+        "endTime": sleepEndReal?.toIso8601String().substring(11, 16) ?? '',
+        "stage": "light",
+        "color": "#50C878",
+        "label": "얕은 수면",
+        "duration": duration,
+      });
+    }
+
+    if (awakeMin > 0) {
+      final hours = awakeMin ~/ 60;
+      final mins = awakeMin % 60;
+      final duration = hours > 0 ? '${hours}시간 ${mins}분' : '${mins}분';
+
+      segments.add({
+        "startTime": sleepStartReal?.toIso8601String().substring(11, 16) ?? '',
+        "endTime": sleepEndReal?.toIso8601String().substring(11, 16) ?? '',
+        "stage": "awake",
+        "color": "#FF6B6B",
+        "label": "깨어있음",
+        "duration": duration,
+      });
+    }
+
+    return segments;
   }
 
   Future<void> _refreshFromServerByRealStart() async {
@@ -417,18 +441,21 @@ class _SleepDashboardState extends State<SleepDashboard>
     if (server == null) return;
 
     final durationMin = (server['Duration']?['totalSleepDuration'] ?? 0) as int;
-    final hrs = durationMin ~/ 60;
-    final mins = durationMin % 60;
-    // final awakeMin = (server['Duration']?['awakeDuration'] ?? 0) as int;
-    final inBedMin = durationMin + awakeMin; // ✅ 포함
+    final awakeMin = (server['Duration']?['awakeDuration'] ?? 0) as int;
+    final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
 
     setState(() {
-      formattedDuration = '${durationMin ~/ 60}시간 ${durationMin % 60}분'; // ✅
+      formattedDuration =
+          '${inBedMin ~/ 60}시간 ${inBedMin % 60}분'; // ✅ 깨어있음 포함 (수면차트와 동일)
       sleepScore = (server['sleepScore'] as int?) ?? sleepScore;
     });
     // (선택) 캐시 갱신
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('latestServerSleepData', jsonEncode(server));
+
+    // 수면점수 업데이트 플래그 설정 (weekly, monthly 페이지에서 감지)
+    await prefs.setBool('sleepScoreUpdated', true);
+    debugPrint('[SLEEP_DASHBOARD] 서버에서 수면점수 업데이트 플래그 설정: $sleepScore');
   }
 
   Future<void> _savePendingPayload() async {
@@ -477,14 +504,6 @@ class _SleepDashboardState extends State<SleepDashboard>
     // await prefs.setString('lastSavedDate', date);
   }
 
-  Future<Duration?> _getGoalDurationForToday() async {
-    final prefs = await SharedPreferences.getInstance();
-    final weekday = DateTime.now().weekday; // 1=월..7=일
-    final minutes = prefs.getInt('sleep_goal_weekday_$weekday');
-    if (minutes == null || minutes <= 0) return null;
-    return Duration(minutes: minutes);
-  }
-
   Future<void> _loadGoalText() async {
     final text = await _getGoalTextForTodayWithEnabledCheck();
 
@@ -506,7 +525,7 @@ class _SleepDashboardState extends State<SleepDashboard>
       goalSleepDuration = newGoal;
     });
 
-    _recalcScore(); // ✅ 바로 재계산
+    // 수면점수 재계산 비활성화 - 서버 점수 사용
   }
 
   // ✅ SleepDashboard 내 _getGoalTextForTodayWithEnabledCheck 보강
@@ -707,7 +726,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       if (!isLoggedIn) {
         setState(() {
           username = '사용자';
-          _isLoggedIn = false;
         });
         return;
       }
@@ -718,7 +736,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       if (userNameFromPrefs != null && userNameFromPrefs.isNotEmpty) {
         setState(() {
           username = userNameFromPrefs;
-          _isLoggedIn = true;
         });
         return;
       }
@@ -728,7 +745,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       if (usernameFromToken != null) {
         setState(() {
           username = usernameFromToken;
-          _isLoggedIn = true;
         });
         return;
       }
@@ -738,7 +754,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       if (token == null) {
         setState(() {
           username = '사용자';
-          _isLoggedIn = false;
         });
         return;
       }
@@ -759,25 +774,21 @@ class _SleepDashboardState extends State<SleepDashboard>
           final name = userData['data']['name'] ?? '사용자';
           setState(() {
             username = name;
-            _isLoggedIn = true;
           });
         } else {
           setState(() {
             username = '사용자';
-            _isLoggedIn = false;
           });
         }
       } else {
         setState(() {
           username = '사용자';
-          _isLoggedIn = false;
         });
       }
     } catch (e) {
       debugPrint('[USERNAME] Error fetching username: $e');
       setState(() {
         username = '사용자';
-        _isLoggedIn = false;
       });
     }
   }
@@ -796,30 +807,6 @@ class _SleepDashboardState extends State<SleepDashboard>
       }
     } catch (e) {
       debugPrint('[SleepDashboard] 프로필 업데이트 체크 실패: $e');
-    }
-  }
-
-  Future<void> _handleLogout() async {
-    try {
-      // 모든 관련 데이터 정리
-      await storage.delete(key: 'username');
-      await storage.delete(key: 'jwt');
-      await storage.delete(key: 'userID');
-
-      // SharedPreferences 데이터도 정리
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('lastSentDate');
-      await prefs.remove('pendingSleepPayload');
-      await prefs.remove('latestServerSleepData');
-
-      setState(() {
-        username = '사용자';
-        _isLoggedIn = false;
-      });
-
-      debugPrint('[LOGOUT] 모든 데이터 정리 완료');
-    } catch (e) {
-      debugPrint('[LOGOUT] 로그아웃 중 오류: $e');
     }
   }
 
@@ -887,153 +874,62 @@ class _SleepDashboardState extends State<SleepDashboard>
     }
   } // ← 이 닫는 중괄호가 꼭 필요합니다!
 
-  int calculateSleepScore({
-    required List<HealthDataPoint> data,
+  /// 서버 데이터로부터 수면 점수 계산
+  int calculateSleepScoreFromServer({
+    required int deepMinutes,
+    required int remMinutes,
+    required int lightMinutes,
+    required int awakeMinutes,
     required DateTime sleepStart,
     required DateTime sleepEnd,
     required Duration goalSleepDuration,
   }) {
-    int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
-    int wakeEpisodes = 0, longDeepSegments = 0, transitions = 0;
+    final totalSleepMinutes = deepMinutes + remMinutes + lightMinutes;
+    final totalInBedMinutes = totalSleepMinutes + awakeMinutes;
 
-    HealthDataPoint? prev;
-    for (final d in data) {
-      final minutes = d.dateTo.difference(d.dateFrom).inMinutes;
-      switch (d.type) {
-        case HealthDataType.SLEEP_DEEP:
-          deepMin += minutes;
-          if (minutes >= 30) longDeepSegments++;
-          break;
-        case HealthDataType.SLEEP_REM:
-          remMin += minutes;
-          break;
-        case HealthDataType.SLEEP_LIGHT:
-        case HealthDataType.SLEEP_ASLEEP:
-          lightMin += minutes;
-          break;
-        case HealthDataType.SLEEP_AWAKE:
-          awakeMin += minutes;
-          wakeEpisodes++;
-          break;
-        default:
-          break;
-      }
-      if (prev != null && prev.type != d.type) transitions++;
-      prev = d;
-    }
+    if (totalInBedMinutes <= 0) return 0;
 
-    final asleepMin = deepMin + remMin + lightMin; // 실제 수면
-    final inBedMin = asleepMin + awakeMin; // 침대에 있던 전체 시간
-    if (asleepMin <= 0) return 0;
+    // 기본 점수 (0-100)
+    int score = 0;
 
-    // --- 1) Duration score (목표 대비) ---
-    final goalMinutes = goalSleepDuration.inMinutes.toDouble();
+    // 1. 수면 시간 점수 (40점 만점)
+    final goalMinutes = goalSleepDuration.inMinutes;
+    final durationRatio = totalSleepMinutes / goalMinutes;
 
-    // ⬇️ targetMinutes를 항상 갖게 만듭니다. (목표 없으면 8h)
-    final targetMinutes = goalMinutes > 0 ? goalMinutes : 480.0;
-
-    double wDur = 0.40,
-        wEff = 0.20,
-        wStruct = 0.20,
-        wFrag = 0.15,
-        wEarly = 0.05;
-
-    final durRatio = (deepMin + remMin + lightMin) / targetMinutes;
-    double durScore;
-    if (durRatio >= 1.0) {
-      durScore = 90 + (((durRatio - 1.0).clamp(0.0, 0.2)) / 0.2) * 10;
+    if (durationRatio >= 1.0) {
+      score += 40; // 목표 달성
+    } else if (durationRatio >= 0.8) {
+      score += (durationRatio * 40).round(); // 80% 이상
     } else {
-      durScore = (durRatio.clamp(0.0, 1.0)) * 90;
+      score += (durationRatio * 30).round(); // 80% 미만
     }
 
-    // ⬇️ 가중치 정규화는 남겨도 되고(합이 1 보장), 없어도 동일합니다.
-    // final sumW = wDur + wEff + wStruct + wFrag + wEarly;
-    // wDur /= sumW; wEff /= sumW; wStruct /= sumW; wFrag /= sumW; wEarly /= sumW;
-
-    // --- 2) Efficiency score (실제수면/침대시간) ---
-    final eff = inBedMin > 0 ? asleepMin / inBedMin : 0.0;
-    double effScore;
-    if (eff <= 0.75) {
-      // 0.60→0 ~ 0.75→50
-      effScore = 50 * ((eff - 0.60) / 0.15).clamp(0.0, 1.0);
-    } else if (eff <= 0.85) {
-      // 0.75→50 ~ 0.85→80
-      effScore = 50 + 30 * ((eff - 0.75) / 0.10).clamp(0.0, 1.0);
-    } else if (eff <= 0.92) {
-      // 0.85→80 ~ 0.92→95
-      effScore = 80 + 15 * ((eff - 0.85) / 0.07).clamp(0.0, 1.0);
+    // 2. 수면 효율성 점수 (30점 만점)
+    final efficiency = totalSleepMinutes / totalInBedMinutes;
+    if (efficiency >= 0.85) {
+      score += 30;
+    } else if (efficiency >= 0.75) {
+      score += (efficiency * 30).round();
     } else {
-      // 0.92→95 ~ 0.97→100
-      effScore = 95 + 5 * ((eff - 0.92) / 0.05).clamp(0.0, 1.0);
+      score += (efficiency * 20).round();
     }
-    effScore = effScore.clamp(0, 100).toDouble();
 
-    // --- 3) Structure score (깊/REM/얕 비율) ---
-    final deepPct = asleepMin > 0 ? deepMin / asleepMin : 0.0;
-    final remPct = asleepMin > 0 ? remMin / asleepMin : 0.0;
-    final lightPct = asleepMin > 0 ? lightMin / asleepMin : 0.0;
-    // 목표 비율: 깊 22%, REM 22%, 얕 56%
-    final dev =
-        (deepPct - 0.22).abs() +
-        (remPct - 0.22).abs() +
-        (lightPct - 0.56).abs();
-    // dev=0 → 100점, dev=0.5 → 0점 (상한/하한 클램프)
-    double structScore = (100 - (dev / 0.5) * 100).clamp(0, 100).toDouble();
+    // 3. 수면 단계 비율 점수 (20점 만점)
+    final deepRatio = deepMinutes / totalSleepMinutes;
+    final remRatio = remMinutes / totalSleepMinutes;
 
-    // --- 4) Fragmentation score (깸/전환) ---
-    final hours = asleepMin / 60.0;
-    final transitionRate = hours > 0 ? transitions / hours : 0.0;
-    double fragScore = 100.0;
-    fragScore -= (wakeEpisodes * 6).clamp(0, 36); // 깸 1회당 -6, 최대 -36
-    if (transitionRate > 12)
-      fragScore -= (transitionRate - 12) * 3; // 전환률 12/h 초과부터 감점
-    fragScore = fragScore.clamp(0, 100).toDouble();
+    if (deepRatio >= 0.15 && deepRatio <= 0.25) score += 10; // 깊은 수면 15-25%
+    if (remRatio >= 0.20 && remRatio <= 0.25) score += 10; // REM 수면 20-25%
 
-    // --- 5) Early-deep score (첫 40% 구간의 깊은수면 분포) ---
-    final sleepDuration = sleepEnd.difference(sleepStart);
-    final earlyEnd = sleepStart.add(
-      Duration(minutes: (sleepDuration.inMinutes * 0.4).round()),
-    );
-    final earlyDeepMin = data
-        .where(
-          (d) =>
-              d.type == HealthDataType.SLEEP_DEEP &&
-              d.dateFrom.isBefore(earlyEnd),
-        )
-        .fold<int>(
-          0,
-          (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
-        );
-    final earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0.0;
-    double earlyScore;
-    if (earlyDeepRatio <= 0.2) {
-      earlyScore = 40;
-    } else if (earlyDeepRatio < 0.4) {
-      earlyScore = 40 + 50 * ((earlyDeepRatio - 0.2) / 0.2);
-    } else if (earlyDeepRatio < 0.5) {
-      earlyScore = 90 + 10 * ((earlyDeepRatio - 0.4) / 0.1);
-    } else {
-      earlyScore = 100;
+    // 4. 수면 시간대 점수 (10점 만점)
+    final sleepHour = sleepStart.hour;
+    if (sleepHour >= 22 || sleepHour <= 2) {
+      score += 10; // 적절한 수면 시간대
+    } else if (sleepHour >= 20 || sleepHour <= 4) {
+      score += 5; // 보통 수면 시간대
     }
-    earlyScore = earlyScore.clamp(0, 100).toDouble();
 
-    // --- 가중 합산 ---
-    // 목표 없을 때 가중치 정규화
-    final sumW = wDur + wEff + wStruct + wFrag + wEarly;
-    wDur /= sumW;
-    wEff /= sumW;
-    wStruct /= sumW;
-    wFrag /= sumW;
-    wEarly /= sumW;
-
-    final score =
-        wDur * durScore +
-        wEff * effScore +
-        wStruct * structScore +
-        wFrag * fragScore +
-        wEarly * earlyScore;
-
-    return score.round().clamp(0, 100);
+    return score.clamp(0, 100);
   }
 
   @override
@@ -1136,7 +1032,9 @@ class _SleepDashboardState extends State<SleepDashboard>
               ),
               const SizedBox(height: 20),
               // 수면데이터가 없으면 Apple Watch 메시지 표시
-              healthData.isEmpty ? _buildEmptyHint() : _buildSleepContent(),
+              (deepMin == 0 && remMin == 0 && lightMin == 0 && awakeMin == 0)
+                  ? _buildEmptyHint()
+                  : _buildSleepContent(),
               const SizedBox(height: 20),
               // 수면점수 섹션
               Container(
@@ -1179,7 +1077,7 @@ class _SleepDashboardState extends State<SleepDashboard>
                           onPressed: () {
                             debugPrint('[SleepDashboard] 수면점수 상세 페이지로 이동');
                             debugPrint(
-                              '  - healthData 개수: ${healthData.length}',
+                              '  - deepMin: $deepMin, remMin: $remMin, lightMin: $lightMin, awakeMin: $awakeMin',
                             );
                             debugPrint(
                               '  - sleepStart: ${sleepStartReal ?? sleepStart}',
@@ -1195,7 +1093,10 @@ class _SleepDashboardState extends State<SleepDashboard>
                               context,
                               '/sleep-score',
                               arguments: {
-                                'data': healthData,
+                                'deepMin': deepMin,
+                                'remMin': remMin,
+                                'lightMin': lightMin,
+                                'awakeMin': awakeMin,
                                 'sleepStart': sleepStartReal ?? sleepStart,
                                 'sleepEnd': sleepEndReal ?? sleepEnd,
                                 'goalSleepDuration':
@@ -1391,18 +1292,15 @@ class _SleepDashboardState extends State<SleepDashboard>
     final now = DateTime.now();
     DateTime startDate;
     DateTime endDate;
-    Color cardColor;
 
     if (_fallbackFromTwoDaysAgo) {
       // 이틀 전 데이터 사용 중
       startDate = now.subtract(const Duration(days: 2));
       endDate = now.subtract(const Duration(days: 1));
-      cardColor = Colors.orange;
     } else {
       // 일반적인 어제 데이터
       startDate = now.subtract(const Duration(days: 1));
       endDate = now;
-      cardColor = Colors.green;
     }
 
     final startW = ['일', '월', '화', '수', '목', '금', '토'][startDate.weekday % 7];
@@ -1582,7 +1480,7 @@ class _SleepDashboardState extends State<SleepDashboard>
                     setState(() {
                       goalText = newText;
                     });
-                    _recalcScore();
+                    // 수면점수 재계산 비활성화 - 서버 점수 사용
                   }
                 },
               ),
@@ -1663,63 +1561,6 @@ class _SleepDashboardState extends State<SleepDashboard>
           ),
         ],
       ),
-    );
-  }
-
-  Color _getScoreColor(int score) {
-    if (score >= 80) return Colors.green;
-    if (score >= 60) return Colors.orange;
-    return Colors.red;
-  }
-
-  Widget _buildSegmentsWidget() {
-    final segments = _buildSegments();
-    if (segments.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      children:
-          segments.map((segment) {
-            final color = segment['color'] ?? '#808080';
-            final label = segment['label'] ?? '알 수 없음';
-            final duration = segment['duration'] ?? '0분';
-
-            return Container(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Color(
-                  int.parse(color.substring(1), radix: 16) + 0xFF000000,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: Color(
-                        int.parse(color.substring(1), radix: 16) + 0xFF000000,
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    label,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                  const Spacer(),
-                  Text(
-                    duration,
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
     );
   }
 }

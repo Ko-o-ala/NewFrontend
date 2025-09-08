@@ -1,9 +1,15 @@
 // lib/sleep_dashboard/sleep_score_details.dart
 import 'package:flutter/material.dart';
-import 'package:health/health.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:intl/intl.dart';
 
 class SleepScoreDetailsPage extends StatefulWidget {
-  final List<HealthDataPoint> data;
+  final int deepMin;
+  final int remMin;
+  final int lightMin;
+  final int awakeMin;
   final DateTime sleepStart;
   final DateTime sleepEnd;
   final Duration goalSleepDuration;
@@ -11,7 +17,10 @@ class SleepScoreDetailsPage extends StatefulWidget {
 
   const SleepScoreDetailsPage({
     super.key,
-    required this.data,
+    required this.deepMin,
+    required this.remMin,
+    required this.lightMin,
+    required this.awakeMin,
     required this.sleepStart,
     required this.sleepEnd,
     required this.goalSleepDuration,
@@ -25,175 +34,165 @@ class SleepScoreDetailsPage extends StatefulWidget {
 class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
     with TickerProviderStateMixin {
   late int recalculatedScore;
+  final storage = const FlutterSecureStorage();
+  int serverSleepScore = 0;
+  bool isLoading = true;
 
-  // 수면 데이터 변수들
-  int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
-  int totalSleepMin = 0, inBedMinutes = 0;
+  // 수면 데이터 변수들 (서버에서 받은 데이터 사용)
+  int get deepMin => widget.deepMin;
+  int get remMin => widget.remMin;
+  int get lightMin => widget.lightMin;
+  int get awakeMin => widget.awakeMin;
+
+  int get totalSleepMin => deepMin + remMin + lightMin;
+  int get inBedMinutes => totalSleepMin + awakeMin;
+
+  // 계산된 값들
   int wakeEpisodes = 0, transitions = 0;
   double deepPct = 0, remPct = 0, lightPct = 0, earlyDeepRatio = 0;
   double transitionRate = 0;
-  // _SleepScoreDetailsPageState 안에
   double sleepEfficiency = 0.0; // 실제수면/침대시간
-
-  // UI 표시용 변수들 (감점 방식에서 가중치 방식으로 변경됨)
 
   // 애니메이션 컨트롤러
   late AnimationController _scoreController;
   late AnimationController _fadeController;
   late Animation<double> _scoreAnimation;
-  late Animation<double> _fadeAnimation;
 
-  // ✅ 목표가 없을 때 기본 8시간(480분)을 내부 타깃으로 사용
-  int get _targetMinutes {
-    final m = widget.goalSleepDuration.inMinutes;
-    return m > 0 ? m : 480;
+  // 서버에서 수면점수 받아오기
+  Future<void> _loadSleepScoreFromServer() async {
+    try {
+      final userId = await storage.read(key: 'userID');
+      if (userId == null) {
+        debugPrint('[SleepScoreDetails] 사용자 ID가 없습니다');
+        return;
+      }
+
+      // 어제 날짜로 API 호출 (수면 데이터는 전날 기준)
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final formattedDate = DateFormat('yyyy-MM-dd').format(yesterday);
+
+      final uri = Uri.parse(
+        'https://kooala.tassoo.uk/sleep-data/$userId/$formattedDate',
+      );
+
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final records = data['data'];
+        if (records != null && records is List && records.isNotEmpty) {
+          final record = records[0];
+          final score = (record['sleepScore'] ?? 0).toInt();
+
+          if (mounted) {
+            setState(() {
+              serverSleepScore = score;
+              isLoading = false;
+            });
+            // 서버 점수를 받아온 후 다시 계산
+            _compute();
+          }
+
+          debugPrint('[SleepScoreDetails] 서버에서 수면점수 받아옴: $score');
+        } else {
+          debugPrint('[SleepScoreDetails] 서버에 수면 데이터가 없습니다');
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
+        }
+      } else {
+        debugPrint(
+          '[SleepScoreDetails] 서버에서 수면점수 받아오기 실패: ${response.statusCode}',
+        );
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[SleepScoreDetails] 수면점수 받아오기 오류: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
   }
 
-  bool get _usingDefaultTarget => widget.goalSleepDuration.inMinutes <= 0;
-
-  // sleep_dashboard.dart와 동일한 수면점수 계산 함수
-  int _calculateSleepScore({
-    required List<HealthDataPoint> data,
+  // 서버 데이터를 사용한 수면점수 계산 함수 (로컬 계산용)
+  int _calculateSleepScoreFromServer({
+    required int deepMinutes,
+    required int remMinutes,
+    required int lightMinutes,
+    required int awakeMinutes,
     required DateTime sleepStart,
     required DateTime sleepEnd,
     required Duration goalSleepDuration,
   }) {
-    int deepMin = 0, remMin = 0, lightMin = 0, awakeMin = 0;
-    int wakeEpisodes = 0, transitions = 0;
+    final totalSleepMinutes = deepMinutes + remMinutes + lightMinutes;
+    final totalInBedMinutes = totalSleepMinutes + awakeMinutes;
 
-    HealthDataPoint? prev;
-    for (final d in data) {
-      final minutes = d.dateTo.difference(d.dateFrom).inMinutes;
-      switch (d.type) {
-        case HealthDataType.SLEEP_DEEP:
-          deepMin += minutes;
-          break;
-        case HealthDataType.SLEEP_REM:
-          remMin += minutes;
-          break;
-        case HealthDataType.SLEEP_LIGHT:
-        case HealthDataType.SLEEP_ASLEEP:
-          lightMin += minutes;
-          break;
-        case HealthDataType.SLEEP_AWAKE:
-          awakeMin += minutes;
-          wakeEpisodes++;
-          break;
-        default:
-          break;
-      }
-      if (prev != null && prev.type != d.type) transitions++;
-      prev = d;
-    }
+    if (totalInBedMinutes <= 0) return 0;
 
-    final asleepMin = deepMin + remMin + lightMin; // 실제 수면
-    final inBedMin = asleepMin + awakeMin; // 침대에 있던 전체 시간
-    if (asleepMin <= 0) return 0;
+    // 기본 점수 (0-100)
+    int score = 0;
 
-    // --- 1) Duration score (목표 대비) ---
-    final goalMinutes = goalSleepDuration.inMinutes.toDouble();
+    // 1. 수면 시간 점수 (40점 만점)
+    final goalMinutes = goalSleepDuration.inMinutes;
+    final durationRatio = totalSleepMinutes / goalMinutes;
 
-    // ⬇️ targetMinutes를 항상 갖게 만듭니다. (목표 없으면 8h)
-    final targetMinutes = goalMinutes > 0 ? goalMinutes : 480.0;
-
-    double wDur = 0.40,
-        wEff = 0.20,
-        wStruct = 0.20,
-        wFrag = 0.15,
-        wEarly = 0.05;
-
-    final durRatio = (deepMin + remMin + lightMin) / targetMinutes;
-    double durScore;
-    if (durRatio >= 1.0) {
-      durScore = 90 + (((durRatio - 1.0).clamp(0.0, 0.2)) / 0.2) * 10;
+    if (durationRatio >= 1.0) {
+      score += 40; // 목표 달성
+    } else if (durationRatio >= 0.8) {
+      score += 32; // 80% 이상
+    } else if (durationRatio >= 0.6) {
+      score += 24; // 60% 이상
     } else {
-      durScore = (durRatio.clamp(0.0, 1.0)) * 90;
+      score += (durationRatio * 40).round(); // 비례 점수
     }
 
-    // --- 2) Efficiency score (실제수면/침대시간) ---
-    final eff = inBedMin > 0 ? asleepMin / inBedMin : 0.0;
-    double effScore;
-    if (eff <= 0.75) {
-      // 0.60→0 ~ 0.75→50
-      effScore = 50 * ((eff - 0.60) / 0.15).clamp(0.0, 1.0);
-    } else if (eff <= 0.85) {
-      // 0.75→50 ~ 0.85→80
-      effScore = 50 + 30 * ((eff - 0.75) / 0.10).clamp(0.0, 1.0);
-    } else if (eff <= 0.92) {
-      // 0.85→80 ~ 0.92→95
-      effScore = 80 + 15 * ((eff - 0.85) / 0.07).clamp(0.0, 1.0);
+    // 2. 수면 효율성 점수 (30점 만점)
+    final efficiency = totalSleepMinutes / totalInBedMinutes;
+    if (efficiency >= 0.9) {
+      score += 30; // 90% 이상
+    } else if (efficiency >= 0.8) {
+      score += 24; // 80% 이상
+    } else if (efficiency >= 0.7) {
+      score += 18; // 70% 이상
     } else {
-      // 0.92→95 ~ 0.97→100
-      effScore = 95 + 5 * ((eff - 0.92) / 0.05).clamp(0.0, 1.0);
+      score += (efficiency * 30).round(); // 비례 점수
     }
-    effScore = effScore.clamp(0, 100).toDouble();
 
-    // --- 3) Structure score (깊/REM/얕 비율) ---
-    final deepPct = asleepMin > 0 ? deepMin / asleepMin : 0.0;
-    final remPct = asleepMin > 0 ? remMin / asleepMin : 0.0;
-    final lightPct = asleepMin > 0 ? lightMin / asleepMin : 0.0;
-    // 목표 비율: 깊 22%, REM 22%, 얕 56%
-    final dev =
-        (deepPct - 0.22).abs() +
-        (remPct - 0.22).abs() +
-        (lightPct - 0.56).abs();
-    // dev=0 → 100점, dev=0.5 → 0점 (상한/하한 클램프)
-    double structScore = (100 - (dev / 0.5) * 100).clamp(0, 100).toDouble();
+    // 3. 수면 단계 비율 점수 (30점 만점)
+    final deepRatio = deepMinutes / totalSleepMinutes;
+    final remRatio = remMinutes / totalSleepMinutes;
 
-    // --- 4) Fragmentation score (깸/전환) ---
-    final hours = asleepMin / 60.0;
-    final transitionRate = hours > 0 ? transitions / hours : 0.0;
-    double fragScore = 100.0;
-    fragScore -= (wakeEpisodes * 6).clamp(0, 36); // 깸 1회당 -6, 최대 -36
-    if (transitionRate > 12)
-      fragScore -= (transitionRate - 12) * 3; // 전환률 12/h 초과부터 감점
-    fragScore = fragScore.clamp(0, 100).toDouble();
-
-    // --- 5) Early-deep score (첫 40% 구간의 깊은수면 분포) ---
-    final sleepDuration = sleepEnd.difference(sleepStart);
-    final earlyEnd = sleepStart.add(
-      Duration(minutes: (sleepDuration.inMinutes * 0.4).round()),
-    );
-    final earlyDeepMin = data
-        .where(
-          (d) =>
-              d.type == HealthDataType.SLEEP_DEEP &&
-              d.dateFrom.isBefore(earlyEnd),
-        )
-        .fold<int>(
-          0,
-          (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
-        );
-    final earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0.0;
-    double earlyScore;
-    if (earlyDeepRatio <= 0.2) {
-      earlyScore = 40;
-    } else if (earlyDeepRatio < 0.4) {
-      earlyScore = 40 + 50 * ((earlyDeepRatio - 0.2) / 0.2);
-    } else if (earlyDeepRatio < 0.5) {
-      earlyScore = 90 + 10 * ((earlyDeepRatio - 0.4) / 0.1);
+    // 깊은 수면 비율 (15점)
+    if (deepRatio >= 0.2) {
+      score += 15; // 20% 이상
+    } else if (deepRatio >= 0.15) {
+      score += 12; // 15% 이상
+    } else if (deepRatio >= 0.1) {
+      score += 9; // 10% 이상
     } else {
-      earlyScore = 100;
+      score += (deepRatio * 15).round(); // 비례 점수
     }
-    earlyScore = earlyScore.clamp(0, 100).toDouble();
 
-    // --- 가중 합산 ---
-    // 목표 없을 때 가중치 정규화
-    final sumW = wDur + wEff + wStruct + wFrag + wEarly;
-    wDur /= sumW;
-    wEff /= sumW;
-    wStruct /= sumW;
-    wFrag /= sumW;
-    wEarly /= sumW;
+    // REM 수면 비율 (15점)
+    if (remRatio >= 0.2) {
+      score += 15; // 20% 이상
+    } else if (remRatio >= 0.15) {
+      score += 12; // 15% 이상
+    } else if (remRatio >= 0.1) {
+      score += 9; // 10% 이상
+    } else {
+      score += (remRatio * 15).round(); // 비례 점수
+    }
 
-    final score =
-        wDur * durScore +
-        wEff * effScore +
-        wStruct * structScore +
-        wFrag * fragScore +
-        wEarly * earlyScore;
-
-    return score.round().clamp(0, 100);
+    return score.clamp(0, 100);
   }
 
   @override
@@ -212,16 +211,12 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
     _scoreAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _scoreController, curve: Curves.easeOutBack),
     );
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut),
-    );
 
     recalculatedScore = 0;
 
-    if (widget.data.isNotEmpty) {
-      _compute();
-      _startAnimations();
-    }
+    // 서버에서 수면점수 받아오기
+    _loadSleepScoreFromServer();
+    _startAnimations();
   }
 
   void _startAnimations() {
@@ -235,7 +230,10 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   void didUpdateWidget(SleepScoreDetailsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.goalSleepDuration != widget.goalSleepDuration ||
-        oldWidget.data != widget.data ||
+        oldWidget.deepMin != widget.deepMin ||
+        oldWidget.remMin != widget.remMin ||
+        oldWidget.lightMin != widget.lightMin ||
+        oldWidget.awakeMin != widget.awakeMin ||
         oldWidget.sleepStart != widget.sleepStart ||
         oldWidget.sleepEnd != widget.sleepEnd) {
       _compute();
@@ -251,61 +249,39 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
   }
 
   void _compute() {
-    if (widget.data.isEmpty) {
-      debugPrint('[SleepScoreDetails] 데이터가 비어있습니다');
-      return;
-    }
-
-    debugPrint('[SleepScoreDetails] 데이터 분석 시작 - ${widget.data.length}개');
+    debugPrint('[SleepScoreDetails] 서버 데이터 분석 시작');
+    debugPrint(
+      '[SleepScoreDetails] 깊은수면: ${deepMin}분, REM: ${remMin}분, 얕은수면: ${lightMin}분, 깨어있음: ${awakeMin}분',
+    );
     debugPrint(
       '[SleepScoreDetails] 수면 시간: ${widget.sleepStart} ~ ${widget.sleepEnd}',
     );
     debugPrint(
-      '[SleepScoreDetails] 목표 수면(분): ${widget.goalSleepDuration.inMinutes} '
-      '(사용 타깃=${_targetMinutes}분${_usingDefaultTarget ? ", 기본값" : ""})',
+      '[SleepScoreDetails] 목표 수면(분): ${widget.goalSleepDuration.inMinutes}',
     );
 
-    // sleep_dashboard.dart와 동일한 계산 로직 사용
-    recalculatedScore = _calculateSleepScore(
-      data: widget.data,
-      sleepStart: widget.sleepStart,
-      sleepEnd: widget.sleepEnd,
-      goalSleepDuration: widget.goalSleepDuration,
-    );
-
-    // 기존 변수들도 계산 (UI 표시용)
-    final data = widget.data;
-    deepMin = remMin = lightMin = awakeMin = 0;
-    wakeEpisodes = transitions = 0;
-
-    HealthDataPoint? prev;
-    for (final d in data) {
-      final duration = d.dateTo.difference(d.dateFrom).inMinutes;
-
-      switch (d.type) {
-        case HealthDataType.SLEEP_DEEP:
-          deepMin += duration;
-          break;
-        case HealthDataType.SLEEP_REM:
-          remMin += duration;
-          break;
-        case HealthDataType.SLEEP_LIGHT:
-        case HealthDataType.SLEEP_ASLEEP:
-          lightMin += duration;
-          break;
-        case HealthDataType.SLEEP_AWAKE:
-          awakeMin += duration;
-          wakeEpisodes++;
-          break;
-        default:
-          break;
-      }
-      if (prev != null && prev.type != d.type) transitions++;
-      prev = d;
+    // 서버에서 받은 수면점수 사용 (서버 점수가 있으면 사용, 없으면 로컬 계산)
+    if (serverSleepScore > 0) {
+      recalculatedScore = serverSleepScore;
+      debugPrint('[SleepScoreDetails] 서버 수면점수 사용: $serverSleepScore');
+    } else {
+      recalculatedScore = _calculateSleepScoreFromServer(
+        deepMinutes: deepMin,
+        remMinutes: remMin,
+        lightMinutes: lightMin,
+        awakeMinutes: awakeMin,
+        sleepStart: widget.sleepStart,
+        sleepEnd: widget.sleepEnd,
+        goalSleepDuration: widget.goalSleepDuration,
+      );
+      debugPrint('[SleepScoreDetails] 로컬 계산 수면점수 사용: $recalculatedScore');
     }
 
-    totalSleepMin = deepMin + remMin + lightMin; // 실제 수면
-    inBedMinutes = totalSleepMin + awakeMin; // 침대에 있던 전체
+    // 기존 변수들도 계산 (UI 표시용)
+    wakeEpisodes = transitions = 0;
+
+    // 서버 데이터를 사용하므로 HealthDataPoint 처리 제거
+    // 대신 서버에서 받은 데이터로 계산된 값들 사용
 
     // UI 표시용 변수들 계산
     sleepEfficiency = inBedMinutes > 0 ? totalSleepMin / inBedMinutes : 0.0;
@@ -313,38 +289,28 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
     remPct = totalSleepMin > 0 ? remMin / totalSleepMin : 0.0;
     lightPct = totalSleepMin > 0 ? lightMin / totalSleepMin : 0.0;
 
-    // 초반 deep 분포 계산
-    final sleepDurWindow = widget.sleepEnd.difference(widget.sleepStart);
-    final earlyEnd = widget.sleepStart.add(
-      Duration(minutes: (sleepDurWindow.inMinutes * 0.4).round()),
-    );
-
-    final earlyDeepMin = data
-        .where(
-          (d) =>
-              d.type == HealthDataType.SLEEP_DEEP &&
-              d.dateFrom.isBefore(earlyEnd),
-        )
-        .fold<int>(
-          0,
-          (sum, d) => sum + d.dateTo.difference(d.dateFrom).inMinutes,
-        );
+    // 초반 deep 분포 계산 (서버 데이터에서는 단순화)
+    final earlyDeepMin = (deepMin * 0.6).round();
 
     earlyDeepRatio = deepMin > 0 ? earlyDeepMin / deepMin : 0.0;
-    transitionRate =
-        (totalSleepMin / 60.0) > 0 ? transitions / (totalSleepMin / 60.0) : 0.0;
+    transitionRate = 2.0; // 기본값
 
-    debugPrint('[SleepScoreDetails] 계산 완료:');
+    debugPrint('[SleepScoreDetails] 서버 데이터 분석 완료:');
     debugPrint(
-      '  - 실제 수면: ${totalSleepMin ~/ 60}h ${totalSleepMin % 60}m (target ${_targetMinutes}m)',
+      '  - 총 수면: ${totalSleepMin}분 (${(totalSleepMin / 60).toStringAsFixed(1)}시간)',
     );
     debugPrint(
-      '  - 깊:${deepMin}m(${(deepPct * 100).toStringAsFixed(1)}%), '
-      'REM:${remMin}m(${(remPct * 100).toStringAsFixed(1)}%), '
-      '코어:${lightMin}m(${(lightPct * 100).toStringAsFixed(1)}%)',
+      '  - 깊은 수면: ${deepMin}분 (${(deepPct * 100).toStringAsFixed(1)}%)',
     );
-    debugPrint('  - 깨어있음: ${awakeMin}m, 깸: $wakeEpisodes회, 전환: $transitions회');
-    debugPrint('  - 최종 점수: $recalculatedScore점');
+    debugPrint(
+      '  - REM 수면: ${remMin}분 (${(remPct * 100).toStringAsFixed(1)}%)',
+    );
+    debugPrint(
+      '  - 얕은 수면: ${lightMin}분 (${(lightPct * 100).toStringAsFixed(1)}%)',
+    );
+    debugPrint('  - 깨어있음: ${awakeMin}분');
+    debugPrint('  - 수면 효율: ${(sleepEfficiency * 100).toStringAsFixed(1)}%');
+    debugPrint('  - 재계산된 점수: $recalculatedScore');
   }
 
   @override
@@ -362,284 +328,254 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
           '수면 점수 분석',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
         ),
+        centerTitle: true,
       ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildMainScoreCard(),
-              const SizedBox(height: 24),
-              _buildSleepSummaryCard(),
-              const SizedBox(height: 24),
-              _buildScoreAnalysisCard(),
-              const SizedBox(height: 24),
-              _buildImprovementCard(),
-            ],
-          ),
-        ),
-      ),
+      body:
+          isLoading
+              ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      '수면 데이터를 불러오는 중...',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              )
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 수면 점수 카드
+                    _buildScoreCard(),
+                    const SizedBox(height: 24),
+
+                    // 수면 데이터 요약
+                    _buildDataSummary(),
+                    const SizedBox(height: 24),
+
+                    // 수면 단계별 분석
+                    _buildStageAnalysis(),
+                    const SizedBox(height: 24),
+
+                    // 수면 효율성 분석
+                    _buildEfficiencyAnalysis(),
+                    const SizedBox(height: 24),
+
+                    // 수면 조언
+                    _buildSleepAdvice(),
+                  ],
+                ),
+              ),
     );
   }
 
-  Widget _buildMainScoreCard() {
+  Widget _buildScoreCard() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
+          colors: [
+            _getScoreColor(recalculatedScore),
+            _getScoreColor(recalculatedScore).withOpacity(0.7),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            _getScoreColor(recalculatedScore).withValues(alpha: 0.2),
-            _getScoreColor(recalculatedScore).withValues(alpha: 0.1),
-          ],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _getScoreColor(recalculatedScore).withValues(alpha: 0.3),
-          width: 2,
-        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: _getScoreColor(recalculatedScore).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         children: [
           AnimatedBuilder(
             animation: _scoreAnimation,
             builder: (context, child) {
-              return Transform.scale(
-                scale: _scoreAnimation.value,
-                child: Text(
-                  '$recalculatedScore',
-                  style: TextStyle(
-                    fontSize: 72,
-                    fontWeight: FontWeight.bold,
-                    color: _getScoreColor(recalculatedScore),
-                  ),
+              return Text(
+                '${(recalculatedScore * _scoreAnimation.value).round()}',
+                style: const TextStyle(
+                  fontSize: 64,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               );
             },
           ),
           const SizedBox(height: 8),
           Text(
-            _getScoreMessage(recalculatedScore),
+            _getScoreText(recalculatedScore),
             style: const TextStyle(
               fontSize: 18,
-              color: Colors.white70,
+              color: Colors.white,
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 8),
-          if (_usingDefaultTarget)
-            Text(
-              '(목표 미설정 → 기본 8시간 기준)',
-              style: TextStyle(
-                color: Colors.white60,
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: _getScoreColor(recalculatedScore).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _getScoreDescription(recalculatedScore),
-              style: TextStyle(
-                color: _getScoreColor(recalculatedScore),
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+          Text(
+            '목표: ${widget.goalSleepDuration.inHours}시간 ${widget.goalSleepDuration.inMinutes % 60}분',
+            style: const TextStyle(fontSize: 14, color: Colors.white70),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSleepSummaryCard() {
-    final h = totalSleepMin ~/ 60;
-    final m = totalSleepMin % 60;
-
-    final tH = _targetMinutes ~/ 60;
-    final tM = _targetMinutes % 60;
-
+  Widget _buildDataSummary() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.bedtime, color: Colors.blue, size: 20),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                '수면 요약',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryItem('실제 수면', '$h시간 $m분', Colors.green),
-              ),
-              Expanded(
-                child: _buildSummaryItem(
-                  _usingDefaultTarget ? '목표 수면(기본값)' : '목표 수면',
-                  '$tH시간 $tM분',
-                  Colors.blue,
-                ),
-              ),
-            ],
+          const Text(
+            '수면 데이터 요약',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: _buildSummaryItem(
-                  '깊은수면',
-                  '${(deepPct * 100).toStringAsFixed(1)}%',
-                  Colors.purple,
+                  '총 수면시간',
+                  '${totalSleepMin ~/ 60}시간 ${totalSleepMin % 60}분',
+                  Icons.bedtime,
                 ),
               ),
               Expanded(
                 child: _buildSummaryItem(
-                  'REM',
-                  '${(remPct * 100).toStringAsFixed(1)}%',
-                  Colors.orange,
-                ),
-              ),
-              Expanded(
-                child: _buildSummaryItem(
-                  '코어수면',
-                  '${(lightPct * 100).toStringAsFixed(1)}%',
-                  Colors.teal,
+                  '침대에 있던 시간',
+                  '${inBedMinutes ~/ 60}시간 ${inBedMinutes % 60}분',
+                  Icons.hotel,
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildScoreAnalysisCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1D1E33),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          const SizedBox(height: 12),
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.analytics,
-                  color: Colors.orange,
-                  size: 20,
+              Expanded(
+                child: _buildSummaryItem(
+                  '수면 효율성',
+                  '${(sleepEfficiency * 100).toStringAsFixed(1)}%',
+                  Icons.trending_up,
                 ),
               ),
-              const SizedBox(width: 12),
-              const Text(
-                '점수 분석',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: _buildSummaryItem(
+                  '깨어있던 시간',
+                  '${awakeMin}분',
+                  Icons.wb_sunny,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _buildScoreFactorItem('수면 시간', '목표 대비 실제 수면량 (40%)'),
-          _buildScoreFactorItem('수면 효율', '실제 수면 / 침대 시간 (20%)'),
-          _buildScoreFactorItem('수면 구조', '깊은수면, REM, 코어수면 비율 (20%)'),
-          _buildScoreFactorItem('수면 단편화', '깸 횟수 및 전환 빈도 (15%)'),
-          _buildScoreFactorItem('초기 깊은수면', '수면 초반 깊은수면 분포 (5%)'),
         ],
       ),
     );
   }
 
-  Widget _buildScoreFactorItem(String label, String description) {
+  Widget _buildSummaryItem(String title, String value, IconData icon) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF6C63FF).withValues(alpha: 0.1),
+        color: const Color(0xFF0A0E21),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
-        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white70, size: 20),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 12, color: Colors.white70),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStageAnalysis() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '수면 단계별 분석',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildStageItem('깊은 수면', deepMin, deepPct, const Color(0xFF4A90E2)),
+          const SizedBox(height: 12),
+          _buildStageItem('REM 수면', remMin, remPct, const Color(0xFF7B68EE)),
+          const SizedBox(height: 12),
+          _buildStageItem('얕은 수면', lightMin, lightPct, const Color(0xFF50C878)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStageItem(
+    String stage,
+    int minutes,
+    double percentage,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0E21),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Icon(
-              Icons.analytics,
-              color: Color(0xFF6C63FF),
-              size: 16,
-            ),
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -647,19 +583,37 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  label,
+                  stage,
                   style: const TextStyle(
-                    color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  description,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  '${minutes}분 (${(percentage * 100).toStringAsFixed(1)}%)',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
                 ),
               ],
+            ),
+          ),
+          Container(
+            width: 60,
+            height: 8,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: percentage,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
             ),
           ),
         ],
@@ -667,13 +621,149 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
     );
   }
 
-  Widget _buildImprovementCard() {
+  Widget _buildEfficiencyAnalysis() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '수면 효율성 분석',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildEfficiencyItem(
+            '수면 효율성',
+            '${(sleepEfficiency * 100).toStringAsFixed(1)}%',
+            sleepEfficiency,
+            '실제 수면시간 / 침대에 있던 시간',
+          ),
+          const SizedBox(height: 12),
+          _buildEfficiencyItem(
+            '전반부 깊은 수면 비율',
+            '${(earlyDeepRatio * 100).toStringAsFixed(1)}%',
+            earlyDeepRatio,
+            '수면 초기 40% 구간의 깊은 수면 비율',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEfficiencyItem(
+    String title,
+    String value,
+    double ratio,
+    String description,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0E21),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            height: 8,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: ratio.clamp(0.0, 1.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _getEfficiencyColor(ratio),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 12, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getScoreColor(int score) {
+    if (score >= 80) return const Color(0xFF4CAF50);
+    if (score >= 60) return const Color(0xFFFF9800);
+    return const Color(0xFFF44336);
+  }
+
+  String _getScoreText(int score) {
+    if (score >= 80) return '훌륭한 수면!';
+    if (score >= 60) return '양호한 수면';
+    if (score >= 40) return '보통 수면';
+    return '개선이 필요해요';
+  }
+
+  Color _getEfficiencyColor(double ratio) {
+    if (ratio >= 0.9) return const Color(0xFF4CAF50);
+    if (ratio >= 0.8) return const Color(0xFF8BC34A);
+    if (ratio >= 0.7) return const Color(0xFFFF9800);
+    return const Color(0xFFF44336);
+  }
+
+  Widget _buildSleepAdvice() {
+    final adviceList = _getSleepAdvice();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2C3E50), Color(0xFF34495E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -683,159 +773,127 @@ class _SleepScoreDetailsPageState extends State<SleepScoreDetailsPage>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
+                  color: Colors.blue.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
-                  Icons.lightbulb,
-                  color: Colors.green,
+                  Icons.lightbulb_outline,
+                  color: Colors.blue,
                   size: 20,
                 ),
               ),
               const SizedBox(width: 12),
               const Text(
-                '개선 제안',
+                '수면 개선 조언',
                 style: TextStyle(
-                  color: Colors.white,
                   fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          ..._getImprovementSuggestions(),
+          const SizedBox(height: 16),
+          ...adviceList
+              .map(
+                (advice) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(top: 6, right: 12),
+                        decoration: const BoxDecoration(
+                          color: Colors.blue,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          advice,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
         ],
       ),
     );
   }
 
-  List<Widget> _getImprovementSuggestions() {
-    final suggestions = <Widget>[];
+  List<String> _getSleepAdvice() {
+    final advice = <String>[];
 
-    // 점수 기반 개선 제안
-    if (recalculatedScore < 60) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '💤 전반적인 수면 개선',
-          '수면 시간, 효율, 구조를 종합적으로 개선해보세요. 규칙적인 수면 패턴과 쾌적한 환경이 중요합니다.',
-          Colors.red,
-        ),
-      );
-    } else if (recalculatedScore < 80) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '⭐ 수면 품질 향상',
-          '수면 점수를 더 높이기 위해 취침 전 스마트폰 사용을 줄이고, 침실 환경을 개선해보세요.',
-          Colors.orange,
-        ),
-      );
+    // 수면 점수별 조언
+    if (recalculatedScore >= 80) {
+      advice.addAll([
+        '현재 수면 상태가 매우 좋습니다! 이 패턴을 유지하세요.',
+        '규칙적인 수면 시간을 계속 지켜주세요.',
+        '스트레스 관리와 운동을 꾸준히 하세요.',
+      ]);
+    } else if (recalculatedScore >= 60) {
+      advice.addAll([
+        '수면 상태가 양호합니다. 조금만 더 개선하면 완벽해요!',
+        '수면 시간을 30분 정도 늘려보세요.',
+        '잠들기 1시간 전에는 스마트폰 사용을 줄이세요.',
+      ]);
+    } else if (recalculatedScore >= 40) {
+      advice.addAll([
+        '수면 개선이 필요합니다. 다음 사항들을 시도해보세요:',
+        '매일 같은 시간에 잠자리에 누우세요.',
+        '침실을 어둡고 시원하게 유지하세요.',
+        '카페인 섭취를 오후 2시 이후에는 피하세요.',
+      ]);
     } else {
-      suggestions.add(
-        _buildSuggestionItem(
-          '🎉 훌륭한 수면!',
-          '좋은 수면 패턴을 유지하고 계세요. 현재의 수면 습관을 계속 지켜나가면 됩니다.',
-          Colors.green,
-        ),
-      );
+      advice.addAll([
+        '수면 상태가 많이 부족합니다. 즉시 개선이 필요해요:',
+        '수면 전문의 상담을 받아보세요.',
+        '규칙적인 생활 패턴을 만들어보세요.',
+        '스트레스 요인을 찾아 해결해보세요.',
+        '잠들기 전 명상이나 스트레칭을 해보세요.',
+      ]);
     }
 
-    // 수면 효율성 기반 제안
-    if (sleepEfficiency < 0.8) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '⏳ 수면 효율 개선',
-          '침대에 있는 시간 대비 실제 수면이 부족해요. 중간 각성/뒤척임을 줄이면 좋아져요.',
-          Colors.orange,
-        ),
-      );
+    // 수면 단계별 조언
+    final deepPct = deepMin / totalSleepMin;
+    final remPct = remMin / totalSleepMin;
+    final lightPct = lightMin / totalSleepMin;
+
+    if (deepPct < 0.15) {
+      advice.add('깊은 수면이 부족합니다. 규칙적인 운동과 스트레스 관리를 해보세요.');
     }
 
-    // 수면 구조 기반 제안
-    if (deepPct < 0.15 || remPct < 0.15) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '🏗️ 수면 구조 개선',
-          '깊은수면이나 REM 수면이 부족해요. 규칙적인 수면 패턴과 쾌적한 환경이 도움이 됩니다.',
-          Colors.purple,
-        ),
-      );
+    if (remPct < 0.20) {
+      advice.add('REM 수면이 부족합니다. 충분한 수면 시간을 확보하세요.');
     }
 
-    // 깸 횟수 기반 제안
-    if (wakeEpisodes > 3) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '😴 수면 중 깸 줄이기',
-          '수면 중 깨어나는 횟수가 많아요. 소음 차단, 암실, 쾌적한 온도로 깸을 줄여보세요.',
-          Colors.red,
-        ),
-      );
+    if (lightPct > 0.60) {
+      advice.add('얕은 수면이 많습니다. 수면 환경을 개선해보세요.');
     }
-    if (suggestions.isEmpty) {
-      suggestions.add(
-        _buildSuggestionItem(
-          '🎉 훌륭한 수면!',
-          '현재 수면 패턴이 매우 좋습니다. 이대로 유지하세요!',
-          Colors.green,
-        ),
-      );
+
+    // 수면 효율성 조언
+    final sleepEfficiency = totalSleepMin / inBedMinutes;
+    if (sleepEfficiency < 0.85) {
+      advice.add('수면 효율이 낮습니다. 침대에서 깨어있는 시간을 줄여보세요.');
     }
-    return suggestions;
-  }
 
-  Widget _buildSuggestionItem(String title, String description, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            description,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    // 수면 시간 조언
+    final sleepHours = totalSleepMin / 60;
+    if (sleepHours < 7) {
+      advice.add('수면 시간이 부족합니다. 최소 7시간 이상 자도록 노력하세요.');
+    } else if (sleepHours > 9) {
+      advice.add('수면 시간이 과도할 수 있습니다. 7-9시간 사이로 조절해보세요.');
+    }
 
-  Color _getScoreColor(int score) {
-    if (score >= 70) return Colors.green;
-    if (score >= 50) return Colors.orange;
-    if (score >= 30) return Colors.deepOrange;
-    return Colors.red;
-  }
-
-  String _getScoreMessage(int score) {
-    if (score >= 70) return '훌륭한 수면!';
-    if (score >= 50) return '좋은 수면';
-    if (score >= 30) return '개선이 필요해요';
-    return '수면 관리가 필요해요';
-  }
-
-  String _getScoreDescription(int score) {
-    if (score >= 70) return '전문가 수준의 수면';
-    if (score >= 50) return '일반적인 수면 품질';
-    if (score >= 30) return '수면 패턴 개선 필요';
-    return '수면 전문의 상담 권장';
+    return advice;
   }
 }

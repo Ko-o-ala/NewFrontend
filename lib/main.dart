@@ -197,7 +197,10 @@ class _MyAppState extends State<MyApp> {
               return MaterialPageRoute(
                 builder:
                     (_) => SleepScoreDetailsPage(
-                      data: args?['data'] ?? [],
+                      deepMin: args?['deepMin'] ?? 0,
+                      remMin: args?['remMin'] ?? 0,
+                      lightMin: args?['lightMin'] ?? 0,
+                      awakeMin: args?['awakeMin'] ?? 0,
                       sleepStart: args?['sleepStart'] ?? now,
                       sleepEnd: args?['sleepEnd'] ?? now,
                       goalSleepDuration:

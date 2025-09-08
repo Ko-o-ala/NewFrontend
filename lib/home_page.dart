@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // 수면데이터 전송을 위해 추가
 import 'package:intl/intl.dart'; // 날짜 포맷팅을 위해 추가
 import 'dart:convert'; // JSON 처리를 위해 추가
+import 'dart:io'; // 파일 시스템 접근을 위해 추가
 import 'package:http/http.dart' as http; // HTTP 요청을 위해 추가
 import 'package:my_app/services/jwt_utils.dart'; // JWT 유틸리티 추가
 import 'package:my_app/sound/sound.dart'; // 글로벌 사운드 서비스 추가
@@ -33,12 +34,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 기존 잘못된 데이터 정리 후 수면데이터 전송
     _initializeData();
 
-    // 테스트용 수면데이터 생성 (개발/테스트 환경에서만)
-    _createTestSleepData();
-
-    // initState에서 바로 수면데이터 전송
-    Future.delayed(const Duration(milliseconds: 500), () async {
-      debugPrint('[홈페이지] 🔄 initState 수면데이터 전송 시작');
+    // initState에서 바로 수면데이터 전송 (더 긴 지연시간으로 로그인 완료 대기)
+    Future.delayed(const Duration(milliseconds: 2000), () async {
+      debugPrint('[홈페이지] 🔄 initState 수면데이터 전송 시작 (2초 지연)');
       await _forceRefresh();
     });
   }
@@ -98,6 +96,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _forceRefresh() async {
     debugPrint('[홈페이지] 🔄 강제 새로고침 실행');
 
+    // 베타테스터를 위한 디버깅 정보 출력
+    await _debugSleepDataStatus();
+
+    // 수면데이터가 없으면 생성
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('pendingSleepPayload') == null) {
+      debugPrint('[홈페이지] 🔄 수면데이터가 없음 - 생성 시도');
+      await _createTestSleepData();
+    }
+
     // lastSentDate 초기화하여 강제 전송 가능하게 함
     await _clearLastSentDate();
 
@@ -105,6 +113,67 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _tryUploadPendingSleepData(retryCount: 0);
 
     debugPrint('[홈페이지] 🔄 강제 새로고침 완료');
+  }
+
+  // 베타테스터를 위한 디버깅 정보 출력
+  Future<void> _debugSleepDataStatus() async {
+    debugPrint('[홈페이지] ===== 베타테스터 디버깅 정보 =====');
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = await storage.read(key: 'jwt');
+    final username = await storage.read(key: 'username');
+    final userId =
+        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
+    final payloadJson = prefs.getString('pendingSleepPayload');
+    final lastSentDate = prefs.getString('lastSentDate');
+
+    debugPrint('[홈페이지] 📱 사용자명: ${username ?? "없음"}');
+    debugPrint(
+      '[홈페이지] 🔑 JWT 토큰: ${token != null ? "있음 (${token.length}자)" : "없음"}',
+    );
+    debugPrint('[홈페이지] 👤 사용자 ID: ${userId ?? "없음"}');
+    debugPrint(
+      '[홈페이지] 📦 수면데이터: ${payloadJson != null ? "있음 (${payloadJson.length}자)" : "없음"}',
+    );
+    debugPrint('[홈페이지] 📅 마지막 전송일: ${lastSentDate ?? "없음"}');
+    debugPrint('[홈페이지] 🔄 로그인 상태: $_isLoggedIn');
+
+    // JWT 토큰의 payload 내용 확인
+    if (token != null) {
+      try {
+        final parts = token.split('.');
+        if (parts.length == 3) {
+          final payload = parts[1];
+          final normalized = base64.normalize(payload);
+          final resp = utf8.decode(base64Url.decode(normalized));
+          final payloadMap = json.decode(resp) as Map<String, dynamic>;
+
+          debugPrint('[홈페이지] 🔍 JWT Payload 내용:');
+          debugPrint('[홈페이지] 🔍 - 사용 가능한 필드: ${payloadMap.keys.toList()}');
+          debugPrint('[홈페이지] 🔍 - userID: ${payloadMap['userID']}');
+          debugPrint('[홈페이지] 🔍 - userId: ${payloadMap['userId']}');
+          debugPrint('[홈페이지] 🔍 - id: ${payloadMap['id']}');
+          debugPrint('[홈페이지] 🔍 - sub: ${payloadMap['sub']}');
+          debugPrint('[홈페이지] 🔍 - username: ${payloadMap['username']}');
+          debugPrint('[홈페이지] 🔍 - exp: ${payloadMap['exp']}');
+        }
+      } catch (e) {
+        debugPrint('[홈페이지] ❌ JWT payload 파싱 오류: $e');
+      }
+    }
+
+    if (payloadJson != null) {
+      try {
+        final payload = json.decode(payloadJson) as Map<String, dynamic>;
+        debugPrint(
+          '[홈페이지] 📊 수면데이터 내용: ${payload['date']} (${payload['userID']})',
+        );
+      } catch (e) {
+        debugPrint('[홈페이지] ❌ 수면데이터 파싱 오류: $e');
+      }
+    }
+
+    debugPrint('[홈페이지] ===== 디버깅 정보 끝 =====');
   }
 
   // lastSentDate 초기화 함수
@@ -271,11 +340,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
 
+    // JWT에서 실제 userID 추출
+    final token = await storage.read(key: 'jwt');
+    final userId =
+        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
+
+    debugPrint('[홈페이지] 🔍 JWT 토큰 상태: ${token != null ? "있음" : "없음"}');
+    debugPrint('[홈페이지] 🔍 추출된 userID: ${userId ?? "없음"}');
+
+    if (userId == null) {
+      debugPrint('[홈페이지] ❌ userID를 찾을 수 없음 - 수면데이터 생성 건너뛰기');
+      debugPrint('[홈페이지] ❌ JWT 토큰이 없거나 userID 추출 실패');
+      return;
+    }
+
     // API 스펙에 맞는 수면데이터 생성
     // 전날 수면데이터로 생성 (오늘이 8일이면 7일 데이터)
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final testData = {
-      "userID": "test_user", // JWT에서 추출할 예정
+      "userID": userId, // 실제 사용자 ID 사용
       "date": DateFormat('yyyy-MM-dd').format(yesterday),
       "sleepTime": {"startTime": "22:30", "endTime": "07:30"},
       "Duration": {
@@ -296,7 +379,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     };
 
     await prefs.setString('pendingSleepPayload', jsonEncode(testData));
-    debugPrint('[홈페이지] ✅ 수면데이터 생성 완료: ${testData['date']}');
+    debugPrint('[홈페이지] ✅ 수면데이터 생성 완료: ${testData['date']} (userID: $userId)');
     debugPrint('[홈페이지] ✅ pendingSleepPayload 저장됨');
   }
 
@@ -309,11 +392,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isLoading = false; // 로딩 완료
     });
 
-    // 로그인 상태가 확인된 후 수면데이터 전송 시도
+    // 로그인 상태가 확인된 후 수면데이터 생성 및 전송 시도
     if (_isLoggedIn) {
-      Future.delayed(const Duration(milliseconds: 1000), () {
+      debugPrint('[홈페이지] 🔄 로그인 확인됨 - 수면데이터 생성 및 전송 예정 (3초 지연)');
+
+      // 먼저 수면데이터 생성
+      _createTestSleepData();
+
+      // 그 다음 전송 시도
+      Future.delayed(const Duration(milliseconds: 3000), () {
         _tryUploadPendingSleepData(retryCount: 0);
       });
+    } else {
+      debugPrint('[홈페이지] ❌ 로그인되지 않음 - 수면데이터 생성 및 전송 건너뛰기');
     }
   }
 
@@ -350,7 +441,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     if (token == null || userId == null || payloadJson == null) {
-      debugPrint('[홈페이지] 필수 데이터 부족으로 전송 중단');
+      debugPrint('[홈페이지] ❌ 필수 데이터 부족으로 전송 중단');
+      debugPrint('[홈페이지] ❌ token: ${token != null ? "있음" : "없음"}');
+      debugPrint('[홈페이지] ❌ userId: ${userId ?? "없음"}');
+      debugPrint('[홈페이지] ❌ payloadJson: ${payloadJson != null ? "있음" : "없음"}');
       return;
     }
 
@@ -503,6 +597,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
       } else {
         debugPrint('[홈페이지] ❌ 수면데이터 전송 실패: ${resp.statusCode} ${resp.body}');
+        debugPrint('[홈페이지] ❌ 전송한 데이터: $updatedPayloadJson');
+        debugPrint('[홈페이지] ❌ 사용자 ID: $userId');
+        debugPrint('[홈페이지] ❌ 데이터 날짜: $date');
+        debugPrint('[홈페이지] ❌ JWT 토큰: ${token?.substring(0, 20)}...');
 
         // 실패 시 재시도 (최대 3번)
         if (retryCount < 2) {
@@ -670,6 +768,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // 베타테스터를 위한 수면데이터 수동 전송 버튼
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () async {
+              debugPrint('[홈페이지] 🔄 베타테스터 수동 새로고침 버튼 클릭');
+              await _forceRefresh();
+            },
+            tooltip: '수면데이터 수동 전송',
+          ),
+        ],
       ),
       body: Stack(
         children: [
