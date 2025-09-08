@@ -60,6 +60,38 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   bool _isConversationBlocked = false; // 10회 초과 시 대화 차단 플래그
   Timer? _autoSendTimer; // 5초 후 자동 전송을 위한 타이머
   bool _isMicDisabled = false; // 알라가 말하는 동안 마이크 비활성화 플래그
+  bool _isInitialized = false; // 초기화 완료 여부 (연결 끊김 메시지 방지용)
+
+  // 음성 레벨 기반 감지를 위한 변수들
+  double _lastSoundLevel = 0.0;
+  DateTime _lastSoundTime = DateTime.now();
+  Timer? _silenceTimer; // 조용함 감지 타이머
+  static const double _soundThreshold = 0.03; // 음성 레벨 임계값 (더 민감하게)
+  static const Duration _silenceDuration = Duration(seconds: 5); // 5초 조용함 후 전송
+
+  // 음성 레벨 변화 감지 함수
+  void _onSoundLevelChange(double level) {
+    _lastSoundLevel = level;
+    _lastSoundTime = DateTime.now();
+
+    if (level > _soundThreshold) {
+      // 음성이 감지됨 - 조용함 타이머 취소
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
+      debugPrint('[MIC] 음성 감지됨 - 레벨: ${level.toStringAsFixed(2)}');
+    } else {
+      // 조용함 감지 - 타이머 시작
+      if (_silenceTimer == null && _isListening && _text.trim().isNotEmpty) {
+        debugPrint('[MIC] 조용함 감지 - 5초 후 자동 전송 예정');
+        _silenceTimer = Timer(_silenceDuration, () {
+          if (_isListening && _text.trim().isNotEmpty) {
+            debugPrint('[MIC] 5초 조용함 완료 - 자동 전송 실행');
+            _sendCurrentText();
+          }
+        });
+      }
+    }
+  }
 
   // ===== Audio (audioplayers) =====
   final AudioPlayer _player = AudioPlayer();
@@ -324,9 +356,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     // 🔌 소켓 연결 상태 반영
     _connSub = voiceService.connectionStream.listen((connected) async {
       if (!connected) {
-        await _gracefulStopAll('서버 연결이 끊어졌습니다');
+        // 초기화 시에는 메시지 표시하지 않음 (연결 중일 수 있음)
+        if (_isInitialized && mounted) {
+          await _gracefulStopAll('서버 연결이 끊어졌습니다');
+        }
       } else {
         _autoResumeMic = true;
+        _isInitialized = true; // 연결 성공 시 초기화 완료 표시
+        debugPrint('[CONNECTION] 서버 연결 성공 - 자동 마이크 활성화 준비됨');
       }
     });
 
@@ -586,6 +623,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       // 타이머 취소
       _autoSendTimer?.cancel();
       _autoSendTimer = null;
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
 
       // 애니메이션 정지
       _animationController.stop();
@@ -619,6 +658,23 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // 현재 텍스트 전송 함수
   void _sendCurrentText() {
     final finalText = _text.trim();
+
+    // 이모지나 특수 문자가 포함된 메시지는 서버에 보내지 않음 (사용자 말이 아님)
+    final hasEmojiOrSpecialChars = finalText.contains(
+      RegExp(r'[🎙️❌✅🔌🔇🎤💭🤔]'),
+    );
+
+    if (hasEmojiOrSpecialChars) {
+      debugPrint('[SEND] 시스템 메시지 감지 - 서버 전송 건너뛰기: $finalText');
+      return;
+    }
+
+    // 빈 텍스트나 너무 짧은 텍스트도 보내지 않음
+    if (finalText.length < 2) {
+      debugPrint('[SEND] 텍스트가 너무 짧음 - 서버 전송 건너뛰기: $finalText');
+      return;
+    }
+
     if (finalText.isNotEmpty && !_isConversationBlocked) {
       // 사용자 말이 끝나면 마이크 비활성화
       setState(() => _isMicDisabled = true);
@@ -655,8 +711,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     try {
       await _connectVoice();
       debugPrint('[INIT] 초기 WebSocket 연결 완료');
+      _isInitialized = true; // 연결 성공 시 초기화 완료
+      _autoResumeMic = true; // 자동 마이크 활성화 활성화
     } catch (e) {
       debugPrint('[INIT] 초기 연결 실패: $e');
+      // 연결 실패해도 초기화는 완료로 처리 (메시지 방지)
+      _isInitialized = true;
+      _autoResumeMic = true; // 자동 마이크 활성화 활성화
     }
   }
 
@@ -701,11 +762,14 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       // 자동 전송 타이머 취소
       _autoSendTimer?.cancel();
       _autoSendTimer = null;
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
 
       // 재시작을 위한 초기화 완료 후 연결 재설정
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           _initializeConnection();
+          _autoResumeMic = true; // 자동 마이크 활성화 다시 활성화
           // 사용자에게 재시작 가능하다는 피드백 제공
           setState(() {
             _text = '✅ 대화가 중단되었습니다.\n마이크 버튼을 눌러 새로운 대화를 시작하세요.';
@@ -1192,6 +1256,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _playerCompleteSub?.cancel();
     _silentLoginRetryTimer?.cancel();
     _autoSendTimer?.cancel(); // 자동 전송 타이머 취소
+    _silenceTimer?.cancel(); // 조용함 감지 타이머 취소
     _speech.cancel();
     _animationController.dispose();
 
@@ -1307,7 +1372,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       }
 
       await _enterMicMode();
-      await Future.delayed(const Duration(milliseconds: 80));
+      await Future.delayed(const Duration(milliseconds: 30)); // 지연 시간 단축
 
       final available = await _speech.initialize(
         onStatus: (status) {
@@ -1316,6 +1381,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
             // 타이머 취소하고 즉시 전송
             _autoSendTimer?.cancel();
             _autoSendTimer = null;
+            _silenceTimer?.cancel();
+            _silenceTimer = null;
             _sendCurrentText();
           } else if (status == "notListening") {
             _stopListening();
@@ -1328,46 +1395,43 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _audioBuffer.clear();
         _audioAvailable = false;
 
+        // 즉시 UI 업데이트 (음성 인식 시작 전에)
         setState(() {
           _isListening = true;
           _isThinking = false;
           _text = '🎙️ 듣고 있어요...';
         });
 
-        debugPrint('[MIC] 마이크 시작 - 10초 조용함 후 자동 종료 설정');
+        debugPrint('[MIC] 마이크 시작 - 음성 레벨 기반 감지 활성화');
         _animationController.forward();
 
-        // 10초 후 자동 전송 타이머 시작 (더 길게 조정)
-        _autoSendTimer?.cancel();
-        _autoSendTimer = Timer(const Duration(seconds: 10), () {
-          if (_isListening && _text.trim().isNotEmpty) {
-            debugPrint('[MIC] 10초 타이머 - 자동 전송 실행');
-            _sendCurrentText();
-          }
-        });
+        // 음성 레벨 기반 감지로 대체됨 (기존 5초 타이머 제거)
         _speech.listen(
           localeId: 'ko_KR',
           onResult: (val) {
+            setState(() => _text = val.recognizedWords);
+            // 음성 인식 결과가 들어오면 기존 타이머들 취소
+            _autoSendTimer?.cancel();
+            _silenceTimer?.cancel();
+
             if (val.finalResult) {
-              setState(() => _text = val.recognizedWords);
-              // 음성 인식 결과가 들어오면 타이머 연장
-              _autoSendTimer?.cancel();
-              _autoSendTimer = Timer(const Duration(seconds: 10), () {
-                if (_isListening && _text.trim().isNotEmpty) {
-                  debugPrint('[MIC] 10초 타이머 - 자동 전송 실행');
-                  _sendCurrentText();
-                }
-              });
+              debugPrint('[MIC] 최종 인식 결과: ${val.recognizedWords}');
+              // 최종 결과가 나오면 조용함 감지 시작
+              _onSoundLevelChange(0.0); // 조용함으로 처리
             }
           },
-          pauseFor: const Duration(seconds: 5),
-          listenFor: const Duration(minutes: 1),
-          cancelOnError: true,
-          partialResults: true,
           onSoundLevelChange: (level) {
             setState(() => _soundLevel = level);
-            debugPrint('[MIC] 음성 레벨: ${level.toStringAsFixed(2)}');
+            _onSoundLevelChange(level); // 우리가 만든 감지 함수 호출
           },
+          pauseFor: const Duration(seconds: 4), // 4초 조용함 후 일시정지
+          listenFor: const Duration(hours: 1), // 1시간 제한 (실질적으로 무제한)
+          cancelOnError: true,
+          partialResults: true,
+          // 음성 인식 정확도 개선을 위한 추가 설정
+          listenMode: stt.ListenMode.dictation, // 받아쓰기 모드 (더 빠른 시작)
+          onDevice: false, // 서버 기반 인식 (더 정확함)
+          sampleRate: 44100, // 고품질 샘플링 레이트
         );
       } else {
         setState(() => _text = '❌ 음성 인식 사용 불가');
@@ -1387,6 +1451,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     // 자동 전송 타이머 취소
     _autoSendTimer?.cancel();
     _autoSendTimer = null;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
   }
 
   Widget _buildGlobalMiniPlayer() {
