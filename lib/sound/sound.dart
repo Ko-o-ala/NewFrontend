@@ -25,6 +25,9 @@ class GlobalSoundService extends ChangeNotifier {
   // NEW: 미니플레이어에서 stop 눌렀다는 신호
   bool _autoplayStopRequested = false;
 
+  // 자동재생 정지 상태 (사운드 화면에서 설정)
+  bool _userStoppedAutoPlay = false;
+
   /// NEW: 미니플레이어에서 호출 — 재생 정지 + 자동재생도 중지 요청 브로드캐스트
   Future<void> stopFromMiniPlayer() async {
     await stop(); // 기존 stop() 호출로 플레이어 멈춤
@@ -40,6 +43,29 @@ class GlobalSoundService extends ChangeNotifier {
     }
     return false;
   }
+
+  /// 자동재생 정지 상태 설정
+  void setUserStoppedAutoPlay(bool stopped) {
+    _userStoppedAutoPlay = stopped;
+    // 정지 상태 설정 시에만 플레이어 정리
+    if (stopped && _currentPlaying != null) {
+      debugPrint('[GLOBAL_SOUND] 자동재생 정지 - 플레이어 정리');
+      _currentPlaying = null;
+      _isPlaying = false;
+    }
+    // 정지 해제 시에는 마지막 플레이리스트 복원
+    else if (!stopped &&
+        _lastPlaylistFiles != null &&
+        _lastPlaylistFiles!.isNotEmpty) {
+      debugPrint('[GLOBAL_SOUND] 자동재생 재개 - 플레이어 복원');
+      _currentPlaying = _lastPlaylistFiles!.first;
+      _isPlaying = false; // 재생은 하지 않고 표시만
+    }
+    notifyListeners();
+  }
+
+  /// 자동재생 정지 상태 확인
+  bool get userStoppedAutoPlay => _userStoppedAutoPlay;
 
   // 노래 종료 감지를 위한 변수들
   Timer? _positionCheckTimer;
@@ -191,10 +217,11 @@ class GlobalSoundService extends ChangeNotifier {
   Future<void> stop() async {
     await player.stop();
     _isPlaying = false;
-    _currentPlaying = null;
+    _currentPlaying = null; // 플레이어 숨기기 위해 null로 설정
     _currentDuration = null;
     _callbackExecuted = false;
     _playlistSource = null; // NEW
+    // _lastPlaylistFiles는 유지 (플레이어 복원을 위해)
     notifyListeners();
   }
 
@@ -606,12 +633,8 @@ class _SoundScreenState extends State<SoundScreen> {
       });
     });
 
-    // 자동 재생 시작 (2초 후)
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        Future.microtask(() => _startAutoPlay());
-      }
-    });
+    // 화면 진입 시 상태 초기화 (재생 중인 사운드가 없을 때만)
+    _resetAutoPlayState();
   }
 
   @override
@@ -675,6 +698,13 @@ class _SoundScreenState extends State<SoundScreen> {
 
     sound.clearAutoPlayCallback();
     _indexSub?.cancel(); // NEW
+
+    // 화면 종료 시에는 자동재생 상태만 정리하고 재생 중인 사운드는 유지
+    _isAutoPlaying = false;
+    // _userStoppedAutoPlay는 유지 (사용자가 정지한 상태라면 유지)
+    // _autoPlayQueue는 유지 (재생 중인 플레이리스트 정보 유지)
+    // _currentAutoPlayIndex는 유지 (현재 재생 위치 유지)
+    // sound.setUserStoppedAutoPlay()는 호출하지 않음 (기존 상태 유지)
 
     sound.removeListener(_onSoundServiceChanged);
 
@@ -767,8 +797,18 @@ class _SoundScreenState extends State<SoundScreen> {
                 _isLoadingRecommendations = false;
               });
 
-              // 자동 재생 시작
-              Future.microtask(() => _startAutoPlay());
+              // 추천 실행 완료 후 자동재생 시작 (정지 상태 무시)
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted) {
+                  debugPrint('[AUTOPLAY] 추천 실행 완료 - 자동재생 시작 시도');
+                  // 이미 재생 중인 사운드가 없을 때만 자동재생 시작
+                  if (!sound.isPlaying || sound.currentPlaying == null) {
+                    _startAutoPlay();
+                  } else {
+                    debugPrint('[AUTOPLAY] 이미 재생 중인 사운드가 있어서 자동재생 시작 안함');
+                  }
+                }
+              });
             } else {
               setState(() {
                 _isLoadingRecommendations = false;
@@ -874,7 +914,18 @@ class _SoundScreenState extends State<SoundScreen> {
               _isLoadingRecommendations = false;
             });
 
-            Future.microtask(() => _startAutoPlay());
+            // 추천 로드 완료 후 자동재생 시작 (정지 상태 무시)
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                debugPrint('[AUTOPLAY] 추천 로드 완료 - 자동재생 시작 시도');
+                // 이미 재생 중인 사운드가 없을 때만 자동재생 시작
+                if (!sound.isPlaying || sound.currentPlaying == null) {
+                  _startAutoPlay();
+                } else {
+                  debugPrint('[AUTOPLAY] 이미 재생 중인 사운드가 있어서 자동재생 시작 안함');
+                }
+              }
+            });
             return;
           } catch (_) {}
         }
@@ -971,7 +1022,18 @@ class _SoundScreenState extends State<SoundScreen> {
                 DateFormat('yyyy-MM-dd').format(DateTime.now()),
               );
 
-              Future.microtask(() => _startAutoPlay());
+              // 새 추천 로드 완료 후 자동재생 시작 (정지 상태 무시)
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted) {
+                  debugPrint('[AUTOPLAY] 새 추천 로드 완료 - 자동재생 시작 시도');
+                  // 이미 재생 중인 사운드가 없을 때만 자동재생 시작
+                  if (!sound.isPlaying || sound.currentPlaying == null) {
+                    _startAutoPlay();
+                  } else {
+                    debugPrint('[AUTOPLAY] 이미 재생 중인 사운드가 있어서 자동재생 시작 안함');
+                  }
+                }
+              });
             } else {
               setState(() {
                 _isLoadingRecommendations = false;
@@ -1040,61 +1102,110 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
+  // 자동재생 상태 초기화
+  void _resetAutoPlayState() {
+    // 이미 재생 중인 사운드가 있으면 상태 초기화하지 않음
+    if (sound.isPlaying && sound.currentPlaying != null) {
+      debugPrint(
+        '[AUTOPLAY] 이미 재생 중인 사운드가 있어서 상태 초기화 안함: ${sound.currentPlaying}',
+      );
+      return;
+    }
+
+    _userStoppedAutoPlay = false;
+    _isAutoPlaying = false;
+    _autoPlayQueue.clear();
+    _currentAutoPlayIndex = 0;
+    sound.setUserStoppedAutoPlay(false);
+    debugPrint('[AUTOPLAY] 상태 초기화 완료 - 자동재생 가능 상태로 복원');
+  }
+
   List<String> _buildAutoQueue() {
     final top3 = topRecommended.take(3).toList();
     return [...top3, ...top3]; // TOP3 × 2바퀴
   }
 
   /// ==============================
-  /// NEW: 자동 재생 시작 (플레이리스트 기반)
+  /// 자동 재생 시작 (정지 상태 무시)
   /// ==============================
   void _startAutoPlay() async {
-    if (_userStoppedAutoPlay) return;
     if (!mounted) return;
-    if (topRecommended.isEmpty) return;
-
-    final queue = _buildAutoQueue();
-
-    // 재생 중이면 건드리지 않음 (같은 플레이리스트면 UI만 싱크)
-    if (sound.isPlaying) {
-      if (sound.hasActivePlaylist && sound.isSamePlaylistAs(queue)) {
-        setState(() {
-          _isAutoPlaying = true;
-          _autoPlayQueue = queue;
-          _currentAutoPlayIndex = sound.currentIndex ?? 0;
-          if (_currentAutoPlayIndex < _autoPlayQueue.length) {
-            sound._currentPlaying = _autoPlayQueue[_currentAutoPlayIndex];
-          }
-        });
-      }
+    if (topRecommended.isEmpty) {
+      debugPrint('[AUTOPLAY] 추천 사운드가 없어서 자동재생 시작 안함');
       return;
     }
 
-    // 아무 것도 안 나오면 자동재생 시작
+    // 이미 자동재생 중이면 중복 시작 방지
+    if (_isAutoPlaying) {
+      debugPrint('[AUTOPLAY] 이미 자동재생 중이므로 시작 안함');
+      return;
+    }
+
+    // 이미 재생 중인 사운드가 있으면 새로 시작하지 않음
+    if (sound.isPlaying && sound.currentPlaying != null) {
+      debugPrint(
+        '[AUTOPLAY] 이미 재생 중인 사운드가 있어서 새로 시작하지 않음: ${sound.currentPlaying}',
+      );
+      // 기존 재생 상태를 그대로 유지하고 아무것도 하지 않음
+      return;
+    }
+
+    debugPrint('[AUTOPLAY] 자동재생 시작 (정지 상태 무시)');
+
+    final queue = _buildAutoQueue();
     _isAutoPlaying = true;
     _autoPlayQueue = queue;
     _currentAutoPlayIndex = 0;
 
     sound.clearAutoPlayCallback();
     await sound.setPlaylistAndPlay(_autoPlayQueue);
+
+    // 정지 상태 강제 해제 (플레이어 설정 후)
+    _userStoppedAutoPlay = false;
+    sound.setUserStoppedAutoPlay(false);
+
+    // 상태 변경이 완전히 반영되도록 약간의 지연
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   // 자동 재생 중지
   void _stopAutoPlay() {
+    debugPrint('[AUTOPLAY] 자동재생 중지');
+
     _isAutoPlaying = false;
     _userStoppedAutoPlay = true;
     _autoPlayTimer?.cancel();
     sound.clearAutoPlayCallback();
+
+    // 플레이어 완전 정지 (플레이어도 사라지게)
     sound.stop();
+
+    // GlobalSoundService에 자동재생 정지 상태 전달
+    sound.setUserStoppedAutoPlay(true);
+
+    // UI 즉시 업데이트
+    setState(() {});
   }
 
-  // 사용자가 수동으로 사운드 재생 시 자동 재생 중지하지 않음(이전 로직 유지)
+  // 사용자가 수동으로 사운드 재생
   Future<void> _playSound(String file) async {
-    if (_isAutoPlaying) {
-      // 자동 재생 중에는 그대로 재생만 바꿔줌 (playlist와 충돌 없도록 stop 후 단일 재생)
-      _isAutoPlaying = false;
-    }
+    debugPrint('[AUTOPLAY] 수동 재생: $file');
+
+    // 자동재생 중지
+    _isAutoPlaying = false;
+    _userStoppedAutoPlay = true;
+    sound.setUserStoppedAutoPlay(true);
+
+    // 수동 재생
     await sound.playAsset(file);
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _debouncedExecute() {

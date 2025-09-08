@@ -204,7 +204,7 @@ class _GoalPageState extends State<GoalPage> {
                         ),
                         const SizedBox(width: 12),
                         const Text(
-                          "Q25. 수면 목표를 알려주세요",
+                          "Q25. 현재 가장 중점적으로 두고 싶은 수면 목표를 알려주세요",
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,

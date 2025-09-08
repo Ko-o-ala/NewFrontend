@@ -271,7 +271,7 @@ class _SoundPageState extends State<SoundPage> {
 
               // Q16 - 마음을 안정시키는 사운드
               _buildQuestionCard(
-                '15. 마음을 안정시키는 사운드는 어떤 것인가요?',
+                '15. 다음 중 마음을 안정시키는 사운드는 어떤 것인가요?',
                 calmingSoundTypeMap.keys.toList(),
                 calmingSoundTypeLabel,
                 (v) => setState(() => calmingSoundTypeLabel = v),

@@ -58,6 +58,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   double _soundLevel = 0.0;
   bool _isConversationBlocked = false; // 10회 초과 시 대화 차단 플래그
   Timer? _autoSendTimer; // 5초 후 자동 전송을 위한 타이머
+  bool _isMicDisabled = false; // 알라가 말하는 동안 마이크 비활성화 플래그
 
   // ===== Audio (audioplayers) =====
   final AudioPlayer _player = AudioPlayer();
@@ -237,6 +238,19 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     );
   }
 
+  // GlobalSoundService 상태 변화 처리
+  void _onGlobalSoundChanged() {
+    if (mounted) {
+      // 디버그 로그 추가
+      debugPrint(
+        '[GLOBAL_SOUND] 상태 변화 감지 - userStoppedAutoPlay: ${GlobalSoundService().userStoppedAutoPlay}, currentPlaying: ${GlobalSoundService().currentPlaying}',
+      );
+      setState(() {
+        // UI 업데이트를 위해 setState 호출
+      });
+    }
+  }
+
   // === 안내 배너: 마이크 자동 종료 힌트 ===
   Widget _micAutoStopHint() {
     if (!_isListening) return const SizedBox.shrink();
@@ -302,6 +316,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     // 앱 생명주기 관찰자 추가
     WidgetsBinding.instance.addObserver(this);
+
+    // GlobalSoundService 상태 변화 감지
+    GlobalSoundService().addListener(_onGlobalSoundChanged);
 
     // 🔌 소켓 연결 상태 반영
     _connSub = voiceService.connectionStream.listen((connected) async {
@@ -543,10 +560,68 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     }
   }
 
+  // 로컬 스토리지 초기화 함수
+  Future<void> _resetLocalStorage() async {
+    try {
+      // 대화 횟수 초기화
+      await storage.delete(key: 'talk_count');
+
+      // 상태 초기화
+      setState(() {
+        _isConversationBlocked = false;
+        _isMicDisabled = false;
+        _isListening = false;
+        _isThinking = false;
+        _isPlaying = false;
+        _text = '';
+        _soundLevel = 0.0;
+      });
+
+      // 오디오 정리
+      _audioBuffer.clear();
+      _audioAvailable = false;
+      _pendingQueue.clear();
+
+      // 타이머 취소
+      _autoSendTimer?.cancel();
+      _autoSendTimer = null;
+
+      // 애니메이션 정지
+      _animationController.stop();
+      _animationController.reset();
+
+      debugPrint('[RESET] 로컬 스토리지 초기화 완료');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ 로컬 스토리지가 초기화되었습니다'),
+            backgroundColor: Color(0xFF6C63FF),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[RESET] 초기화 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ 초기화 중 오류가 발생했습니다'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   // 현재 텍스트 전송 함수
   void _sendCurrentText() {
     final finalText = _text.trim();
     if (finalText.isNotEmpty && !_isConversationBlocked) {
+      // 사용자 말이 끝나면 마이크 비활성화
+      setState(() => _isMicDisabled = true);
+
       // WebSocket 연결 상태 재확인
       if (!voiceService.isConnected) {
         debugPrint('[SEND] WebSocket 연결 끊어짐 - 재연결 시도');
@@ -559,6 +634,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           } else {
             setState(() => _text = '❌ 서버 연결 실패');
             _stopListening();
+            // 연결 실패 시 마이크 다시 활성화
+            setState(() => _isMicDisabled = false);
           }
         });
       } else {
@@ -607,6 +684,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       // 상태 초기화
       setState(() {
         _isThinking = false;
+        _isMicDisabled = false; // 마이크 비활성화 상태 초기화
         _text = '';
         _soundLevel = 0.0;
       });
@@ -777,6 +855,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       setState(() {
         _isPlaying = false;
         _isThinking = false;
+        _isMicDisabled = false; // 마이크 비활성화 상태 초기화
         _text = uiMessage; // 화면에 사유/안내 표시
       });
     }
@@ -817,6 +896,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     // 대화 차단 상태면 자동 재시작하지 않음
     if (_isConversationBlocked) return;
+
+    // 마이크가 비활성화된 상태면 자동 재시작하지 않음
+    if (_isMicDisabled) return;
 
     // 재생/준비/청취 중이면 패스
     if (_isPlaying || _isPreparing || _isListening) return;
@@ -886,7 +968,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       if (!mounted || _disposed) return;
       setState(() {
         _isPlaying = s == PlayerState.playing;
-        if (_isPlaying) _isThinking = false;
+        if (_isPlaying) {
+          _isThinking = false;
+          // 알라가 말하기 시작하면 마이크 비활성화 유지
+          _isMicDisabled = true;
+        }
       });
     });
 
@@ -896,6 +982,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       if (_pendingQueue.isNotEmpty) {
         _playNextFromQueue();
       } else {
+        // 알라의 말이 끝나면 마이크 다시 활성화
+        setState(() => _isMicDisabled = false);
         await _resumeMicIfQuiet();
       }
     });
@@ -1101,6 +1189,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     _player.dispose();
 
+    // GlobalSoundService 리스너 제거
+    GlobalSoundService().removeListener(_onGlobalSoundChanged);
+
     // 앱 생명주기 관찰자 제거
     WidgetsBinding.instance.removeObserver(this);
 
@@ -1119,6 +1210,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           debugPrint('[LIFECYCLE] WebSocket 연결 끊어짐 - 재연결 시도');
           _connectVoice();
         }
+        // GlobalSoundService 상태도 체크
+        _onGlobalSoundChanged();
         break;
       case AppLifecycleState.paused:
         debugPrint('[LIFECYCLE] 앱이 일시정지됨');
@@ -1169,6 +1262,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     if (_isConversationBlocked) {
       debugPrint('[CONVERSATION] 대화 차단 상태 - 마이크 버튼 클릭 무시');
       _showConversationBlockedDialog();
+      return;
+    }
+
+    // 알라가 말하는 중이면 마이크 버튼 클릭 무시
+    if (_isMicDisabled) {
+      debugPrint('[MIC] 알라가 말하는 중 - 마이크 버튼 클릭 무시');
       return;
     }
 
@@ -1265,9 +1364,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     return AnimatedBuilder(
       animation: service,
       builder: (context, child) {
+        // 디버그 로그 추가
+        debugPrint(
+          '[MINI_PLAYER] 체크 - userStoppedAutoPlay: ${service.userStoppedAutoPlay}, currentPlaying: ${service.currentPlaying}, isPlaying: ${service.isPlaying}',
+        );
+
+        // 재생 중인 음악이 없으면 플레이어 숨김
         if (service.currentPlaying == null || service.currentPlaying!.isEmpty) {
           return const SizedBox.shrink();
         }
+
+        debugPrint('[MINI_PLAYER] 플레이어 표시');
 
         final title = service.currentPlaying!
             .replaceAll('.mp3', '')
@@ -1736,7 +1843,10 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                             children: [
                               // 마이크 버튼
                               GestureDetector(
-                                onTap: _isConversationBlocked ? null : _listen,
+                                onTap:
+                                    (_isConversationBlocked || _isMicDisabled)
+                                        ? null
+                                        : _listen,
                                 child: AnimatedBuilder(
                                   animation: _animationController,
                                   builder: (context, child) {
@@ -1755,7 +1865,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                         decoration: BoxDecoration(
                                           gradient: LinearGradient(
                                             colors:
-                                                _isConversationBlocked
+                                                (_isConversationBlocked ||
+                                                        _isMicDisabled)
                                                     ? [
                                                       Colors.grey,
                                                       Colors.grey.shade700,
@@ -1775,7 +1886,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                           shape: BoxShape.circle,
                                           boxShadow: [
                                             BoxShadow(
-                                              color: (_isConversationBlocked
+                                              color: ((_isConversationBlocked ||
+                                                          _isMicDisabled)
                                                       ? Colors.grey
                                                       : _isListening
                                                       ? Colors.red
@@ -1787,7 +1899,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                           ],
                                         ),
                                         child: Icon(
-                                          _isConversationBlocked
+                                          (_isConversationBlocked ||
+                                                  _isMicDisabled)
                                               ? Icons.block
                                               : _isListening
                                               ? Icons.stop
@@ -1814,7 +1927,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color:
-                                        _isConversationBlocked
+                                        (_isConversationBlocked ||
+                                                _isMicDisabled)
                                             ? Colors.red.withOpacity(0.3)
                                             : _isListening
                                             ? const Color(
@@ -1827,13 +1941,16 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                 child: Text(
                                   _isConversationBlocked
                                       ? '🚫 대화 횟수 초과 - 유료 결제 필요'
+                                      : _isMicDisabled
+                                      ? '🔇 알라가 말하는 중...'
                                       : _isListening
                                       ? '🎙️ 듣고 있어요...'
                                       : '🎤 마이크를 탭해서 대화 시작',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color:
-                                        _isConversationBlocked
+                                        (_isConversationBlocked ||
+                                                _isMicDisabled)
                                             ? Colors.red
                                             : _isListening
                                             ? const Color(0xFF6C63FF)
@@ -1847,8 +1964,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
                           const SizedBox(height: 24),
 
-                          // 대화 중단 버튼 (음성 인식 중일 때만 표시)
-                          if (_isListening || _isThinking || _isPlaying)
+                          // 대화 중단 버튼 (음성 인식 중이거나 알라가 말하는 중일 때 표시)
+                          if (_isListening ||
+                              _isThinking ||
+                              _isPlaying ||
+                              _isMicDisabled)
                             Container(
                               width: double.infinity,
                               margin: const EdgeInsets.symmetric(
@@ -1876,10 +1996,48 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                               ),
                             ),
 
-                          if (_isListening || _isThinking || _isPlaying)
+                          if (_isListening ||
+                              _isThinking ||
+                              _isPlaying ||
+                              _isMicDisabled)
                             const SizedBox(height: 16),
 
                           const SizedBox(height: 24),
+
+                          // 테스트용 로컬 스토리지 초기화 버튼
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(horizontal: 20),
+                            child: ElevatedButton(
+                              onPressed: _resetLocalStorage,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange.withOpacity(0.8),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.refresh, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '🔄 로컬 스토리지 초기화 (테스트용)',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
 
                           _micAutoStopHint(),
                         ],
