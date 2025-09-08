@@ -158,8 +158,8 @@ class _NicknameGreetPageState extends State<NicknameGreetPage> {
                 Center(
                   child: Image.asset(
                     'lib/assets/koala.png',
-                    width: 150,
-                    height: 150,
+                    width: 180,
+                    height: 180,
                     fit: BoxFit.contain,
                   ),
                 ),

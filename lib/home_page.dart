@@ -695,15 +695,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       ),
       // 숨겨진 새로고침 버튼 (테스트용)
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          debugPrint('[홈페이지] 🔄 수동 새로고침 버튼 클릭');
-          await _forceRefresh();
-        },
-        backgroundColor: Colors.red.withOpacity(0.3),
-        child: const Icon(Icons.refresh, color: Colors.white),
-        mini: true,
-      ),
     );
   }
 
