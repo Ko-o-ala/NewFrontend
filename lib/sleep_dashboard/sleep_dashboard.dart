@@ -34,7 +34,6 @@ class _SleepDashboardState extends State<SleepDashboard>
   }
 
   bool _fallbackFromTwoDaysAgo = false;
-  bool _showNoDataDialog = false;
 
   /// 시간 문자열을 DateTime으로 파싱 (수면차트와 동일한 로직)
   DateTime _parseTimeWithDate(String timeStr, DateTime date) {
@@ -105,8 +104,6 @@ class _SleepDashboardState extends State<SleepDashboard>
 
       if (response.statusCode == 404) {
         setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
-        // 서버에서 데이터가 없을 때만 다이얼로그 표시
-        _checkAndShowNoDataDialog();
         return false;
       }
 
@@ -120,8 +117,6 @@ class _SleepDashboardState extends State<SleepDashboard>
 
       if (dataList.isEmpty) {
         setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
-        // 서버에서 데이터가 없을 때만 다이얼로그 표시
-        _checkAndShowNoDataDialog();
         return false;
       }
 
@@ -181,8 +176,6 @@ class _SleepDashboardState extends State<SleepDashboard>
 
       if (inBedMin <= 0) {
         setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
-        // 서버에서 데이터가 없을 때만 다이얼로그 표시
-        _checkAndShowNoDataDialog();
         return false;
       }
 
@@ -850,102 +843,6 @@ class _SleepDashboardState extends State<SleepDashboard>
     }
   }
 
-  /// 서버에서 수면 데이터가 없을 때 한번만 다이얼로그를 표시
-  Future<void> _checkAndShowNoDataDialog() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final hasShownNoDataDialog =
-          prefs.getBool('hasShownNoDataDialog') ?? false;
-
-      if (!hasShownNoDataDialog && mounted) {
-        // 다이얼로그 표시 플래그 설정
-        await prefs.setBool('hasShownNoDataDialog', true);
-
-        // 다이얼로그 표시
-        _showNoDataDialog = true;
-        setState(() {});
-
-        // 다이얼로그 표시
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false, // 외부 터치로 닫기 방지
-            builder: (BuildContext context) {
-              return AlertDialog(
-                backgroundColor: const Color(0xFF1D1E33),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                title: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF6C63FF), Color(0xFF4B47BD)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.watch,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        '수면 측정 안내',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                content: const Text(
-                  '수면 데이터가 없습니다.\n\nApple Watch를 차고 자면 자동으로 수면 데이터가 수집됩니다.\n\n수면 측정을 위해 Apple Watch를 착용해주세요.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    height: 1.5,
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _showNoDataDialog = false;
-                      setState(() {});
-                    },
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text('확인'),
-                  ),
-                ],
-              );
-            },
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('[SleepDashboard] 다이얼로그 표시 실패: $e');
-    }
-  }
-
   Future<void> sendSleepData({
     required String userId,
     required String token,
@@ -1168,11 +1065,7 @@ class _SleepDashboardState extends State<SleepDashboard>
               ),
               const SizedBox(height: 20),
               // 수면데이터가 없으면 Apple Watch 메시지 표시 (다이얼로그가 표시되지 않을 때만)
-              (deepMin == 0 &&
-                      remMin == 0 &&
-                      lightMin == 0 &&
-                      awakeMin == 0 &&
-                      !_showNoDataDialog)
+              (deepMin == 0 && remMin == 0 && lightMin == 0 && awakeMin == 0)
                   ? _buildEmptyHint()
                   : _buildSleepContent(),
               const SizedBox(height: 20),
