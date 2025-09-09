@@ -2044,7 +2044,7 @@ class _SoundScreenState extends State<SoundScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  '사운드를 드래그해서 순서를 변경할 수 있습니다. 변경된 순서는 자동으로 사용자 선호도 데이터로 사용됩니다.',
+                                  '사운드를 2초동안 꾹 누르면 드래그해서 순서를 변경할 수 있습니다. 변경된 순서는 자동으로 사용자 선호도 데이터로 사용됩니다.',
                                   style: TextStyle(
                                     color: const Color(0xFF6C63FF),
                                     fontSize: 14,

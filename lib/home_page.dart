@@ -4,11 +4,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // 수면데이터 전송을 위해 추가
 import 'package:intl/intl.dart'; // 날짜 포맷팅을 위해 추가
 import 'dart:convert'; // JSON 처리를 위해 추가
-import 'dart:io'; // 파일 시스템 접근을 위해 추가
 import 'package:http/http.dart' as http; // HTTP 요청을 위해 추가
 import 'package:my_app/services/jwt_utils.dart'; // JWT 유틸리티 추가
 import 'package:my_app/sound/sound.dart'; // 글로벌 사운드 서비스 추가
 import 'package:just_audio/just_audio.dart' as just_audio;
+import 'package:health/health.dart'; // 건강앱 연동을 위해 추가
+import 'dart:math' as math; // ⬅️ 추가
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -37,6 +38,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // initState에서 바로 수면데이터 전송 (더 긴 지연시간으로 로그인 완료 대기)
     Future.delayed(const Duration(milliseconds: 2000), () async {
       debugPrint('[홈페이지] 🔄 initState 수면데이터 전송 시작 (2초 지연)');
+      await _forceRefresh();
+    });
+
+    // 추가 백업: 5초 후에도 한 번 더 시도 (베타테스터용)
+    Future.delayed(const Duration(milliseconds: 5000), () async {
+      debugPrint('[홈페이지] 🔄 백업 수면데이터 전송 시작 (5초 지연)');
       await _forceRefresh();
     });
   }
@@ -99,20 +106,167 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 베타테스터를 위한 디버깅 정보 출력
     await _debugSleepDataStatus();
 
-    // 수면데이터가 없으면 생성
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getString('pendingSleepPayload') == null) {
-      debugPrint('[홈페이지] 🔄 수면데이터가 없음 - 생성 시도');
-      await _createTestSleepData();
+    // 상태 업데이트
+    if (mounted) {
+      setState(() {});
     }
+
+    // 강제로 새로운 수면데이터 생성 (기존 데이터 무시)
+    debugPrint('[홈페이지] 🔄 강제로 새로운 수면데이터 생성');
+    await _createTestSleepData();
 
     // lastSentDate 초기화하여 강제 전송 가능하게 함
     await _clearLastSentDate();
+
+    // 상태 업데이트
+    if (mounted) {
+      setState(() {});
+    }
 
     // 수면데이터 전송 시도
     _tryUploadPendingSleepData(retryCount: 0);
 
     debugPrint('[홈페이지] 🔄 강제 새로고침 완료');
+  }
+
+  // 베타테스터를 위한 디버깅 정보 다이얼로그
+  Future<void> _showDebugInfoDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = await storage.read(key: 'jwt');
+    final username = await storage.read(key: 'username');
+    final userId =
+        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
+    final payloadJson = prefs.getString('pendingSleepPayload');
+    final lastSentDate = prefs.getString('lastSentDate');
+
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+
+    String debugInfo = '';
+    debugInfo += '📱 사용자명: ${username ?? "없음"}\n';
+    debugInfo += '👤 사용자 ID: ${userId ?? "없음"}\n';
+    debugInfo +=
+        '🔑 JWT 토큰: ${token != null ? "있음 (${token.length}자)" : "없음"}\n';
+    debugInfo +=
+        '🕐 현재 기기 시간: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)}\n';
+    debugInfo += '📅 기기 기준 오늘: ${DateFormat('yyyy-MM-dd').format(now)}\n';
+    debugInfo += '📅 기기 기준 어제: ${DateFormat('yyyy-MM-dd').format(yesterday)}\n';
+    debugInfo +=
+        '📦 수면데이터: ${payloadJson != null ? "있음 (${payloadJson.length}자)" : "없음"}\n';
+    debugInfo += '📅 마지막 전송일: ${lastSentDate ?? "없음"}\n';
+    debugInfo += '🔄 로그인 상태: $_isLoggedIn\n';
+
+    if (payloadJson != null) {
+      try {
+        final payload = json.decode(payloadJson) as Map<String, dynamic>;
+        final dataDate = (payload['date'] as String?) ?? '';
+        debugInfo += '📅 전송할 데이터 날짜: $dataDate\n';
+        debugInfo +=
+            '⏰ 수면 시간: ${payload['sleepTime']?['startTime']} ~ ${payload['sleepTime']?['endTime']}\n';
+        debugInfo +=
+            '💤 총 수면 시간: ${payload['Duration']?['totalSleepDuration']}분\n';
+        debugInfo += '⭐ 수면 점수: ${payload['sleepScore']}\n';
+      } catch (e) {
+        debugInfo += '❌ 데이터 파싱 오류: $e\n';
+      }
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('🔍 디버깅 정보 (베타테스터용)'),
+              content: SingleChildScrollView(
+                child: Text(
+                  debugInfo,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('닫기'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await _showDatePickerDialog();
+                  },
+                  child: const Text('날짜 수정'),
+                ),
+              ],
+            ),
+      );
+    }
+  }
+
+  // 베타테스터를 위한 날짜 선택 다이얼로그
+  Future<void> _showDatePickerDialog() async {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: yesterday,
+      firstDate: now.subtract(const Duration(days: 30)),
+      lastDate: now,
+      helpText: '수면데이터 날짜 선택',
+    );
+
+    if (selectedDate != null) {
+      debugPrint(
+        '[홈페이지] 📅 선택된 날짜: ${DateFormat('yyyy-MM-dd').format(selectedDate)}',
+      );
+      await _createTestSleepDataForDate(selectedDate);
+    }
+  }
+
+  // 특정 날짜로 수면데이터 생성
+  Future<void> _createTestSleepDataForDate(DateTime targetDate) async {
+    debugPrint(
+      '[홈페이지] 📅 특정 날짜 수면데이터 생성 시작: ${DateFormat('yyyy-MM-dd').format(targetDate)}',
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = await storage.read(key: 'jwt');
+    final userId =
+        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
+
+    if (userId == null) {
+      debugPrint('[홈페이지] ❌ userID를 찾을 수 없음');
+      return;
+    }
+
+    final dateStr = DateFormat('yyyy-MM-dd').format(targetDate);
+
+    try {
+      // 건강앱에서 해당 날짜의 수면 데이터 가져오기
+      final healthData = await _getHealthSleepData(targetDate);
+
+      if (healthData == null || healthData.isEmpty) {
+        debugPrint('[홈페이지] ❌ 해당 날짜에 건강앱 수면 데이터가 없음');
+        _showAppleWatchAlert();
+        return;
+      }
+
+      // 건강앱 데이터를 API 스펙에 맞게 변환
+      final sleepData = _convertHealthDataToApiFormat(
+        healthData,
+        userId,
+        dateStr,
+      );
+      await prefs.setString('pendingSleepPayload', jsonEncode(sleepData));
+      debugPrint('[홈페이지] ✅ 특정 날짜 건강앱 수면데이터 생성 완료: $dateStr');
+    } catch (e) {
+      debugPrint('[홈페이지] ❌ 특정 날짜 건강앱 데이터 처리 중 오류: $e');
+      _showAppleWatchAlert();
+      return;
+    }
+
+    // 즉시 전송 시도
+    await _clearLastSentDate();
+    _tryUploadPendingSleepData(retryCount: 0);
   }
 
   // 베타테스터를 위한 디버깅 정보 출력
@@ -137,6 +291,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
     debugPrint('[홈페이지] 📅 마지막 전송일: ${lastSentDate ?? "없음"}');
     debugPrint('[홈페이지] 🔄 로그인 상태: $_isLoggedIn');
+
+    // 현재 기기 시간 정보 추가
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    debugPrint(
+      '[홈페이지] 🕐 현재 기기 시간: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)}',
+    );
+    debugPrint('[홈페이지] 📅 기기 기준 오늘: ${DateFormat('yyyy-MM-dd').format(now)}');
+    debugPrint(
+      '[홈페이지] 📅 기기 기준 어제: ${DateFormat('yyyy-MM-dd').format(yesterday)}',
+    );
 
     // JWT 토큰의 payload 내용 확인
     if (token != null) {
@@ -181,40 +346,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('lastSentDate');
     debugPrint('[홈페이지] 🗑️ lastSentDate 초기화 완료 - 강제 전송 가능');
-  }
-
-  Future<void> _refreshUserNameFromServer() async {
-    try {
-      final raw = await storage.read(key: 'jwt');
-      if (raw == null || raw.isEmpty) return;
-
-      final token = raw.startsWith('Bearer ') ? raw.split(' ').last : raw;
-
-      final res = await http.get(
-        Uri.parse('https://kooala.tassoo.uk/users/profile'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (res.statusCode == 200) {
-        final body = json.decode(res.body);
-        final name = body['data']?['name'] ?? body['name'] ?? '';
-
-        if (name is String && name.trim().isNotEmpty) {
-          // 캐시도 최신화(다른 화면에서도 동일하게 보이도록)
-          await storage.write(key: 'username', value: name.trim());
-          if (mounted && _userName != name.trim()) {
-            setState(() => _userName = name.trim());
-          }
-        }
-      } else {
-        debugPrint('[홈페이지] 프로필 요청 실패: ${res.statusCode} ${res.body}');
-      }
-    } catch (e) {
-      debugPrint('[홈페이지] 프로필 요청 에러: $e');
-    }
   }
 
   Future<void> _checkProfileUpdate() async {
@@ -328,16 +459,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // 테스트용: 임시 수면데이터 생성 (모든 사용자에게)
+  // 건강앱에서 실제 수면데이터 생성
   Future<void> _createTestSleepData() async {
-    debugPrint('[홈페이지] 수면데이터 생성 시작');
+    debugPrint('[홈페이지] 건강앱 수면데이터 생성 시작');
 
     final prefs = await SharedPreferences.getInstance();
 
-    // 이미 테스트 데이터가 있으면 건너뛰기
+    // 기존 데이터가 있으면 로그만 출력하고 계속 진행 (강제 생성)
     if (prefs.getString('pendingSleepPayload') != null) {
-      debugPrint('[홈페이지] 이미 테스트 데이터가 존재함');
-      return;
+      debugPrint('[홈페이지] 기존 수면 데이터가 존재함 - 덮어쓰기 진행');
     }
 
     // JWT에서 실제 userID 추출
@@ -354,33 +484,407 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
 
-    // API 스펙에 맞는 수면데이터 생성
     // 전날 수면데이터로 생성 (오늘이 8일이면 7일 데이터)
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    final testData = {
-      "userID": userId, // 실제 사용자 ID 사용
-      "date": DateFormat('yyyy-MM-dd').format(yesterday),
-      "sleepTime": {"startTime": "22:30", "endTime": "07:30"},
-      "Duration": {
-        "totalSleepDuration": 480, // 8시간
-        "deepSleepDuration": 120, // 2시간
-        "remSleepDuration": 120, // 2시간
-        "lightSleepDuration": 200, // 3시간 20분
-        "awakeDuration": 40, // 40분
-      },
-      "segments": [
-        {"startTime": "22:30", "endTime": "23:00", "stage": "light"},
-        {"startTime": "23:00", "endTime": "01:00", "stage": "deep"},
-        {"startTime": "01:00", "endTime": "02:00", "stage": "rem"},
-        {"startTime": "02:00", "endTime": "06:00", "stage": "light"},
-        {"startTime": "06:00", "endTime": "07:30", "stage": "awake"},
-      ],
-      "sleepScore": 85,
-    };
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr = DateFormat('yyyy-MM-dd').format(yesterday);
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-    await prefs.setString('pendingSleepPayload', jsonEncode(testData));
-    debugPrint('[홈페이지] ✅ 수면데이터 생성 완료: ${testData['date']} (userID: $userId)');
-    debugPrint('[홈페이지] ✅ pendingSleepPayload 저장됨');
+    debugPrint(
+      '[홈페이지] 🕐 현재 기기 시간: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(now)}',
+    );
+    debugPrint('[홈페이지] 📅 오늘 날짜: $todayStr');
+    debugPrint('[홈페이지] 📅 어제 날짜: $yesterdayStr');
+    debugPrint('[홈페이지] 📅 생성할 데이터 날짜: $yesterdayStr');
+
+    try {
+      // 건강앱에서 수면 데이터 가져오기
+      final healthData = await _getHealthSleepData(yesterday);
+
+      if (healthData == null || healthData.isEmpty) {
+        debugPrint('[홈페이지] ❌ 건강앱에서 수면 데이터를 가져올 수 없음');
+        _showAppleWatchAlert();
+        return;
+      }
+
+      // 건강앱 데이터를 API 스펙에 맞게 변환
+      final sleepData = _convertHealthDataToApiFormat(
+        healthData,
+        userId,
+        yesterdayStr,
+      );
+
+      await prefs.setString('pendingSleepPayload', jsonEncode(sleepData));
+      debugPrint(
+        '[홈페이지] ✅ 건강앱 수면데이터 생성 완료: ${sleepData['date']} (userID: $userId)',
+      );
+      debugPrint('[홈페이지] ✅ pendingSleepPayload 저장됨');
+    } catch (e) {
+      debugPrint('[홈페이지] ❌ 건강앱 데이터 처리 중 오류: $e');
+      _showAppleWatchAlert();
+      return;
+    }
+  }
+
+  // 건강앱에서 수면 데이터 가져오기
+  Future<List<HealthDataPoint>?> _getHealthSleepData(DateTime targetDay) async {
+    try {
+      final types = [
+        HealthDataType.SLEEP_IN_BED,
+        HealthDataType.SLEEP_AWAKE,
+        HealthDataType.SLEEP_DEEP,
+        HealthDataType.SLEEP_REM,
+        HealthDataType.SLEEP_LIGHT,
+        HealthDataType.SLEEP_ASLEEP, // ✅ 추가
+      ];
+      final permissions = List.filled(types.length, HealthDataAccess.READ);
+
+      final granted = await Health().requestAuthorization(
+        types,
+        permissions: permissions,
+      );
+      if (!granted) {
+        debugPrint('[홈페이지] ❌ 건강앱 권한이 거부됨');
+        return null;
+      }
+
+      // ✅ 전날 18:00 ~ 당일 12:00
+      final anchor = DateTime(targetDay.year, targetDay.month, targetDay.day);
+      final startTime = anchor.subtract(const Duration(hours: 6)); // D-1 18:00
+      final endTime = anchor.add(const Duration(hours: 12)); // D 12:00
+
+      final healthData = await Health().getHealthDataFromTypes(
+        startTime: startTime,
+        endTime: endTime,
+        types: types,
+      );
+
+      debugPrint('[홈페이지] 📊 건강앱에서 가져온 수면 데이터 개수: ${healthData.length}');
+      if (healthData.isEmpty) return null;
+
+      return healthData;
+    } catch (e) {
+      debugPrint('[홈페이지] ❌ 건강앱 데이터 가져오기 실패: $e');
+      return null;
+    }
+  }
+
+  // 건강앱 데이터를 API 스펙에 맞게 변환
+  Map<String, dynamic> _convertHealthDataToApiFormat(
+    List<HealthDataPoint> healthData,
+    String userId,
+    String date,
+  ) {
+    int inBedMinutes = 0;
+    int awakeMinutes = 0;
+    int deepMinutes = 0;
+    int remMinutes = 0;
+    int lightMinutes = 0;
+    int coreAsleepMinutes = 0; // ✅ SLEEP_ASLEEP용
+
+    DateTime? overallStart; // ✅ 모든 포인트 기준 시작
+    DateTime? overallEnd; // ✅ 모든 포인트 기준 종료
+
+    final segments = <Map<String, dynamic>>[];
+
+    for (final data in healthData) {
+      final duration = data.dateTo.difference(data.dateFrom).inMinutes;
+
+      // ✅ 모든 포인트로 외피 계산
+      overallStart =
+          (overallStart == null || data.dateFrom.isBefore(overallStart!))
+              ? data.dateFrom
+              : overallStart;
+      overallEnd =
+          (overallEnd == null || data.dateTo.isAfter(overallEnd!))
+              ? data.dateTo
+              : overallEnd;
+
+      debugPrint(
+        '[홈페이지] 🔍 수면 데이터: ${data.type} - ${data.dateFrom} ~ ${data.dateTo} (${duration}분)',
+      );
+
+      switch (data.type) {
+        case HealthDataType.SLEEP_IN_BED:
+          inBedMinutes += duration;
+          break;
+        case HealthDataType.SLEEP_AWAKE:
+          awakeMinutes += duration;
+          segments.add({
+            "startTime": DateFormat('HH:mm').format(data.dateFrom),
+            "endTime": DateFormat('HH:mm').format(data.dateTo),
+            "stage": "awake",
+          });
+          break;
+        case HealthDataType.SLEEP_DEEP:
+          deepMinutes += duration;
+          segments.add({
+            "startTime": DateFormat('HH:mm').format(data.dateFrom),
+            "endTime": DateFormat('HH:mm').format(data.dateTo),
+            "stage": "deep",
+          });
+          break;
+        case HealthDataType.SLEEP_REM:
+          remMinutes += duration;
+          segments.add({
+            "startTime": DateFormat('HH:mm').format(data.dateFrom),
+            "endTime": DateFormat('HH:mm').format(data.dateTo),
+            "stage": "rem",
+          });
+          break;
+        case HealthDataType.SLEEP_LIGHT:
+          lightMinutes += duration;
+          segments.add({
+            "startTime": DateFormat('HH:mm').format(data.dateFrom),
+            "endTime": DateFormat('HH:mm').format(data.dateTo),
+            "stage": "light",
+          });
+          break;
+        case HealthDataType.SLEEP_ASLEEP:
+          // ✅ 플랫폼에 따라 Core/Unspecified가 여기로 옴. 서버 스펙에 'asleep'이 없다면 light로 흡수.
+          coreAsleepMinutes += duration;
+          // 필요하면 세그먼트도 light로 넣기:
+          segments.add({
+            "startTime": DateFormat('HH:mm').format(data.dateFrom),
+            "endTime": DateFormat('HH:mm').format(data.dateTo),
+            "stage": "light",
+          });
+          break;
+        default:
+          break;
+      }
+    }
+
+    // ✅ 실제 수면(깊+REM+얕음+코어)
+    final actualSleepMinutes =
+        deepMinutes + remMinutes + (lightMinutes + coreAsleepMinutes);
+    final scoringTotal = actualSleepMinutes + awakeMinutes; // ✅ 점수용 분모
+
+    // ✅ 외피(첫 시작~마지막 종료)
+    final envelopeMinutes =
+        (overallStart != null && overallEnd != null)
+            ? overallEnd!.difference(overallStart!).inMinutes
+            : 0;
+
+    // ✅ 총 수면시간 = max(실제수면+깸, 외피)  → 자정 경계/타입 누락에 안전
+    final totalSleepDuration = math.max(
+      actualSleepMinutes + awakeMinutes,
+      envelopeMinutes,
+    );
+
+    // 시작/종료 시각도 외피 기준으로
+    final startClock =
+        overallStart != null
+            ? DateFormat('HH:mm').format(overallStart!)
+            : "22:00";
+    final endClock =
+        overallEnd != null ? DateFormat('HH:mm').format(overallEnd!) : "07:00";
+
+    // 디버그
+    debugPrint('[홈페이지] 📊 수면 시간 계산 결과:');
+    debugPrint(
+      '  envelope: ${envelopeMinutes}분, actual: ${actualSleepMinutes}분, awake: ${awakeMinutes}분',
+    );
+    debugPrint('  totalSleepDuration(업로드): ${totalSleepDuration}분');
+
+    return {
+      "userID": userId,
+      "date": date,
+      "sleepTime": {"startTime": startClock, "endTime": endClock},
+      "Duration": {
+        "totalSleepDuration":
+            totalSleepDuration, // 업로드용: max(actual+awake, envelope)
+        "deepSleepDuration": deepMinutes,
+        "remSleepDuration": remMinutes,
+        "lightSleepDuration": lightMinutes + coreAsleepMinutes,
+        "awakeDuration": awakeMinutes,
+      },
+      "segments": segments,
+      "sleepScore": _calculateSleepScore(
+        actualSleepMinutes, // ✅ 실제 수면 시간만으로 점수 계산
+        deepMinutes,
+        remMinutes,
+        lightMinutes + coreAsleepMinutes,
+        awakeMinutes,
+      ),
+    };
+  }
+
+  // 수면 점수 계산
+  int _calculateSleepScore(
+    int totalSleepMinutes,
+    int deepMinutes,
+    int remMinutes,
+    int lightMinutes,
+    int awakeMinutes,
+  ) {
+    // 기본 점수 50점에서 시작 (더 엄격하게)
+    int score = 50;
+
+    // 총 수면 시간에 따른 점수 조정 (7-8시간이 최적)
+    if (totalSleepMinutes >= 420 && totalSleepMinutes <= 480) {
+      score += 15; // 7-8시간: +15점
+    } else if (totalSleepMinutes >= 360 && totalSleepMinutes < 420) {
+      score += 5; // 6-7시간: +5점
+    } else if (totalSleepMinutes > 480 && totalSleepMinutes <= 540) {
+      score += 2; // 8-9시간: +2점
+    } else {
+      score -= 15; // 그 외: -15점
+    }
+
+    // 깊은 수면 비율에 따른 점수 조정 (15-20%가 최적)
+    final deepRatio =
+        totalSleepMinutes > 0 ? (deepMinutes / totalSleepMinutes) * 100 : 0;
+    if (deepRatio >= 15 && deepRatio <= 20) {
+      score += 8;
+    } else if (deepRatio >= 10 && deepRatio < 15) {
+      score += 3;
+    } else if (deepRatio < 10) {
+      score -= 8;
+    } else {
+      score -= 3;
+    }
+
+    // REM 수면 비율에 따른 점수 조정 (20-25%가 최적)
+    final remRatio =
+        totalSleepMinutes > 0 ? (remMinutes / totalSleepMinutes) * 100 : 0;
+    if (remRatio >= 20 && remRatio <= 25) {
+      score += 8;
+    } else if (remRatio >= 15 && remRatio < 20) {
+      score += 3;
+    } else if (remRatio < 15) {
+      score -= 8;
+    } else {
+      score -= 3;
+    }
+
+    // 깨어있음 시간에 따른 점수 조정 (5% 이하가 좋음)
+    final awakeRatio =
+        totalSleepMinutes > 0 ? (awakeMinutes / totalSleepMinutes) * 100 : 0;
+    if (awakeRatio <= 5) {
+      score += 5;
+    } else if (awakeRatio <= 10) {
+      score += 0;
+    } else if (awakeRatio <= 15) {
+      score -= 5;
+    } else {
+      score -= 15;
+    }
+
+    return score.clamp(0, 100);
+  }
+
+  // Apple Watch 착용 알림 표시
+  void _showAppleWatchAlert() {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.watch, color: Colors.blue, size: 28),
+              const SizedBox(width: 12),
+              const Text(
+                '수면 측정 필요',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '수면 데이터를 측정하려면:',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              _buildInstructionItem('1', 'Apple Watch를 착용하고', Icons.watch),
+              _buildInstructionItem('2', '잠자리에 들기 전에', Icons.bedtime),
+              _buildInstructionItem('3', '수면 추적을 시작하세요', Icons.track_changes),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.blue.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Apple Watch가 자동으로 수면을 측정하고 건강 앱에 저장합니다.',
+                        style: TextStyle(fontSize: 14, color: Colors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text(
+                '확인',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildInstructionItem(String number, String text, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(icon, color: Colors.grey[600], size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 15, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkLoginStatus() async {
@@ -396,8 +900,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (_isLoggedIn) {
       debugPrint('[홈페이지] 🔄 로그인 확인됨 - 수면데이터 생성 및 전송 예정 (3초 지연)');
 
-      // 먼저 수면데이터 생성
-      _createTestSleepData();
+      // 먼저 수면데이터 생성 (강제 생성)
+      await _createTestSleepData();
 
       // 그 다음 전송 시도
       Future.delayed(const Duration(milliseconds: 3000), () {
@@ -503,6 +1007,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (resp.statusCode == 200 || resp.statusCode == 201) {
         debugPrint('[홈페이지] ✅ 수면데이터 전송 성공: $date');
 
+        // 성공 상태 업데이트
+        if (mounted) {
+          setState(() {});
+        }
+
         // 업로드 성공 → 서버 데이터로 캐시 갱신
         final server = await _getSleepDataFromServer(
           userId: userId,
@@ -600,7 +1109,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         debugPrint('[홈페이지] ❌ 전송한 데이터: $updatedPayloadJson');
         debugPrint('[홈페이지] ❌ 사용자 ID: $userId');
         debugPrint('[홈페이지] ❌ 데이터 날짜: $date');
-        debugPrint('[홈페이지] ❌ JWT 토큰: ${token?.substring(0, 20)}...');
+        debugPrint('[홈페이지] ❌ JWT 토큰: ${token.substring(0, 20)}...');
 
         // 실패 시 재시도 (최대 3번)
         if (retryCount < 2) {
@@ -769,14 +1278,42 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          // 베타테스터를 위한 디버깅 정보 표시 버튼
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.white),
+            onPressed: () async {
+              await _showDebugInfoDialog();
+            },
+            tooltip: '디버깅 정보 표시 (베타테스터용)',
+          ),
+          // 베타테스터를 위한 날짜 수정 버튼
+          IconButton(
+            icon: const Icon(Icons.calendar_today, color: Colors.white),
+            onPressed: () async {
+              debugPrint('[홈페이지] 📅 베타테스터 날짜 수정 버튼 클릭');
+              await _showDatePickerDialog();
+            },
+            tooltip: '수면데이터 날짜 수정 (베타테스터용)',
+          ),
           // 베타테스터를 위한 수면데이터 수동 전송 버튼
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () async {
               debugPrint('[홈페이지] 🔄 베타테스터 수동 새로고침 버튼 클릭');
+
+              // 즉시 디버깅 정보 출력
+              await _debugSleepDataStatus();
+
+              // 강제 새로고침 실행
               await _forceRefresh();
+
+              // 3초 후 한 번 더 시도
+              Future.delayed(const Duration(seconds: 3), () async {
+                debugPrint('[홈페이지] 🔄 수동 버튼 3초 후 재시도');
+                await _forceRefresh();
+              });
             },
-            tooltip: '수면데이터 수동 전송',
+            tooltip: '수면데이터 수동 전송 (베타테스터용)',
           ),
         ],
       ),

@@ -124,16 +124,23 @@ class _SleepDashboardState extends State<SleepDashboard>
       int deep = 0, rem = 0, light = 0, awake = 0;
       DateTime? realStart, realEnd;
       int serverScore = sleepScore; // 기본값은 현재 점수
+      Map<String, dynamic>? lastDuration; // 마지막 duration 저장
 
       for (final item in dataList) {
         if (item is! Map<String, dynamic>) continue;
 
         final duration = item['Duration'] as Map<String, dynamic>?;
         if (duration != null) {
+          lastDuration = duration; // 마지막 duration 저장
           deep = (duration['deepSleepDuration'] as int?) ?? 0;
           rem = (duration['remSleepDuration'] as int?) ?? 0;
           light = (duration['lightSleepDuration'] as int?) ?? 0;
           awake = (duration['awakeDuration'] as int?) ?? 0;
+
+          // 디버그 로그 추가
+          debugPrint('[SLEEP_DASHBOARD] 서버 데이터 파싱:');
+          debugPrint('  deep: $deep, rem: $rem, light: $light, awake: $awake');
+          debugPrint('  totalSleepDuration: ${duration['totalSleepDuration']}');
         }
 
         // 수면점수 파싱
@@ -152,7 +159,21 @@ class _SleepDashboardState extends State<SleepDashboard>
         }
       }
 
-      final inBedMin = deep + rem + light + awake;
+      // 서버의 totalSleepDuration을 우선 사용하고, 없으면 개별 합산
+      final totalSleepFromServer = lastDuration?['totalSleepDuration'] as int?;
+      final inBedMin =
+          totalSleepFromServer != null
+              ? totalSleepFromServer +
+                  awake // 서버 totalSleepDuration + awake
+              : deep + rem + light + awake; // 개별 합산
+
+      debugPrint('[SLEEP_DASHBOARD] 최종 계산:');
+      debugPrint('  totalSleepFromServer: $totalSleepFromServer');
+      debugPrint('  awake: $awake');
+      debugPrint(
+        '  inBedMin: $inBedMin (${inBedMin ~/ 60}시간 ${inBedMin % 60}분)',
+      );
+
       if (inBedMin <= 0) {
         setState(() => formattedDuration = '❌ 수면 데이터가 없습니다');
         return false;
@@ -333,6 +354,13 @@ class _SleepDashboardState extends State<SleepDashboard>
       final awakeMin = (m['Duration']?['awakeDuration'] ?? 0) as int;
       final inBedMin = durationMin + awakeMin;
 
+      debugPrint('[SLEEP_DASHBOARD] 캐시 데이터 파싱:');
+      debugPrint('  totalSleepDuration: $durationMin');
+      debugPrint('  awakeDuration: $awakeMin');
+      debugPrint(
+        '  inBedMin: $inBedMin (${inBedMin ~/ 60}시간 ${inBedMin % 60}분)',
+      );
+
       setState(() {
         formattedDuration = _fmtMin(inBedMin); // ✅ 깨어있음 포함 (수면차트와 동일)
         todaySleep = Duration(minutes: inBedMin); // ✅ 깨어있음 포함 (수면차트와 동일)
@@ -443,6 +471,11 @@ class _SleepDashboardState extends State<SleepDashboard>
     final durationMin = (server['Duration']?['totalSleepDuration'] ?? 0) as int;
     final awakeMin = (server['Duration']?['awakeDuration'] ?? 0) as int;
     final inBedMin = durationMin + awakeMin; // ✅ 깨어있음 포함
+
+    debugPrint('[SLEEP_DASHBOARD] 서버 직접 로드:');
+    debugPrint('  totalSleepDuration: $durationMin');
+    debugPrint('  awakeDuration: $awakeMin');
+    debugPrint('  inBedMin: $inBedMin (${inBedMin ~/ 60}시간 ${inBedMin % 60}분)');
 
     setState(() {
       formattedDuration =

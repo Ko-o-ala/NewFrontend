@@ -53,10 +53,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   // ===== Speech & UI =====
   late stt.SpeechToText _speech;
+  late ScrollController _scrollController;
+  final GlobalKey _conversationGuideKey = GlobalKey();
   bool _isListening = false;
   String _text = '';
   String _username = '';
   double _soundLevel = 0.0;
+  String _debugLog = ''; // 화면에 표시할 디버그 로그
   bool _isConversationBlocked = false; // 10회 초과 시 대화 차단 플래그
   Timer? _autoSendTimer; // 5초 후 자동 전송을 위한 타이머
   bool _isMicDisabled = false; // 알라가 말하는 동안 마이크 비활성화 플래그
@@ -67,7 +70,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   DateTime _lastSoundTime = DateTime.now();
   Timer? _silenceTimer; // 조용함 감지 타이머
   static const double _soundThreshold = 0.03; // 음성 레벨 임계값 (더 민감하게)
-  static const Duration _silenceDuration = Duration(seconds: 5); // 5초 조용함 후 전송
+  static const Duration _silenceDuration = Duration(seconds: 4); // 4초 조용함 후 전송
+
+  // 화면에 디버그 로그 표시하는 함수
+  void _showDebugLog(String message) {
+    debugPrint(message); // 콘솔에도 출력
+    if (mounted) {
+      setState(() {
+        _debugLog = '${DateTime.now().toString().substring(11, 19)}: $message';
+      });
+    }
+  }
 
   // 음성 레벨 변화 감지 함수
   void _onSoundLevelChange(double level) {
@@ -80,12 +93,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       _silenceTimer = null;
       debugPrint('[MIC] 음성 감지됨 - 레벨: ${level.toStringAsFixed(2)}');
     } else {
-      // 조용함 감지 - 타이머 시작
-      if (_silenceTimer == null && _isListening && _text.trim().isNotEmpty) {
-        debugPrint('[MIC] 조용함 감지 - 5초 후 자동 전송 예정');
+      // 조용함 감지 - 타이머 시작 (텍스트가 비어있어도 시작)
+      if (_silenceTimer == null && _isListening) {
+        debugPrint('[MIC] 조용함 감지 - 4초 후 자동 전송 예정');
         _silenceTimer = Timer(_silenceDuration, () {
-          if (_isListening && _text.trim().isNotEmpty) {
-            debugPrint('[MIC] 5초 조용함 완료 - 자동 전송 실행');
+          if (_isListening) {
+            debugPrint('[MIC] 4초 조용함 완료 - 자동 전송 실행');
             _sendCurrentText();
           }
         });
@@ -332,8 +345,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     _loadUsername();
     _initAudioPlayer();
+
+    // 자동 마이크 활성화 플래그 초기화
+    _autoResumeMic = true;
+    debugPrint('[INIT] 자동 마이크 활성화 플래그 초기화: $_autoResumeMic');
 
     // WebSocket 연결을 먼저 설정
     _initializeConnection();
@@ -352,6 +370,20 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
     // GlobalSoundService 상태 변화 감지
     GlobalSoundService().addListener(_onGlobalSoundChanged);
+
+    // 화면 로드 후 대화 안내 부분으로 자동 스크롤
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _conversationGuideKey.currentContext != null) {
+          Scrollable.ensureVisible(
+            _conversationGuideKey.currentContext!,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOut,
+            alignment: 0.1, // 화면 상단에서 10% 위치에 배치
+          );
+        }
+      });
+    });
 
     // 🔌 소켓 연결 상태 반영
     _connSub = voiceService.connectionStream.listen((connected) async {
@@ -669,13 +701,18 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       return;
     }
 
-    // 빈 텍스트나 너무 짧은 텍스트도 보내지 않음
-    if (finalText.length < 2) {
-      debugPrint('[SEND] 텍스트가 너무 짧음 - 서버 전송 건너뛰기: $finalText');
+    // 빈 텍스트나 너무 짧은 텍스트는 전송하지 않음
+    if (finalText.isEmpty) {
+      _showDebugLog('빈 텍스트 - 전송 건너뛰기');
       return;
+    } else if (finalText.length < 2) {
+      _showDebugLog('텍스트가 너무 짧음 - 서버 전송 건너뛰기: $finalText');
+      return;
+    } else {
+      _showDebugLog('텍스트 전송: $finalText');
     }
 
-    if (finalText.isNotEmpty && !_isConversationBlocked) {
+    if (!_isConversationBlocked) {
       // 사용자 말이 끝나면 마이크 비활성화
       setState(() => _isMicDisabled = true);
 
@@ -967,24 +1004,57 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   Future<void> _resumeMicIfQuiet({
     Duration minSilence = const Duration(milliseconds: 700),
   }) async {
-    if (!_autoResumeMic) return;
-    if (!mounted) return;
+    debugPrint('[RESUME] _resumeMicIfQuiet 호출됨');
+    debugPrint('[RESUME] _autoResumeMic: $_autoResumeMic');
+    debugPrint('[RESUME] mounted: $mounted');
+    debugPrint('[RESUME] _isConversationBlocked: $_isConversationBlocked');
+
+    if (!_autoResumeMic) {
+      debugPrint('[RESUME] 자동 마이크 활성화가 비활성화되어 있음');
+      return;
+    }
+    if (!mounted) {
+      debugPrint('[RESUME] 위젯이 마운트되지 않음');
+      return;
+    }
 
     // 대화 차단 상태면 자동 재시작하지 않음
-    if (_isConversationBlocked) return;
+    if (_isConversationBlocked) {
+      debugPrint('[RESUME] 대화가 차단된 상태');
+      return;
+    }
 
     // 마이크가 비활성화된 상태면 자동 재시작하지 않음
-    if (_isMicDisabled) return;
+    if (_isMicDisabled) {
+      debugPrint('[RESUME] 마이크가 비활성화된 상태');
+      return;
+    }
 
     // 재생/준비/청취 중이면 패스
-    if (_isPlaying || _isPreparing || _isListening) return;
-    // 큐/버퍼에 남은 오디오가 있으면 패스
-    if (_pendingQueue.isNotEmpty || _audioAvailable || _audioBuffer.isNotEmpty)
+    if (_isPlaying || _isPreparing || _isListening) {
+      debugPrint(
+        '[RESUME] 재생/준비/청취 중: _isPlaying=$_isPlaying, _isPreparing=$_isPreparing, _isListening=$_isListening',
+      );
       return;
+    }
 
+    // 큐/버퍼에 남은 오디오가 있으면 패스
+    if (_pendingQueue.isNotEmpty ||
+        _audioAvailable ||
+        _audioBuffer.isNotEmpty) {
+      debugPrint(
+        '[RESUME] 대기 중인 오디오가 있음: _pendingQueue=${_pendingQueue.length}, _audioAvailable=$_audioAvailable, _audioBuffer=${_audioBuffer.length}',
+      );
+      return;
+    }
+
+    debugPrint('[RESUME] 700ms 대기 중...');
     // 혹시 막판 청크가 더 오나 700ms 기다렸다가…
     await Future.delayed(minSilence);
-    if (!mounted) return;
+    if (!mounted) {
+      debugPrint('[RESUME] 대기 중 위젯이 마운트 해제됨');
+      return;
+    }
 
     final sinceLast = DateTime.now().difference(_lastTtsAt);
     final reallyQuiet =
@@ -993,11 +1063,20 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _audioBuffer.isEmpty &&
         sinceLast >= minSilence;
 
+    debugPrint(
+      '[RESUME] 정말 조용한지 확인: reallyQuiet=$reallyQuiet, sinceLast=${sinceLast.inMilliseconds}ms',
+    );
+    debugPrint(
+      '[RESUME] 최종 조건: _isListening=$_isListening, _isConversationBlocked=$_isConversationBlocked',
+    );
+
     if (reallyQuiet && !_isListening && !_isConversationBlocked) {
       debugPrint('[MIC] 조용함 감지 - 자동 마이크 재시작');
       await _enterMicMode(); // 녹음 세션으로 전환(iOS 필수)
       await Future.delayed(const Duration(milliseconds: 80)); // 세션 전환 여유
       if (mounted && !_isListening) _listen();
+    } else {
+      debugPrint('[RESUME] 자동 마이크 재시작 조건을 만족하지 않음');
     }
   }
 
@@ -1053,12 +1132,23 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
 
     _playerCompleteSub = _player.onPlayerComplete.listen((_) async {
-      if (!mounted || _disposed) return;
+      debugPrint('[PLAYER] TTS 재생 완료 감지됨');
+      debugPrint('[PLAYER] mounted: $mounted, _disposed: $_disposed');
+      debugPrint('[PLAYER] _autoResumeMic: $_autoResumeMic');
+      debugPrint('[PLAYER] _isConversationBlocked: $_isConversationBlocked');
+
+      if (!mounted || _disposed) {
+        debugPrint('[PLAYER] 위젯이 마운트되지 않았거나 disposed됨');
+        return;
+      }
+
       setState(() => _isPlaying = false);
       if (_pendingQueue.isNotEmpty) {
+        debugPrint('[PLAYER] 대기열에 더 있는 오디오 재생');
         _playNextFromQueue();
       } else {
         // 알라의 말이 끝나면 마이크 다시 활성화
+        debugPrint('[PLAYER] 모든 TTS 재생 완료 - 마이크 활성화 시도');
         setState(() => _isMicDisabled = false);
         await _resumeMicIfQuiet();
       }
@@ -1259,6 +1349,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _silenceTimer?.cancel(); // 조용함 감지 타이머 취소
     _speech.cancel();
     _animationController.dispose();
+    _scrollController.dispose();
 
     _assistantSub?.cancel();
     _transcriptSub?.cancel();
@@ -1376,19 +1467,36 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
       final available = await _speech.initialize(
         onStatus: (status) {
+          _showDebugLog('음성 인식 상태: $status');
           debugPrint('[MIC] 음성 인식 상태: $status');
+
           if (status == "done") {
-            // 타이머 취소하고 즉시 전송
+            // STT 완료 - 타이머 취소하고 즉시 전송
             _autoSendTimer?.cancel();
             _autoSendTimer = null;
             _silenceTimer?.cancel();
             _silenceTimer = null;
+            _showDebugLog('STT 완료 - 즉시 전송');
             _sendCurrentText();
           } else if (status == "notListening") {
+            // 4초 조용함으로 인한 일시정지 - 대화 종료
+            _showDebugLog('4초 조용함 - 대화 종료');
             _stopListening();
+            setState(() {
+              _text = '말씀이 없어서 대화를 종료합니다.';
+            });
           }
         },
-        onError: (err) => debugPrint('× STT 에러: $err'),
+        onError: (err) {
+          _showDebugLog('STT 오류 발생: $err');
+          debugPrint('× STT 에러: $err');
+
+          // STT 오류 발생 시 대화 종료
+          _stopListening();
+          setState(() {
+            _text = '대화가 종료되었습니다.';
+          });
+        },
       );
 
       if (available) {
@@ -1402,22 +1510,32 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           _text = '🎙️ 듣고 있어요...';
         });
 
-        debugPrint('[MIC] 마이크 시작 - 음성 레벨 기반 감지 활성화');
+        _showDebugLog('마이크 시작 - 음성 레벨 기반 감지 활성화');
         _animationController.forward();
+
+        // STT 패키지의 pauseFor 기능 사용 (4초 조용함 후 자동 일시정지)
+        _showDebugLog('STT 시작 - 4초 조용함 후 자동 일시정지');
 
         // 음성 레벨 기반 감지로 대체됨 (기존 5초 타이머 제거)
         _speech.listen(
           localeId: 'ko_KR',
           onResult: (val) {
             setState(() => _text = val.recognizedWords);
-            // 음성 인식 결과가 들어오면 기존 타이머들 취소
-            _autoSendTimer?.cancel();
-            _silenceTimer?.cancel();
+
+            // 음성 인식 결과가 들어오면 4초 타이머 리셋
+            if (val.recognizedWords.isNotEmpty) {
+              _silenceTimer?.cancel();
+              _silenceTimer = Timer(_silenceDuration, () {
+                if (_isListening) {
+                  debugPrint('[MIC] 4초 조용함 완료 - 자동 전송 실행');
+                  _sendCurrentText();
+                }
+              });
+              debugPrint('[MIC] 음성 인식됨 - 4초 타이머 리셋');
+            }
 
             if (val.finalResult) {
               debugPrint('[MIC] 최종 인식 결과: ${val.recognizedWords}');
-              // 최종 결과가 나오면 조용함 감지 시작
-              _onSoundLevelChange(0.0); // 조용함으로 처리
             }
           },
           onSoundLevelChange: (level) {
@@ -1630,6 +1748,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                 // 메인 콘텐츠
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _scrollController,
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
@@ -1696,6 +1815,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
                         // 대화 안내 카드
                         Container(
+                          key: _conversationGuideKey,
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -1787,11 +1907,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
                         // 항상 메인 화면 표시 (로그인 체크는 백그라운드에서)
                         ...[
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
 
                           // 음성 인식 텍스트 표시 영역
                           Container(
@@ -1876,64 +1996,55 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                             ),
                           ),
 
-                          const SizedBox(height: 24),
-
-                          // 대화 제안 카드
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1D1E33),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFFFFD700,
-                                    ).withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.lightbulb_outline,
-                                    color: Color(0xFFFFD700),
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                const Expanded(
-                                  child: Text(
-                                    '오늘 하루 어떻게 정리하는게 좋을까?',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
                           const SizedBox(height: 32),
 
                           // 마이크 버튼 섹션
                           Column(
                             children: [
+                              // 에어팟 안내 메시지
+                              Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.orange.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.airplay,
+                                      color: Colors.orange,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '에어팟을 끼고 말하면 인식을 못할 수도 있어요',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange.shade300,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+
                               // 마이크 버튼
                               GestureDetector(
                                 onTap:
-                                    (_isConversationBlocked || _isMicDisabled)
+                                    (_isConversationBlocked ||
+                                            _isMicDisabled ||
+                                            _isListening)
                                         ? null
                                         : _listen,
                                 child: AnimatedBuilder(
@@ -1955,15 +2066,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                           gradient: LinearGradient(
                                             colors:
                                                 (_isConversationBlocked ||
-                                                        _isMicDisabled)
+                                                        _isMicDisabled ||
+                                                        _isListening)
                                                     ? [
                                                       Colors.grey,
                                                       Colors.grey.shade700,
-                                                    ]
-                                                    : _isListening
-                                                    ? [
-                                                      Colors.red,
-                                                      Colors.red.shade700,
                                                     ]
                                                     : [
                                                       const Color(0xFF6C63FF),
@@ -1988,11 +2095,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                           ],
                                         ),
                                         child: Icon(
-                                          (_isConversationBlocked ||
-                                                  _isMicDisabled)
+                                          _isConversationBlocked
                                               ? Icons.block
                                               : _isListening
-                                              ? Icons.stop
+                                              ? Icons.record_voice_over
+                                              : _isMicDisabled
+                                              ? Icons.mic_off
                                               : Icons.mic,
                                           color: Colors.white,
                                           size: 40,
@@ -2030,10 +2138,10 @@ class _RealHomeScreenState extends State<RealHomeScreen>
                                 child: Text(
                                   _isConversationBlocked
                                       ? '🚫 대화 횟수 초과 - 유료 결제 필요'
-                                      : _isMicDisabled
-                                      ? '🔇 알라가 말하는 중...'
-                                      : _isListening
-                                      ? '🎙️ 듣고 있어요...'
+                                      : (_isMicDisabled || _isListening)
+                                      ? (_isListening
+                                          ? '🎙️ 듣고 있어요...'
+                                          : '🔇 알라가 말하는 중...')
                                       : '🎤 마이크를 탭해서 대화 시작',
                                   style: TextStyle(
                                     fontSize: 14,
