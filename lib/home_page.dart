@@ -246,7 +246,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       if (healthData == null || healthData.isEmpty) {
         debugPrint('[홈페이지] ❌ 해당 날짜에 건강앱 수면 데이터가 없음');
-        _showAppleWatchAlert();
         return;
       }
 
@@ -260,7 +259,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('[홈페이지] ✅ 특정 날짜 건강앱 수면데이터 생성 완료: $dateStr');
     } catch (e) {
       debugPrint('[홈페이지] ❌ 특정 날짜 건강앱 데이터 처리 중 오류: $e');
-      _showAppleWatchAlert();
       return;
     }
 
@@ -503,7 +501,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       if (healthData == null || healthData.isEmpty) {
         debugPrint('[홈페이지] ❌ 건강앱에서 수면 데이터를 가져올 수 없음');
-        _showAppleWatchAlert();
         return;
       }
 
@@ -521,7 +518,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('[홈페이지] ✅ pendingSleepPayload 저장됨');
     } catch (e) {
       debugPrint('[홈페이지] ❌ 건강앱 데이터 처리 중 오류: $e');
-      _showAppleWatchAlert();
       return;
     }
   }
@@ -772,119 +768,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     return score.clamp(0, 100);
-  }
-
-  // Apple Watch 착용 알림 표시
-  void _showAppleWatchAlert() {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.watch, color: Colors.blue, size: 28),
-              const SizedBox(width: 12),
-              const Text(
-                '수면 측정 필요',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '수면 데이터를 측정하려면:',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 16),
-              _buildInstructionItem('1', 'Apple Watch를 착용하고', Icons.watch),
-              _buildInstructionItem('2', '잠자리에 들기 전에', Icons.bedtime),
-              _buildInstructionItem('3', '수면 추적을 시작하세요', Icons.track_changes),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.blue.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Apple Watch가 자동으로 수면을 측정하고 건강 앱에 저장합니다.',
-                        style: TextStyle(fontSize: 14, color: Colors.blue),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text(
-                '확인',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildInstructionItem(String number, String text, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Colors.blue,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Icon(icon, color: Colors.grey[600], size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 15, color: Colors.black87),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _checkLoginStatus() async {
