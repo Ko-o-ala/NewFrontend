@@ -111,6 +111,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {});
     }
 
+    // 기존 캐시된 데이터 모두 삭제
+    debugPrint('[홈페이지] 🗑️ 기존 캐시된 수면데이터 모두 삭제');
+    await _clearAllSleepDataCache();
+
     // 강제로 새로운 수면데이터 생성 (기존 데이터 무시)
     debugPrint('[홈페이지] 🔄 강제로 새로운 수면데이터 생성');
     await _createTestSleepData();
@@ -227,6 +231,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     debugPrint(
       '[홈페이지] 📅 특정 날짜 수면데이터 생성 시작: ${DateFormat('yyyy-MM-dd').format(targetDate)}',
     );
+
+    // 기존 캐시된 데이터 먼저 삭제
+    await _clearAllSleepDataCache();
+    debugPrint('[홈페이지] 🗑️ 기존 캐시 삭제 후 새 데이터 생성');
 
     final prefs = await SharedPreferences.getInstance();
     final token = await storage.read(key: 'jwt');
@@ -346,6 +354,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     debugPrint('[홈페이지] 🗑️ lastSentDate 초기화 완료 - 강제 전송 가능');
   }
 
+  // 모든 수면데이터 캐시 삭제
+  Future<void> _clearAllSleepDataCache() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 모든 수면 관련 캐시 삭제
+    await prefs.remove('pendingSleepPayload');
+    await prefs.remove('latestServerSleepData');
+    await prefs.remove('lastSentDate');
+    await prefs.remove('sleepDataJustUploaded');
+    await prefs.remove('sleepScoreUpdated');
+
+    debugPrint('[홈페이지] 🗑️ 모든 수면데이터 캐시 삭제 완료');
+  }
+
   Future<void> _checkProfileUpdate() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -463,10 +485,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // 기존 데이터가 있으면 로그만 출력하고 계속 진행 (강제 생성)
-    if (prefs.getString('pendingSleepPayload') != null) {
-      debugPrint('[홈페이지] 기존 수면 데이터가 존재함 - 덮어쓰기 진행');
-    }
+    // 기존 캐시된 데이터 먼저 삭제
+    await _clearAllSleepDataCache();
+    debugPrint('[홈페이지] 🗑️ 기존 캐시 삭제 후 새 데이터 생성');
 
     // JWT에서 실제 userID 추출
     final token = await storage.read(key: 'jwt');
