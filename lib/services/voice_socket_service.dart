@@ -27,6 +27,7 @@ class VoiceSocketService {
 
   IO.Socket? _socket;
   String? _connectedUrl;
+  String? _jwt; // JWT 토큰 저장
 
   bool get isConnected => _socket?.connected == true;
   String? get connectedUrl => _connectedUrl;
@@ -51,16 +52,41 @@ class VoiceSocketService {
       _serverDisconnectCtrl.stream;
 
   /// 서버에 연결합니다.
-  /// [url] 예) `wss://llm.tassoo.uk?jwt=...`
-  void connect({required String url}) {
+  /// [url] 예) `wss://llm.tassoo.uk`
+  /// [jwt] JWT 토큰 (보안을 위해 헤더로 전송)
+  void connect({required String url, String? jwt}) {
+    print('🔍 connect() 메서드 호출됨');
+    print('   - URL: $url');
+    print('   - JWT: ${jwt != null ? "있음" : "없음"}');
+
     // 이미 같은 URL로 연결되어 있으면 무시
-    if (_socket != null && _socket!.connected && _connectedUrl == url) return;
+    if (_socket != null && _socket!.connected && _connectedUrl == url) {
+      print('🔍 이미 연결됨 - 무시');
+      return;
+    }
 
     // 기존 소켓 정리(리스너 중복 방지)
+    print('🔍 _tearDownSocket() 호출 전');
     _tearDownSocket();
+    print('🔍 _tearDownSocket() 호출 후');
 
     _connectedUrl = url;
+    _jwt = jwt; // JWT 저장
     _connCtrl.add(false); // connecting/disconnected 상태 알림
+
+    // JWT 토큰 로그 출력
+    if (jwt != null && jwt.isNotEmpty) {
+      print('🔑 JWT 토큰 정보:');
+      print('   - 전체 길이: ${jwt.length}');
+      print(
+        '   - 앞 20자: ${jwt.substring(0, jwt.length > 20 ? 20 : jwt.length)}...',
+      );
+      print(
+        '   - 뒤 10자: ...${jwt.substring(jwt.length > 10 ? jwt.length - 10 : 0)}',
+      );
+    } else {
+      print('⚠️ JWT 토큰이 없습니다');
+    }
 
     _socket = IO.io(
       url,
@@ -75,11 +101,83 @@ class VoiceSocketService {
     _socket!
       ..onConnect((_) {
         print('🟢 socket connected: $url');
+        print('📡 WebSocket 연결 성공 - authorize 이벤트로 JWT 전송 예정');
         _connCtrl.add(true);
+
+        // 연결 후 JWT로 인증
+        if (_jwt != null && _jwt!.isNotEmpty) {
+          print('🔐 authorize 이벤트 전송 중...');
+          print('   - 이벤트명: authorize');
+          print('   - 토큰 길이: ${_jwt!.length}');
+          print(
+            '   - 토큰 앞 20자: ${_jwt!.substring(0, _jwt!.length > 20 ? 20 : _jwt!.length)}...',
+          );
+
+          _socket?.emit('authorize', {'token': _jwt});
+          print('✅ authorize 이벤트 전송 완료');
+        } else {
+          print('⚠️ JWT가 없어서 authorize 이벤트를 전송하지 않습니다');
+        }
+      })
+      ..on('connect', (_) {
+        print('🟢 socket connect 이벤트 발생: $url');
+        print('📡 WebSocket 연결 성공 - authorize 이벤트로 JWT 전송 예정');
+        _connCtrl.add(true);
+
+        // 연결 후 JWT로 인증
+        if (_jwt != null && _jwt!.isNotEmpty) {
+          print('🔐 authorize 이벤트 전송 중...');
+          print('   - 이벤트명: authorize');
+          print('   - 토큰 길이: ${_jwt!.length}');
+          print(
+            '   - 토큰 앞 20자: ${_jwt!.substring(0, _jwt!.length > 20 ? 20 : _jwt!.length)}...',
+          );
+
+          _socket?.emit('authorize', {'token': _jwt});
+          print('✅ authorize 이벤트 전송 완료');
+        } else {
+          print('⚠️ JWT가 없어서 authorize 이벤트를 전송하지 않습니다');
+        }
       })
       ..onReconnect((_) {
         print('🔄 socket reconnected');
+        print('📡 WebSocket 재연결 성공 - authorize 이벤트로 JWT 전송 예정');
         _connCtrl.add(true);
+
+        // 재연결 후에도 JWT로 인증
+        if (_jwt != null && _jwt!.isNotEmpty) {
+          print('🔐 재연결 후 authorize 이벤트 전송 중...');
+          print('   - 이벤트명: authorize');
+          print('   - 토큰 길이: ${_jwt!.length}');
+          print(
+            '   - 토큰 앞 20자: ${_jwt!.substring(0, _jwt!.length > 20 ? 20 : _jwt!.length)}...',
+          );
+
+          _socket?.emit('authorize', {'token': _jwt});
+          print('✅ 재연결 후 authorize 이벤트 전송 완료');
+        } else {
+          print('⚠️ JWT가 없어서 재연결 후 authorize 이벤트를 전송하지 않습니다');
+        }
+      })
+      ..on('reconnect', (_) {
+        print('🔄 socket reconnect 이벤트 발생');
+        print('📡 WebSocket 재연결 성공 - authorize 이벤트로 JWT 전송 예정');
+        _connCtrl.add(true);
+
+        // 재연결 후에도 JWT로 인증
+        if (_jwt != null && _jwt!.isNotEmpty) {
+          print('🔐 재연결 후 authorize 이벤트 전송 중...');
+          print('   - 이벤트명: authorize');
+          print('   - 토큰 길이: ${_jwt!.length}');
+          print(
+            '   - 토큰 앞 20자: ${_jwt!.substring(0, _jwt!.length > 20 ? 20 : _jwt!.length)}...',
+          );
+
+          _socket?.emit('authorize', {'token': _jwt});
+          print('✅ 재연결 후 authorize 이벤트 전송 완료');
+        } else {
+          print('⚠️ JWT가 없어서 재연결 후 authorize 이벤트를 전송하지 않습니다');
+        }
       })
       ..onReconnectAttempt((att) {
         print('… reconnect attempt #$att');
@@ -96,6 +194,18 @@ class VoiceSocketService {
       ..onDisconnect((reason) {
         print('🔌 socket disconnected: $reason');
         _connCtrl.add(false);
+      })
+      // ===== 서버 이벤트: 인증 응답 =====
+      ..on('auth_success', (data) {
+        print('✅ JWT 인증 성공!');
+        print('   - 서버 응답: $data');
+        print('   - 인증 완료 - 대화 가능');
+      })
+      ..on('auth_failed', (data) {
+        print('❌ JWT 인증 실패!');
+        print('   - 서버 응답: $data');
+        print('   - 연결을 끊습니다');
+        _connCtrl.add(false); // 인증 실패 시 연결 끊기
       })
       // ===== 서버 이벤트: 텍스트 응답 =====
       ..on('assistant_response', (data) {
@@ -155,6 +265,21 @@ class VoiceSocketService {
       })
       // 실제 연결 시작
       ..connect();
+
+    // 연결 후 즉시 JWT 전송 (이벤트 바인딩이 실패할 경우를 대비)
+    Future.delayed(Duration(milliseconds: 100), () {
+      if (_jwt != null && _jwt!.isNotEmpty) {
+        print('🔐 연결 후 즉시 authorize 이벤트 전송...');
+        print('   - 이벤트명: authorize');
+        print('   - 토큰 길이: ${_jwt!.length}');
+        print(
+          '   - 토큰 앞 20자: ${_jwt!.substring(0, _jwt!.length > 20 ? 20 : _jwt!.length)}...',
+        );
+
+        _socket?.emit('authorize', {'token': _jwt});
+        print('✅ 연결 후 즉시 authorize 이벤트 전송 완료');
+      }
+    });
   }
 
   /// 텍스트 전송 (사용자 발화 등)
@@ -163,7 +288,15 @@ class VoiceSocketService {
       print('⚠️ sendText called while socket not connected.');
       return;
     }
+
+    print('💬 대화 메시지 전송:');
+    print('   - 이벤트명: text_input');
+    print('   - 메시지: "$text"');
+    print('   - 메시지 길이: ${text.length}');
+    print('   - JWT 없이 전송 (이미 인증됨)');
+
     _socket?.emit('text_input', {'text': text});
+    print('✅ 대화 메시지 전송 완료');
   }
 
   /// 수동 종료
@@ -229,6 +362,16 @@ class VoiceSocketService {
     return Uint8List(0);
   }
 
+  /// 수동 재연결 (대화 중단 후 재시작)
+  void reconnect() {
+    print('🔄 수동 재연결 시작...');
+    if (_jwt != null && _jwt!.isNotEmpty && _connectedUrl != null) {
+      connect(url: _connectedUrl!, jwt: _jwt);
+    } else {
+      print('⚠️ JWT 또는 URL이 없어서 재연결할 수 없습니다');
+    }
+  }
+
   /// 기존 소켓 리스너/리소스 정리 (중복 연결 방지)
   void _tearDownSocket() {
     try {
@@ -239,8 +382,11 @@ class VoiceSocketService {
       _socket?.off('mp3');
       _socket?.off('mp3_chunk');
       _socket?.off('server_disconnect');
+      _socket?.off('auth_success');
+      _socket?.off('auth_failed');
 
       _socket?.dispose();
+      _jwt = null; // JWT 초기화
     } catch (_) {
       // ignore
     }

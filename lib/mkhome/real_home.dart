@@ -345,6 +345,8 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('🔍 initState() 메서드 호출됨');
+
     _scrollController = ScrollController();
     _loadUsername();
     _initAudioPlayer();
@@ -354,7 +356,9 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     debugPrint('[INIT] 자동 마이크 활성화 플래그 초기화: $_autoResumeMic');
 
     // WebSocket 연결을 먼저 설정
+    debugPrint('🔍 _initializeConnection() 호출 전');
     _initializeConnection();
+    debugPrint('🔍 _initializeConnection() 호출 후');
 
     // real_home.dart 진입 시 사운드 중지
     _stopAllAudio();
@@ -558,16 +562,27 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   }
 
   Future<void> _connectVoice() async {
+    debugPrint('🔍 _connectVoice() 메서드 호출됨');
+
     final jwt = await storage.read(key: 'jwt') ?? ''; // 🔑 저장키가 'jwt'인지 확인!
     final wsUri = Uri(
       scheme: 'wss',
       host: 'llm.tassoo.uk',
       // path: '/ws', // 서버가 경로 요구하면 설정
-      queryParameters: jwt.isNotEmpty ? {'jwt': jwt} : null,
     );
 
-    debugPrint('WS connect: $wsUri'); // 예: wss://llm.tassoo.uk?jwt=...
-    voiceService.connect(url: wsUri.toString());
+    debugPrint('🚀 WebSocket 연결 시작:');
+    debugPrint('   - URL: $wsUri');
+    debugPrint('   - JWT 전송 방식: authorize 이벤트만');
+    debugPrint('   - JWT 존재 여부: ${jwt.isNotEmpty ? "있음" : "없음"}');
+    debugPrint('   - JWT 길이: ${jwt.length}');
+
+    debugPrint('🔍 voiceService.connect() 호출 전');
+    voiceService.connect(
+      url: wsUri.toString(),
+      jwt: jwt.isNotEmpty ? jwt : null,
+    );
+    debugPrint('🔍 voiceService.connect() 호출 후');
 
     // 연결 완료를 기다림 (최대 3초)
     int attempts = 0;
@@ -745,8 +760,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   // 초기 연결 설정
   Future<void> _initializeConnection() async {
+    debugPrint('🔍 _initializeConnection() 메서드 호출됨');
     try {
+      debugPrint('🔍 _connectVoice() 호출 전');
       await _connectVoice();
+      debugPrint('🔍 _connectVoice() 호출 후');
       debugPrint('[INIT] 초기 WebSocket 연결 완료');
       _isInitialized = true; // 연결 성공 시 초기화 완료
       _autoResumeMic = true; // 자동 마이크 활성화 활성화

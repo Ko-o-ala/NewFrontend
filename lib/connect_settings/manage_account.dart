@@ -146,10 +146,10 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
         }
         // 생년월일 형식 검증
         if (!_isValidBirthdate(trimmedBirthdate)) {
-          _showSnackBar('생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD)', false);
+          _showSnackBar('생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD 또는 YYYYMMDD)', false);
           return;
         }
-        profileData['birthdate'] = trimmedBirthdate;
+        profileData['birthdate'] = _normalizeBirthdate(trimmedBirthdate);
       }
 
       // ===== 비밀번호 변경 유효성 검사 =====
@@ -484,7 +484,7 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
                             birthdateController,
                             Icons.calendar_today,
                             keyboardType: TextInputType.datetime,
-                            hintText: 'YYYY-MM-DD',
+                            hintText: 'YYYY-MM-DD 또는 YYYYMMDD',
                           ),
                         ],
                       ),
@@ -871,14 +871,53 @@ class _ManageAccountPageState extends State<ManageAccountPage> {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 
-  bool _isValidBirthdate(String birthdate) {
-    try {
-      final dateTime = DateTime.parse(birthdate);
-      final formatted =
-          '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
-      return formatted == birthdate;
-    } catch (e) {
-      return false;
+  // 생년월일을 YYYY-MM-DD 형식으로 변환
+  String _normalizeBirthdate(String input) {
+    final trimmed = input.trim();
+
+    // 이미 YYYY-MM-DD 형식이면 그대로 반환
+    if (_birthdateRegexWithDash.hasMatch(trimmed)) {
+      return trimmed;
     }
+
+    // YYYYMMDD 형식이면 YYYY-MM-DD로 변환
+    if (_birthdateRegexWithoutDash.hasMatch(trimmed)) {
+      final y = trimmed.substring(0, 4);
+      final m = trimmed.substring(4, 6);
+      final d = trimmed.substring(6, 8);
+      return '$y-$m-$d';
+    }
+
+    // 유효하지 않은 형식이면 원본 반환 (서버에서 에러 처리)
+    return trimmed;
+  }
+
+  // "YYYY-MM-DD" 또는 "YYYYMMDD" 형식 + 실제 존재 날짜 검사
+  final _birthdateRegexWithDash = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  final _birthdateRegexWithoutDash = RegExp(r'^\d{8}$');
+
+  bool _isValidBirthdate(String s) {
+    final t = s.trim();
+
+    // YYYY-MM-DD 형식 검사
+    if (_birthdateRegexWithDash.hasMatch(t)) {
+      final parts = t.split('-');
+      final y = int.parse(parts[0]),
+          m = int.parse(parts[1]),
+          d = int.parse(parts[2]);
+      final dt = DateTime(y, m, d);
+      return dt.year == y && dt.month == m && dt.day == d;
+    }
+
+    // YYYYMMDD 형식 검사
+    if (_birthdateRegexWithoutDash.hasMatch(t)) {
+      final y = int.parse(t.substring(0, 4));
+      final m = int.parse(t.substring(4, 6));
+      final d = int.parse(t.substring(6, 8));
+      final dt = DateTime(y, m, d);
+      return dt.year == y && dt.month == m && dt.day == d;
+    }
+
+    return false;
   }
 }

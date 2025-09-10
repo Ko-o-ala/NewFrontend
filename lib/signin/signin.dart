@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:my_app/services/auth_service.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -27,35 +26,66 @@ class _SignInScreenState extends State<SignInScreen> {
   bool isLoading = false;
 
   // 오류 메시지
+  String? _idError;
   String? _passwordError;
   String? _birthdateError;
   String? _generalError;
 
   final storage = const FlutterSecureStorage();
 
-  // "YYYY-MM-DD" 형식 + 실제 존재 날짜 검사
-  final _birthdateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  // "YYYY-MM-DD" 또는 "YYYYMMDD" 형식 + 실제 존재 날짜 검사
+  final _birthdateRegexWithDash = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  final _birthdateRegexWithoutDash = RegExp(r'^\d{8}$');
+
+  // 아이디 형식 검사: 영문, 숫자, 언더스코어만 허용 (한글 제외)
+  final _idRegex = RegExp(r'^[a-zA-Z0-9_]+$');
+
+  bool _isIdValid(String s) {
+    final t = s.trim();
+    return t.isNotEmpty && _idRegex.hasMatch(t);
+  }
+
   bool _isBirthdateValid(String s) {
     final t = s.trim();
-    if (!_birthdateRegex.hasMatch(t)) return false;
-    final parts = t.split('-');
-    final y = int.parse(parts[0]),
-        m = int.parse(parts[1]),
-        d = int.parse(parts[2]);
-    final dt = DateTime(y, m, d);
-    return dt.year == y && dt.month == m && dt.day == d;
+
+    // YYYY-MM-DD 형식 검사
+    if (_birthdateRegexWithDash.hasMatch(t)) {
+      final parts = t.split('-');
+      final y = int.parse(parts[0]),
+          m = int.parse(parts[1]),
+          d = int.parse(parts[2]);
+      final dt = DateTime(y, m, d);
+      return dt.year == y && dt.month == m && dt.day == d;
+    }
+
+    // YYYYMMDD 형식 검사
+    if (_birthdateRegexWithoutDash.hasMatch(t)) {
+      final y = int.parse(t.substring(0, 4));
+      final m = int.parse(t.substring(4, 6));
+      final d = int.parse(t.substring(6, 8));
+      final dt = DateTime(y, m, d);
+      return dt.year == y && dt.month == m && dt.day == d;
+    }
+
+    return false;
   }
 
   // 아이디 입력 변경 시: 이전 중복 에러/메시지만 리셋
   void _onIdChanged(String value) {
-    if (_isIdAvailable == false || _idHelperText != null) {
-      setState(() {
+    setState(() {
+      // 아이디 형식 검사
+      if (value.isNotEmpty && !_isIdValid(value)) {
+        _idError = '영문, 숫자, 언더스코어(_)만 사용 가능합니다';
+      } else {
+        _idError = null;
+      }
+
+      // 이전 중복 에러/메시지 리셋
+      if (_isIdAvailable == false || _idHelperText != null) {
         _isIdAvailable = null;
         _idHelperText = null;
-      });
-    }
-    // 아이디가 입력되면 setState를 호출하여 버튼 상태 업데이트
-    setState(() {});
+      }
+    });
   }
 
   // 아이디 중복 확인
@@ -126,10 +156,13 @@ class _SignInScreenState extends State<SignInScreen> {
       if (value.isEmpty) {
         _birthdateError = null;
       } else if (!_isBirthdateValid(value)) {
-        if (value.length == 10 && !_birthdateRegex.hasMatch(value)) {
-          _birthdateError = 'yyyy-mm-dd 형식 맞춰주세요';
-        } else if (value.length < 10) {
-          _birthdateError = 'yyyy-mm-dd 형식 맞춰주세요';
+        if (value.length == 8 && !_birthdateRegexWithoutDash.hasMatch(value)) {
+          _birthdateError = 'yyyy-mm-dd 또는 yyyymmdd 형식으로 입력해주세요';
+        } else if (value.length == 10 &&
+            !_birthdateRegexWithDash.hasMatch(value)) {
+          _birthdateError = 'yyyy-mm-dd 또는 yyyymmdd 형식으로 입력해주세요';
+        } else if (value.length < 8) {
+          _birthdateError = 'yyyy-mm-dd 또는 yyyymmdd 형식으로 입력해주세요';
         } else {
           _birthdateError = '올바른 생년월일을 입력해주세요';
         }
@@ -145,6 +178,9 @@ class _SignInScreenState extends State<SignInScreen> {
     if (idController.text.trim().isEmpty) {
       return '아이디를 입력해주세요';
     }
+    if (!_isIdValid(idController.text)) {
+      return '영문, 숫자, 언더스코어(_)만 사용 가능합니다';
+    }
     if (_isIdAvailable == false) {
       return '이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요.';
     }
@@ -157,7 +193,7 @@ class _SignInScreenState extends State<SignInScreen> {
       return '생년월일을 입력해주세요';
     }
     if (!_isBirthdateValid(birthdateController.text)) {
-      return '올바른 생년월일 형식으로 입력해주세요 (예: 1995-08-07)';
+      return '올바른 생년월일 형식으로 입력해주세요 (예: 1995-08-07 또는 19950807)';
     }
 
     // 비밀번호
@@ -211,6 +247,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get isFormValid {
     return idController.text.trim().isNotEmpty &&
+        _isIdValid(idController.text) &&
         passwordController.text.length >= 6 &&
         _isBirthdateValid(birthdateController.text) &&
         agreedToPrivacy;
@@ -235,6 +272,27 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+  // 생년월일을 YYYY-MM-DD 형식으로 변환
+  String _formatBirthdate(String input) {
+    final trimmed = input.trim();
+
+    // 이미 YYYY-MM-DD 형식이면 그대로 반환
+    if (_birthdateRegexWithDash.hasMatch(trimmed)) {
+      return trimmed;
+    }
+
+    // YYYYMMDD 형식이면 YYYY-MM-DD로 변환
+    if (_birthdateRegexWithoutDash.hasMatch(trimmed)) {
+      final y = trimmed.substring(0, 4);
+      final m = trimmed.substring(4, 6);
+      final d = trimmed.substring(6, 8);
+      return '$y-$m-$d';
+    }
+
+    // 유효하지 않은 형식이면 원본 반환 (서버에서 에러 처리)
+    return trimmed;
+  }
+
   Future<void> _handleSignUp() async {
     setState(() => isLoading = true);
 
@@ -248,7 +306,7 @@ class _SignInScreenState extends State<SignInScreen> {
           'userID': idController.text.trim(),
           'name': savedName,
           'password': passwordController.text,
-          'birthdate': birthdateController.text.trim(),
+          'birthdate': _formatBirthdate(birthdateController.text),
           'gender': selectedGender,
         }),
       );
@@ -473,7 +531,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     // 생년월일
                     _buildInputField(
                       controller: birthdateController,
-                      hint: '생년월일 (예: 1995-08-07)',
+                      hint: '생년월일 (예: 1995-08-07 또는 19950807)',
                       icon: Icons.calendar_today,
 
                       errorText: _birthdateError,
@@ -769,7 +827,11 @@ class _SignInScreenState extends State<SignInScreen> {
     bool? isValid;
     String? errorMsg;
 
-    if (_isIdAvailable == true) {
+    // 아이디 형식 에러가 있으면 우선 표시
+    if (_idError != null) {
+      isValid = false;
+      errorMsg = _idError;
+    } else if (_isIdAvailable == true) {
       isValid = true;
       errorMsg = null;
     } else if (_isIdAvailable == false) {
@@ -812,12 +874,14 @@ class _SignInScreenState extends State<SignInScreen> {
           duration: const Duration(milliseconds: 200),
           child: ElevatedButton(
             onPressed:
-                idController.text.trim().isNotEmpty
+                idController.text.trim().isNotEmpty &&
+                        _isIdValid(idController.text)
                     ? () => _checkIdAvailability(idController.text.trim())
                     : null,
             style: ElevatedButton.styleFrom(
               backgroundColor:
-                  idController.text.trim().isNotEmpty
+                  idController.text.trim().isNotEmpty &&
+                          _isIdValid(idController.text)
                       ? const Color(0xFF6C63FF) // 입력 있음: 파란색
                       : const Color(
                         0xFF6C63FF,
@@ -834,7 +898,8 @@ class _SignInScreenState extends State<SignInScreen> {
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color:
-                    idController.text.trim().isNotEmpty
+                    idController.text.trim().isNotEmpty &&
+                            _isIdValid(idController.text)
                         ? Colors
                             .white // 입력 있음: 흰색
                         : Colors.white.withOpacity(0.5), // 입력 없음: 흐린 흰색
