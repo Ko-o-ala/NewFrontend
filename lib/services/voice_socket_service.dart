@@ -231,6 +231,10 @@ class VoiceSocketService {
 
         String reason = m?['reason']?.toString() ?? 'unknown';
         String message = m?['message']?.toString() ?? 'Server is disconnecting';
+
+        print('🔍 [DEBUG] server_disconnect 이벤트 수신: $payload');
+        print('🔍 [DEBUG] payload 타입: ${payload.runtimeType}');
+        print('🔍 [DEBUG] reason: $reason, message: $message');
         // 서버가 timestamp / timestampMs 중 뭘 보내든 흡수
         int? _toInt(dynamic v) {
           if (v is int) return v;
@@ -253,15 +257,38 @@ class VoiceSocketService {
         );
 
         // 1) 구독자에게 먼저 알리고
+        print('🔍 [DEBUG] _serverDisconnectCtrl.add() 호출 전 - reason: $reason');
         _serverDisconnectCtrl.add(evt);
+        print('🔍 [DEBUG] _serverDisconnectCtrl.add() 호출 후');
         print('⚠️ server_disconnect: $m');
 
-        // 2) UI에도 안내(선택)
-        _assistantCtrl.add('⚠️ 서버 연결이 끊어졌습니다. ($reason)');
+        // 2) reason이 sound면 직접 사운드 페이지로 이동
+        if (reason == 'sound') {
+          print('🎵 [SOUND] VoiceSocketService에서 직접 사운드 페이지 이동 시도');
+          // Navigator를 사용할 수 없으므로 이벤트로 알림
+          _assistantCtrl.add('SOUND_PAGE_NAVIGATE');
+        } else {
+          // UI에도 안내(선택)
+          _assistantCtrl.add('⚠️ 서버 연결이 끊어졌습니다. ($reason)');
+        }
 
         // 3) 연결 상태 false → 소켓 종료
         _connCtrl.add(false);
         _socket?.disconnect();
+      })
+      // ===== 서버 이벤트: Sound 신호 (별도 이벤트로도 처리) =====
+      ..on('sound', (payload) {
+        print('🔍 [DEBUG] sound 이벤트 수신: $payload');
+
+        // sound 이벤트를 server_disconnect로 변환하여 처리
+        final evt = ServerDisconnectEvent(
+          reason: 'sound',
+          message: 'Sound recommendation triggered',
+          timestampMs: DateTime.now().millisecondsSinceEpoch,
+        );
+
+        _serverDisconnectCtrl.add(evt);
+        print('🎵 sound 이벤트를 server_disconnect로 변환하여 처리');
       })
       // 실제 연결 시작
       ..connect();

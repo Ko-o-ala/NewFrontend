@@ -503,7 +503,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
 
-    // 전날 수면데이터로 생성 (오늘이 8일이면 7일 데이터)
+    // 오늘 날짜를 기준으로 수면데이터를 가져와서 어제 날짜로 서버에 전송
     final now = DateTime.now();
     final yesterday = now.subtract(const Duration(days: 1));
     final yesterdayStr = DateFormat('yyyy-MM-dd').format(yesterday);
@@ -514,11 +514,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
     debugPrint('[홈페이지] 📅 오늘 날짜: $todayStr');
     debugPrint('[홈페이지] 📅 어제 날짜: $yesterdayStr');
-    debugPrint('[홈페이지] 📅 생성할 데이터 날짜: $yesterdayStr');
+    debugPrint('[홈페이지] 📅 애플앱에서 가져올 날짜: $todayStr (오늘)');
+    debugPrint('[홈페이지] 📅 서버에 전송할 날짜: $yesterdayStr (어제)');
 
     try {
-      // 건강앱에서 수면 데이터 가져오기
-      final healthData = await _getHealthSleepData(yesterday);
+      // 건강앱에서 오늘 날짜 기준으로 수면 데이터 가져오기
+      final healthData = await _getHealthSleepData(now);
 
       if (healthData == null || healthData.isEmpty) {
         debugPrint('[홈페이지] ❌ 건강앱에서 수면 데이터를 가져올 수 없음');
@@ -853,6 +854,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('[홈페이지] ❌ token: ${token != null ? "있음" : "없음"}');
       debugPrint('[홈페이지] ❌ userId: ${userId ?? "없음"}');
       debugPrint('[홈페이지] ❌ payloadJson: ${payloadJson != null ? "있음" : "없음"}');
+
+      // UI에 오류 메시지 표시
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '수면데이터 전송 실패: ${token == null
+                  ? "토큰 없음"
+                  : userId == null
+                  ? "사용자ID 없음"
+                  : "수면데이터 없음"}',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
       return;
     }
 
@@ -914,6 +932,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         // 성공 상태 업데이트
         if (mounted) {
           setState(() {});
+
+          // UI에 성공 메시지 표시
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('수면데이터 전송 성공: $date'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
         }
 
         // 업로드 성공 → 서버 데이터로 캐시 갱신
@@ -1013,6 +1040,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         debugPrint('[홈페이지] ❌ 전송한 데이터: $updatedPayloadJson');
         debugPrint('[홈페이지] ❌ 사용자 ID: $userId');
         debugPrint('[홈페이지] ❌ 데이터 날짜: $date');
+
+        // UI에 오류 메시지 표시
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('수면데이터 전송 실패: ${resp.statusCode} ${resp.body}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
         debugPrint('[홈페이지] ❌ JWT 토큰: ${token.substring(0, 20)}...');
 
         // 실패 시 재시도 (최대 3번)

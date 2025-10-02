@@ -88,10 +88,21 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _lastSoundTime = DateTime.now();
 
     if (level > _soundThreshold) {
-      // 음성이 감지됨 - 조용함 타이머 취소
+      // 음성이 감지됨 - 기존 조용함 타이머 취소하고 새로 시작
       _silenceTimer?.cancel();
       _silenceTimer = null;
       debugPrint('[MIC] 음성 감지됨 - 레벨: ${level.toStringAsFixed(2)}');
+
+      // 음성 감지 시에도 4초 타이머 시작 (연속적인 음성 처리)
+      if (_isListening) {
+        debugPrint('[MIC] 음성 감지 중 - 4초 후 자동 전송 예정');
+        _silenceTimer = Timer(_silenceDuration, () {
+          if (_isListening) {
+            debugPrint('[MIC] 4초 조용함 완료 - 자동 전송 실행');
+            _sendCurrentText();
+          }
+        });
+      }
     } else {
       // 조용함 감지 - 타이머 시작 (텍스트가 비어있어도 시작)
       if (_silenceTimer == null && _isListening) {
@@ -109,6 +120,46 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   // ===== Audio (audioplayers) =====
   final AudioPlayer _player = AudioPlayer();
   bool _isPlaying = false;
+
+  // 서버 연결 끊김 리스너 설정 (재사용 가능)
+  void _setupServerDisconnectListener() {
+    // 기존 구독 취소
+    _serverDiscSub?.cancel();
+
+    _serverDiscSub = voiceService.serverDisconnectStream.listen((evt) async {
+      debugPrint('🔍 [DEBUG] serverDisconnectStream 이벤트 수신: ${evt.reason}');
+      debugPrint('🔍 [DEBUG] reason: ${evt.reason}, message: ${evt.message}');
+
+      // 공통 정리
+      await _gracefulStopAll(evt.message);
+
+      // reason 분기
+      if (evt.reason == 'sound') {
+        debugPrint('🎵 [SOUND] reason이 sound입니다 - 사운드 페이지로 이동 시도');
+        // 사운드 페이지로 이동 + 추천 자동재생 플래그 전달
+        if (mounted) {
+          debugPrint('🎵 [SOUND] mounted 상태 확인됨 - Navigator.pushNamed 실행');
+          Navigator.pushNamed(
+            context,
+            '/sound',
+            arguments: {
+              'autoplayRecommended': true,
+            }, // ← 사운드 페이지에서 이 값을 보고 3개 자동재생
+          ).then((_) {
+            // 사운드 페이지에서 돌아온 후 리스너 재설정
+            debugPrint('🎵 [SOUND] 사운드 페이지에서 돌아옴 - 리스너 재설정');
+            _setupServerDisconnectListener();
+          });
+          debugPrint('🎵 [SOUND] Navigator.pushNamed 완료');
+        } else {
+          debugPrint('🎵 [SOUND] mounted가 false - 페이지 이동 실패');
+        }
+      } else {
+        debugPrint('🔇 [SILENT] reason이 sound가 아님: ${evt.reason} - 대화 종료만');
+        // 'silent' 또는 기타: 추가 동작 없이 종료만
+      }
+    });
+  }
 
   // ===== Socket & DB =====
   final voiceService = VoiceSocketService.instance;
@@ -404,26 +455,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     });
 
     // ② 서버가 의도적으로 끊을 때(이유 포함) 처리
-    _serverDiscSub = voiceService.serverDisconnectStream.listen((evt) async {
-      // 공통 정리
-      await _gracefulStopAll(evt.message);
-
-      // reason 분기
-      if (evt.reason == 'sound') {
-        // 사운드 페이지로 이동 + 추천 자동재생 플래그 전달
-        if (mounted) {
-          Navigator.pushNamed(
-            context,
-            '/sound',
-            arguments: {
-              'autoplayRecommended': true,
-            }, // ← 사운드 페이지에서 이 값을 보고 3개 자동재생
-          );
-        }
-      } else {
-        // 'silent' 또는 기타: 추가 동작 없이 종료만
-      }
-    });
+    _setupServerDisconnectListener();
 
     Uint8List _toMp3Bytes(dynamic evt) {
       try {
@@ -502,7 +534,24 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     _assistantSub = voiceService.assistantStream.listen((reply) {
       if (reply.trim().isEmpty) return;
 
+      // SOUND_PAGE_NAVIGATE 신호 감지
+      if (reply.trim() == 'SOUND_PAGE_NAVIGATE') {
+        debugPrint('🎵 [SOUND] SOUND_PAGE_NAVIGATE 신호 감지 - 사운드 페이지로 이동');
+        if (mounted) {
+          Navigator.pushNamed(
+            context,
+            '/sound',
+            arguments: {'autoplayRecommended': true},
+          ).then((_) {
+            debugPrint('🎵 [SOUND] 사운드 페이지에서 돌아옴');
+          });
+        }
+        return;
+      }
+
       final textOnly = extractTextFromFormattedString(reply.trim());
+
+      debugPrint('[ASSISTANT] 받은 텍스트: $textOnly');
 
       _chatBox.add(Message(sender: 'bot', text: textOnly));
 
@@ -553,10 +602,17 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         return;
       }
 
+      debugPrint(
+        '[AUDIO] 오디오 청크 조립 완료: ${trimmed.length} bytes, 큐 크기: ${_pendingQueue.length + 1}',
+      );
+
       // 3) 큐에 넣고, 재생 중이 아니면 바로 재생
       _pendingQueue.add(trimmed);
       if (!_isPlaying && !_isPreparing) {
+        debugPrint('[AUDIO] 즉시 재생 시작');
         _playNextFromQueue();
+      } else {
+        debugPrint('[AUDIO] 재생 대기 중 (현재 재생: $_isPlaying, 준비 중: $_isPreparing)');
       }
     });
   }
@@ -728,6 +784,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
     }
 
     if (!_isConversationBlocked) {
+      // 모든 타이머 취소 (중복 전송 방지)
+      _autoSendTimer?.cancel();
+      _autoSendTimer = null;
+      _silenceTimer?.cancel();
+      _silenceTimer = null;
+
       // 사용자 말이 끝나면 마이크 비활성화
       setState(() => _isMicDisabled = true);
 
@@ -737,6 +799,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         _connectVoice().then((_) {
           if (voiceService.isConnected) {
             setState(() => _isThinking = true);
+            debugPrint('[SEND] WebSocket 재연결 후 전송: $finalText');
             voiceService.sendText(finalText);
             _addMessage('user', finalText);
             _stopListening();
@@ -994,6 +1057,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
   Future<void> _playNextFromQueue() async {
     if (_pendingQueue.isEmpty) return;
+
+    // 중복 재생 방지: 이미 재생 중이거나 준비 중이면 무시
+    if (_isPlaying || _isPreparing) {
+      debugPrint('[PLAYER] 이미 재생 중이거나 준비 중 - 중복 재생 방지');
+      return;
+    }
+
     _isPreparing = true;
 
     try {
@@ -1012,6 +1082,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
       await _player.stop();
       await _player.play(DeviceFileSource(path));
+
+      // 재생 시작 상태 설정
+      setState(() {
+        _isPlaying = true;
+      });
     } catch (e) {
       debugPrint('auto play error: $e');
     } finally {
@@ -1495,6 +1570,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
             _silenceTimer?.cancel();
             _silenceTimer = null;
             _showDebugLog('STT 완료 - 즉시 전송');
+            // 중복 전송 방지를 위해 _isThinking 체크는 _sendCurrentText 내부에서 처리
             _sendCurrentText();
           } else if (status == "notListening") {
             // 4초 조용함으로 인한 일시정지 - 대화 종료
@@ -1542,7 +1618,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
             // 음성 인식 결과가 들어오면 4초 타이머 리셋
             if (val.recognizedWords.isNotEmpty) {
+              // 기존 타이머 취소
               _silenceTimer?.cancel();
+              _silenceTimer = null;
+
+              // 새 타이머 설정
               _silenceTimer = Timer(_silenceDuration, () {
                 if (_isListening) {
                   debugPrint('[MIC] 4초 조용함 완료 - 자동 전송 실행');
