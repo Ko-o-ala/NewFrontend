@@ -46,6 +46,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   bool _isPreparing = false; // 파일 쓰기 중 재진입 방지
   bool _autoResumeMic = true; // 말 끝나면 자동 재시작할지
   DateTime _lastTtsAt = DateTime.fromMillisecondsSinceEpoch(0); // 마지막 TTS 수신 시각
+  String? _lastSentText; // 마지막으로 전송한 텍스트 (중복 방지용)
 
   // 필드 추가
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -491,17 +492,24 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       (event) {
         final bytes = _toMp3Bytes(event);
         _lastTtsAt = DateTime.now();
-        _audioAvailable = true;
 
         if (bytes.isEmpty) {
           debugPrint('⏩ skip non-audio or empty: ${event.runtimeType}');
           return;
         }
 
+        // 중복 청크 방지 (같은 크기의 연속 청크 체크)
+        if (_audioBuffer.isNotEmpty &&
+            _audioBuffer.last.length == bytes.length &&
+            _audioBuffer.last.toString() == bytes.toString()) {
+          debugPrint('⏩ 중복 청크 감지 - 건너뛰기');
+          return;
+        }
+
         _audioBuffer.add(bytes);
         _audioAvailable = true;
 
-        if (_isThinking) setState(() => _isThinking = false);
+        // 오디오 수신 시 thinking 상태 유지 (알라가 말하기 시작했다는 의미)
 
         // (선택) 프리뷰 로그
         final preview = bytes
@@ -587,13 +595,26 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   void _scheduleAssemble() {
     _assembleTimer?.cancel();
     _assembleTimer = Timer(_assembleGap, () async {
-      if (!mounted || _disposed) return;
-      if (_audioBuffer.isEmpty) return;
+      debugPrint('[AUDIO] _scheduleAssemble 타이머 실행');
+
+      if (!mounted || _disposed) {
+        debugPrint('[AUDIO] 화면이 dispose되었거나 mounted가 false');
+        return;
+      }
+
+      if (_audioBuffer.isEmpty) {
+        debugPrint('[AUDIO] 오디오 버퍼가 비어있음');
+        return;
+      }
+
+      debugPrint('[AUDIO] 오디오 버퍼 크기: ${_audioBuffer.length}');
 
       // 1) 버퍼 합치기
       final all = Uint8List.fromList(_audioBuffer.expand((e) => e).toList());
       _audioBuffer.clear();
       _audioAvailable = false;
+
+      debugPrint('[AUDIO] 버퍼 합치기 완료 - 전체 크기: ${all.length} bytes');
 
       // 2) MP3 프레임 경계 정리
       final trimmed = _stripToFirstMp3Frame(all);
@@ -608,11 +629,11 @@ class _RealHomeScreenState extends State<RealHomeScreen>
 
       // 3) 큐에 넣고, 재생 중이 아니면 바로 재생
       _pendingQueue.add(trimmed);
-      if (!_isPlaying && !_isPreparing) {
+      if (!_isPlaying) {
         debugPrint('[AUDIO] 즉시 재생 시작');
         _playNextFromQueue();
       } else {
-        debugPrint('[AUDIO] 재생 대기 중 (현재 재생: $_isPlaying, 준비 중: $_isPreparing)');
+        debugPrint('[AUDIO] 재생 대기 중 (현재 재생: $_isPlaying)');
       }
     });
   }
@@ -762,6 +783,12 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   void _sendCurrentText() {
     final finalText = _text.trim();
 
+    // 중복 전송 방지: 같은 텍스트를 연속으로 전송하지 않음
+    if (_lastSentText == finalText) {
+      debugPrint('[SEND] 중복 텍스트 감지 - 전송 건너뛰기: $finalText');
+      return;
+    }
+
     // 이모지나 특수 문자가 포함된 메시지는 서버에 보내지 않음 (사용자 말이 아님)
     final hasEmojiOrSpecialChars = finalText.contains(
       RegExp(r'[🎙️❌✅🔌🔇🎤💭🤔]'),
@@ -802,6 +829,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
             debugPrint('[SEND] WebSocket 재연결 후 전송: $finalText');
             voiceService.sendText(finalText);
             _addMessage('user', finalText);
+            _lastSentText = finalText; // 마지막 전송 텍스트 저장
             _stopListening();
           } else {
             setState(() => _text = '❌ 서버 연결 실패');
@@ -814,6 +842,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
         setState(() => _isThinking = true);
         voiceService.sendText(finalText);
         _addMessage('user', finalText);
+        _lastSentText = finalText; // 마지막 전송 텍스트 저장
         _stopListening();
       }
     } else {
@@ -1056,14 +1085,18 @@ class _RealHomeScreenState extends State<RealHomeScreen>
   }
 
   Future<void> _playNextFromQueue() async {
-    if (_pendingQueue.isEmpty) return;
-
-    // 중복 재생 방지: 이미 재생 중이거나 준비 중이면 무시
-    if (_isPlaying || _isPreparing) {
-      debugPrint('[PLAYER] 이미 재생 중이거나 준비 중 - 중복 재생 방지');
+    if (_pendingQueue.isEmpty) {
+      debugPrint('[PLAYER] 재생할 오디오가 없음');
       return;
     }
 
+    // 중복 재생 방지: 이미 재생 중이면 무시
+    if (_isPlaying) {
+      debugPrint('[PLAYER] 이미 재생 중 - 중복 재생 방지 (재생: $_isPlaying)');
+      return;
+    }
+
+    debugPrint('[PLAYER] 오디오 재생 시작 - 큐 크기: ${_pendingQueue.length}');
     _isPreparing = true;
 
     try {
@@ -1075,13 +1108,20 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       await _enterPlaybackMode();
 
       final bytes = _pendingQueue.removeAt(0);
+      debugPrint('[PLAYER] 오디오 파일 생성 중 - 크기: ${bytes.length} bytes');
 
       // iOS 호환을 위해 파일로 저장 후 재생
       final path = await _writeTemp(bytes, ext: 'mp3');
       debugPrint('🎧 auto play: $path');
 
+      // 이전 재생 완전히 중지
       await _player.stop();
+
+      // 잠시 대기 후 재생 시작 (중복 재생 방지)
+      await Future.delayed(const Duration(milliseconds: 100));
+
       await _player.play(DeviceFileSource(path));
+      debugPrint('[PLAYER] 오디오 재생 시작됨');
 
       // 재생 시작 상태 설정
       setState(() {
@@ -1089,8 +1129,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
       });
     } catch (e) {
       debugPrint('auto play error: $e');
+      // 오류 발생 시 상태 초기화
+      setState(() {
+        _isPlaying = false;
+      });
     } finally {
       _isPreparing = false;
+      debugPrint('[PLAYER] 재생 준비 완료 - _isPreparing: false');
     }
   }
 
@@ -1564,7 +1609,7 @@ class _RealHomeScreenState extends State<RealHomeScreen>
           debugPrint('[MIC] 음성 인식 상태: $status');
 
           if (status == "done") {
-            // STT 완료 - 타이머 취소하고 즉시 전송
+            // STT 완료 - 모든 타이머 취소하고 즉시 전송
             _autoSendTimer?.cancel();
             _autoSendTimer = null;
             _silenceTimer?.cancel();
@@ -1622,11 +1667,13 @@ class _RealHomeScreenState extends State<RealHomeScreen>
               _silenceTimer?.cancel();
               _silenceTimer = null;
 
-              // 새 타이머 설정
+              // 새 타이머 설정 (STT가 "done" 상태가 되지 않은 경우에만 사용)
               _silenceTimer = Timer(_silenceDuration, () {
                 if (_isListening) {
                   debugPrint('[MIC] 4초 조용함 완료 - 자동 전송 실행');
                   _sendCurrentText();
+                } else {
+                  debugPrint('[MIC] 4초 조용함 완료되었지만 전송하지 않음 (마이크가 이미 중지됨)');
                 }
               });
               debugPrint('[MIC] 음성 인식됨 - 4초 타이머 리셋');

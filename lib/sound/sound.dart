@@ -443,7 +443,7 @@ class _SoundScreenState extends State<SoundScreen> {
 
   final FlutterSecureStorage storage = const FlutterSecureStorage();
 
-  double preferenceRatio = 0.75;
+  double preferenceRatio = 0.75; // 기본값
 
   String? recommendationText; // 서버가 내려주는 recommendation_text
   List<String> topRecommended = [];
@@ -679,6 +679,9 @@ class _SoundScreenState extends State<SoundScreen> {
           authReady = true;
         });
 
+        // 저장된 추천 비율 로드
+        await _loadPreferenceRatio();
+
         // 페이지 접속 시 자동으로 서버에서 추천 사운드 가져오기
         _loadRecommendations();
       } catch (e) {
@@ -860,6 +863,29 @@ class _SoundScreenState extends State<SoundScreen> {
       setState(() {
         _isLoadingRecommendations = false;
       });
+    }
+  }
+
+  // 저장된 추천 비율 로드
+  Future<void> _loadPreferenceRatio() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedRatio = prefs.getDouble('preferenceRatio');
+
+      if (savedRatio != null) {
+        setState(() {
+          preferenceRatio = savedRatio;
+        });
+        debugPrint(
+          '[PREFERENCE] 저장된 추천 비율 로드: ${(preferenceRatio * 100).toInt()}%',
+        );
+      } else {
+        debugPrint(
+          '[PREFERENCE] 저장된 추천 비율 없음 - 기본값 사용: ${(preferenceRatio * 100).toInt()}%',
+        );
+      }
+    } catch (e) {
+      debugPrint('[PREFERENCE] 추천 비율 로드 실패: $e');
     }
   }
 
@@ -1107,6 +1133,11 @@ class _SoundScreenState extends State<SoundScreen> {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
       }
+
+      // 서버 저장 성공 시 로컬에도 저장
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('preferenceRatio', balance);
+      debugPrint('[PREFERENCE] 추천 비율 로컬 저장 완료: ${(balance * 100).toInt()}%');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

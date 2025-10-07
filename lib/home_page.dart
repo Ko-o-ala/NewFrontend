@@ -192,87 +192,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('닫기'),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    await _showDatePickerDialog();
-                  },
-                  child: const Text('날짜 수정'),
-                ),
               ],
             ),
       );
     }
-  }
-
-  // 베타테스터를 위한 날짜 선택 다이얼로그
-  Future<void> _showDatePickerDialog() async {
-    final now = DateTime.now();
-    final yesterday = now.subtract(const Duration(days: 1));
-
-    final selectedDate = await showDatePicker(
-      context: context,
-      initialDate: yesterday,
-      firstDate: now.subtract(const Duration(days: 30)),
-      lastDate: now,
-      helpText: '수면데이터 날짜 선택',
-    );
-
-    if (selectedDate != null) {
-      debugPrint(
-        '[홈페이지] 📅 선택된 날짜: ${DateFormat('yyyy-MM-dd').format(selectedDate)}',
-      );
-      await _createTestSleepDataForDate(selectedDate);
-    }
-  }
-
-  // 특정 날짜로 수면데이터 생성
-  Future<void> _createTestSleepDataForDate(DateTime targetDate) async {
-    debugPrint(
-      '[홈페이지] 📅 특정 날짜 수면데이터 생성 시작: ${DateFormat('yyyy-MM-dd').format(targetDate)}',
-    );
-
-    // 기존 캐시된 데이터 먼저 삭제
-    await _clearAllSleepDataCache();
-    debugPrint('[홈페이지] 🗑️ 기존 캐시 삭제 후 새 데이터 생성');
-
-    final prefs = await SharedPreferences.getInstance();
-    final token = await storage.read(key: 'jwt');
-    final userId =
-        token != null ? JwtUtils.extractUserIdFromToken(token) : null;
-
-    if (userId == null) {
-      debugPrint('[홈페이지] ❌ userID를 찾을 수 없음');
-      return;
-    }
-
-    final dateStr = DateFormat('yyyy-MM-dd').format(targetDate);
-
-    try {
-      // 건강앱에서 해당 날짜의 수면 데이터 가져오기
-      final healthData = await _getHealthSleepData(targetDate);
-
-      if (healthData == null || healthData.isEmpty) {
-        debugPrint('[홈페이지] ❌ 해당 날짜에 건강앱 수면 데이터가 없음');
-        return;
-      }
-
-      // 건강앱 데이터를 API 스펙에 맞게 변환
-      final sleepData = _convertHealthDataToApiFormat(
-        healthData,
-        userId,
-        dateStr,
-      );
-      await prefs.setString('pendingSleepPayload', jsonEncode(sleepData));
-      debugPrint('[홈페이지] ✅ 특정 날짜 건강앱 수면데이터 생성 완료: $dateStr');
-    } catch (e) {
-      debugPrint('[홈페이지] ❌ 특정 날짜 건강앱 데이터 처리 중 오류: $e');
-      return;
-    }
-
-    // 즉시 전송 시도
-    await _clearLastSentDate();
-    _tryUploadPendingSleepData(retryCount: 0);
   }
 
   // 베타테스터를 위한 디버깅 정보 출력
@@ -593,7 +516,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     String userId,
     String date,
   ) {
-    int inBedMinutes = 0;
     int awakeMinutes = 0;
     int deepMinutes = 0;
     int remMinutes = 0;
@@ -610,11 +532,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       // ✅ 모든 포인트로 외피 계산
       overallStart =
-          (overallStart == null || data.dateFrom.isBefore(overallStart!))
+          (overallStart == null || data.dateFrom.isBefore(overallStart))
               ? data.dateFrom
               : overallStart;
       overallEnd =
-          (overallEnd == null || data.dateTo.isAfter(overallEnd!))
+          (overallEnd == null || data.dateTo.isAfter(overallEnd))
               ? data.dateTo
               : overallEnd;
 
@@ -624,7 +546,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
       switch (data.type) {
         case HealthDataType.SLEEP_IN_BED:
-          inBedMinutes += duration;
+          // inBed 데이터는 사용하지 않음
           break;
         case HealthDataType.SLEEP_AWAKE:
           awakeMinutes += duration;
@@ -676,12 +598,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // ✅ 실제 수면(깊+REM+얕음+코어)
     final actualSleepMinutes =
         deepMinutes + remMinutes + (lightMinutes + coreAsleepMinutes);
-    final scoringTotal = actualSleepMinutes + awakeMinutes; // ✅ 점수용 분모
 
     // ✅ 외피(첫 시작~마지막 종료)
     final envelopeMinutes =
         (overallStart != null && overallEnd != null)
-            ? overallEnd!.difference(overallStart!).inMinutes
+            ? overallEnd.difference(overallStart).inMinutes
             : 0;
 
     // ✅ 총 수면시간 = max(실제수면+깸, 외피)  → 자정 경계/타입 누락에 안전
@@ -693,10 +614,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // 시작/종료 시각도 외피 기준으로
     final startClock =
         overallStart != null
-            ? DateFormat('HH:mm').format(overallStart!)
+            ? DateFormat('HH:mm').format(overallStart)
             : "22:00";
     final endClock =
-        overallEnd != null ? DateFormat('HH:mm').format(overallEnd!) : "07:00";
+        overallEnd != null ? DateFormat('HH:mm').format(overallEnd) : "07:00";
 
     // 디버그
     debugPrint('[홈페이지] 📊 수면 시간 계산 결과:');
@@ -819,6 +740,44 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // ===== 수면데이터 서버 전송 관련 함수들 =====
 
+  // 수면 데이터 없을 때 한 번만 표시되는 알림
+  Future<void> _showSleepDataNotification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final lastNotificationDate = prefs.getString(
+      'lastSleepDataNotificationDate',
+    );
+
+    // 오늘 이미 알림을 표시했으면 표시하지 않음
+    if (lastNotificationDate == today) {
+      debugPrint('[홈페이지] 오늘 이미 수면 데이터 알림을 표시했음');
+      return;
+    }
+
+    // 알림 표시
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            '수면 데이터가 측정되지 않아 일부 서비스 이용이 힘들 수 있습니다. 애플 워치를 차고 자주세요',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: const Color(0xFF6C63FF),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+
+      // 오늘 날짜 저장
+      await prefs.setString('lastSleepDataNotificationDate', today);
+      debugPrint('[홈페이지] 수면 데이터 알림 표시 및 날짜 저장: $today');
+    }
+  }
+
   // 수면데이터 서버 전송 시도 (재시도 포함)
   Future<void> _tryUploadPendingSleepData({int retryCount = 0}) async {
     debugPrint('[홈페이지] ===== 수면데이터 전송 시작 (시도 ${retryCount + 1}/3) =====');
@@ -855,21 +814,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('[홈페이지] ❌ userId: ${userId ?? "없음"}');
       debugPrint('[홈페이지] ❌ payloadJson: ${payloadJson != null ? "있음" : "없음"}');
 
-      // UI에 오류 메시지 표시
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '수면데이터 전송 실패: ${token == null
-                  ? "토큰 없음"
-                  : userId == null
-                  ? "사용자ID 없음"
-                  : "수면데이터 없음"}',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      // 수면 데이터가 없는 경우에만 한 번 알림 표시
+      if (payloadJson == null && mounted) {
+        await _showSleepDataNotification();
       }
       return;
     }
@@ -933,14 +880,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {});
 
-          // UI에 성공 메시지 표시
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('수면데이터 전송 성공: $date'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          // 성공 시 사용자에게 알림 표시하지 않음 (백그라운드 작업)
         }
 
         // 업로드 성공 → 서버 데이터로 캐시 갱신
@@ -1041,16 +981,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         debugPrint('[홈페이지] ❌ 사용자 ID: $userId');
         debugPrint('[홈페이지] ❌ 데이터 날짜: $date');
 
-        // UI에 오류 메시지 표시
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('수면데이터 전송 실패: ${resp.statusCode} ${resp.body}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
+        // 전송 실패 시 오류 메시지 표시하지 않음 (사용자에게 부담 주지 않음)
         debugPrint('[홈페이지] ❌ JWT 토큰: ${token.substring(0, 20)}...');
 
         // 실패 시 재시도 (최대 3번)
@@ -1227,15 +1158,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               await _showDebugInfoDialog();
             },
             tooltip: '디버깅 정보 표시 (베타테스터용)',
-          ),
-          // 베타테스터를 위한 날짜 수정 버튼
-          IconButton(
-            icon: const Icon(Icons.calendar_today, color: Colors.white),
-            onPressed: () async {
-              debugPrint('[홈페이지] 📅 베타테스터 날짜 수정 버튼 클릭');
-              await _showDatePickerDialog();
-            },
-            tooltip: '수면데이터 날짜 수정 (베타테스터용)',
           ),
           // 베타테스터를 위한 수면데이터 수동 전송 버튼
           IconButton(

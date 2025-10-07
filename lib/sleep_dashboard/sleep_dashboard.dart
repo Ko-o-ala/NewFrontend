@@ -903,11 +903,9 @@ class _SleepDashboardState extends State<SleepDashboard>
       // 성공 시 별도 UX가 필요하면 여기서 처리
       return;
     } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('HTTP ${resp.statusCode}: ${resp.reasonPhrase ?? ''}'),
-        ),
+      // HTTP 오류 시 사용자에게 알림 표시하지 않음 (백그라운드 작업)
+      debugPrint(
+        '[SLEEP_DASHBOARD] HTTP 오류: ${resp.statusCode} ${resp.reasonPhrase ?? ''}',
       );
     }
   } // ← 이 닫는 중괄호가 꼭 필요합니다!
