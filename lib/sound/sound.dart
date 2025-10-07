@@ -438,6 +438,7 @@ class _SoundScreenState extends State<SoundScreen> {
   }
 
   Timer? _execDebounce;
+  Timer? _reorderDebounce; // 사운드 순서 변경 디바운스 타이머
   bool executing = false;
 
   final FlutterSecureStorage storage = const FlutterSecureStorage();
@@ -694,6 +695,7 @@ class _SoundScreenState extends State<SoundScreen> {
   void dispose() {
     _prefDebounce?.cancel();
     _execDebounce?.cancel();
+    _reorderDebounce?.cancel();
     _autoPlayTimer?.cancel();
 
     sound.clearAutoPlayCallback();
@@ -942,7 +944,11 @@ class _SoundScreenState extends State<SoundScreen> {
 
   // 새로운 추천 요청
   Future<void> _requestNewRecommendation() async {
+    debugPrint('[RECOMMEND] _requestNewRecommendation 시작');
+    debugPrint('[RECOMMEND] userId: $userId');
+    debugPrint('[RECOMMEND] 현재 soundFiles: $soundFiles');
     try {
+      debugPrint('[RECOMMEND] 서버에 추천 요청 전송 중...');
       final response = await http.post(
         Uri.parse('https://kooala.tassoo.uk/recommend-sound/execute'),
         headers: {
@@ -954,6 +960,7 @@ class _SoundScreenState extends State<SoundScreen> {
           'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
         }),
       );
+      debugPrint('[RECOMMEND] 서버 응답: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final prefs = await SharedPreferences.getInstance();
@@ -962,10 +969,12 @@ class _SoundScreenState extends State<SoundScreen> {
           DateFormat('yyyy-MM-dd').format(DateTime.now()),
         );
 
+        debugPrint('[RECOMMEND] 3초 대기 중...');
         await Future.delayed(const Duration(seconds: 3));
 
         try {
           final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          debugPrint('[RECOMMEND] 추천 결과 요청: $dateStr');
           final resultsResponse = await http.get(
             Uri.parse(
               'https://kooala.tassoo.uk/recommend-sound/$userId/$dateStr/results',
@@ -974,6 +983,7 @@ class _SoundScreenState extends State<SoundScreen> {
               'Authorization': 'Bearer ${await JwtUtils.getCurrentToken()}',
             },
           );
+          debugPrint('[RECOMMEND] 결과 응답: ${resultsResponse.statusCode}');
 
           if (resultsResponse.statusCode == 200) {
             final data = jsonDecode(resultsResponse.body);
@@ -1001,16 +1011,19 @@ class _SoundScreenState extends State<SoundScreen> {
                 });
               }
 
-              setState(() {
-                topRecommended =
-                    sortedRecommendations
-                        .map((item) => item['filename'].toString())
-                        .toList();
-                // soundFiles도 추천 순서로 업데이트
-                soundFiles.clear();
-                soundFiles.addAll(topRecommended);
-                _isLoadingRecommendations = false;
-              });
+              if (mounted) {
+                setState(() {
+                  topRecommended =
+                      sortedRecommendations
+                          .map((item) => item['filename'].toString())
+                          .toList();
+                  // soundFiles도 추천 순서로 업데이트
+                  soundFiles.clear();
+                  soundFiles.addAll(topRecommended);
+                  _isLoadingRecommendations = false;
+                });
+                debugPrint('[RECOMMEND] 추천 사운드 업데이트 완료: $topRecommended');
+              }
 
               // 추천 사운드를 랭킹 정보와 함께 저장
               await prefs.setString(
@@ -1035,29 +1048,39 @@ class _SoundScreenState extends State<SoundScreen> {
                 }
               });
             } else {
+              if (mounted) {
+                setState(() {
+                  _isLoadingRecommendations = false;
+                });
+              }
+            }
+          } else {
+            if (mounted) {
               setState(() {
                 _isLoadingRecommendations = false;
               });
             }
-          } else {
+          }
+        } catch (e) {
+          if (mounted) {
             setState(() {
               _isLoadingRecommendations = false;
             });
           }
-        } catch (e) {
+        }
+      } else {
+        if (mounted) {
           setState(() {
             _isLoadingRecommendations = false;
           });
         }
-      } else {
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
           _isLoadingRecommendations = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _isLoadingRecommendations = false;
-      });
     }
   }
 
@@ -1215,6 +1238,16 @@ class _SoundScreenState extends State<SoundScreen> {
     });
   }
 
+  // 사운드 순서 변경 디바운스 함수
+  void _debouncedReorder() {
+    debugPrint('[SOUND_REORDER] _debouncedReorder 호출됨');
+    _reorderDebounce?.cancel();
+    _reorderDebounce = Timer(const Duration(milliseconds: 500), () async {
+      debugPrint('[SOUND_REORDER] 디바운스 타이머 실행 - 추천 요청 시작');
+      await _savePreferredSoundsRank();
+    });
+  }
+
   String _fmtDate(DateTime d) {
     final mm = d.month.toString().padLeft(2, '0');
     final dd = d.day.toString().padLeft(2, '0');
@@ -1281,6 +1314,11 @@ class _SoundScreenState extends State<SoundScreen> {
         throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
       }
       debugPrint('[SOUND_RANK] ✅ 사운드 순서 저장 성공');
+
+      // 사운드 순서 저장 후 새로운 추천 받아오기
+      debugPrint('[SOUND_RANK] 새로운 추천 요청 시작');
+      await _requestNewRecommendation();
+      debugPrint('[SOUND_RANK] 새로운 추천 요청 완료');
     } catch (e) {
       debugPrint('[SOUND_RANK] ❌ 사운드 순서 저장 오류: $e');
       if (mounted) {
@@ -2059,187 +2097,211 @@ class _SoundScreenState extends State<SoundScreen> {
                         const SizedBox(height: 20),
 
                         // 사운드 카드들
-                        ReorderableListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: soundFiles.length,
-                          onReorder: (oldIndex, newIndex) {
-                            debugPrint(
-                              '[SOUND_REORDER] ReorderableListView 순서 변경: $oldIndex → $newIndex',
-                            );
-                            setState(() {
-                              if (oldIndex < newIndex) {
-                                newIndex -= 1;
-                              }
-                              final item = soundFiles.removeAt(oldIndex);
-                              soundFiles.insert(newIndex, item);
-                            });
+                        Theme(
+                          data: Theme.of(context).copyWith(
+                            highlightColor: Colors.transparent,
+                            splashColor: Colors.transparent,
+                          ),
+                          child: ReorderableListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: soundFiles.length,
+                            proxyDecorator: (child, index, animation) {
+                              return Material(
+                                color: Colors.transparent,
+                                child: child,
+                              );
+                            },
+                            onReorder: (oldIndex, newIndex) {
+                              debugPrint(
+                                '[SOUND_REORDER] ReorderableListView 순서 변경: $oldIndex → $newIndex',
+                              );
+                              debugPrint(
+                                '[SOUND_REORDER] 변경 전 soundFiles: $soundFiles',
+                              );
 
-                            _savePreferredSoundsRank();
-                          },
-                          itemBuilder: (context, i) {
-                            final file = soundFiles[i];
-                            final name = file
-                                .replaceAll('.mp3', '')
-                                .replaceAll('_', ' ');
-                            final selected = sound.currentPlaying == file;
-                            final data = metadata[file];
+                              setState(() {
+                                if (oldIndex < newIndex) {
+                                  newIndex -= 1;
+                                }
+                                final item = soundFiles.removeAt(oldIndex);
+                                soundFiles.insert(newIndex, item);
+                              });
 
-                            return Container(
-                              key: ValueKey(file),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(
-                                color:
-                                    selected
-                                        ? const Color(
-                                          0xFF6C63FF,
-                                        ).withOpacity(0.2)
-                                        : const Color(0xFF0A0E21),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
+                              debugPrint(
+                                '[SOUND_REORDER] 변경 후 soundFiles: $soundFiles',
+                              );
+                              debugPrint(
+                                '[SOUND_REORDER] _debouncedReorder 호출 예정',
+                              );
+
+                              // 디바운스 처리로 연속 변경 시 마지막에만 추천 요청
+                              _debouncedReorder();
+                            },
+                            itemBuilder: (context, i) {
+                              final file = soundFiles[i];
+                              final name = file
+                                  .replaceAll('.mp3', '')
+                                  .replaceAll('_', ' ');
+                              final selected = sound.currentPlaying == file;
+                              final data = metadata[file];
+
+                              return Container(
+                                key: ValueKey(file),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
                                   color:
                                       selected
-                                          ? const Color(0xFF6C63FF)
-                                          : Colors.white.withOpacity(0.1),
-                                  width: 1,
+                                          ? const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.2)
+                                          : const Color(0xFF0A0E21),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color:
+                                        selected
+                                            ? const Color(0xFF6C63FF)
+                                            : Colors.white.withOpacity(0.1),
+                                    width: 1,
+                                  ),
                                 ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        // 드래그 핸들 아이콘
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(
-                                              0.1,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          // 드래그 핸들 아이콘
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(
+                                                0.1,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
+                                            child: const Icon(
+                                              Icons.drag_handle,
+                                              color: Colors.white70,
+                                              size: 20,
                                             ),
                                           ),
-                                          child: const Icon(
-                                            Icons.drag_handle,
-                                            color: Colors.white70,
-                                            size: 20,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      name,
-                                                      style: TextStyle(
-                                                        fontSize: 16,
-                                                        fontWeight:
-                                                            selected
-                                                                ? FontWeight
-                                                                    .bold
-                                                                : FontWeight
-                                                                    .w600,
-                                                        color: Colors.white,
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        name,
+                                                        style: TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              selected
+                                                                  ? FontWeight
+                                                                      .bold
+                                                                  : FontWeight
+                                                                      .w600,
+                                                          color: Colors.white,
+                                                        ),
                                                       ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                if (data != null) ...[
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    "• ${data["feature"]}",
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "• ${data["effect"]}",
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.white70,
                                                     ),
                                                   ),
                                                 ],
-                                              ),
-                                              if (data != null) ...[
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  "• ${data["feature"]}",
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  "• ${data["effect"]}",
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
                                               ],
-                                            ],
+                                            ),
                                           ),
-                                        ),
-                                        IconButton(
-                                          icon: Icon(
-                                            selected && sound.isPlaying
-                                                ? Icons.pause_circle
-                                                : Icons.play_circle,
-                                            size: 32,
-                                            color:
-                                                selected
-                                                    ? const Color(0xFF6C63FF)
-                                                    : Colors.white70,
+                                          IconButton(
+                                            icon: Icon(
+                                              selected && sound.isPlaying
+                                                  ? Icons.pause_circle
+                                                  : Icons.play_circle,
+                                              size: 32,
+                                              color:
+                                                  selected
+                                                      ? const Color(0xFF6C63FF)
+                                                      : Colors.white70,
+                                            ),
+                                            onPressed: () => _playSound(file),
                                           ),
-                                          onPressed: () => _playSound(file),
-                                        ),
-                                      ],
-                                    ),
-                                    if (data != null) ...[
-                                      const SizedBox(height: 12),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children:
-                                            data["tags"]!
-                                                .split(',')
-                                                .map(
-                                                  (tag) => Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 4,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(
-                                                        0xFF6C63FF,
-                                                      ).withOpacity(0.1),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            8,
+                                        ],
+                                      ),
+                                      if (data != null) ...[
+                                        const SizedBox(height: 12),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children:
+                                              data["tags"]!
+                                                  .split(',')
+                                                  .map(
+                                                    (tag) => Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
                                                           ),
-                                                      border: Border.all(
+                                                      decoration: BoxDecoration(
                                                         color: const Color(
                                                           0xFF6C63FF,
-                                                        ).withOpacity(0.3),
-                                                        width: 1,
-                                                      ),
-                                                    ),
-                                                    child: Text(
-                                                      '#${tag.trim()}',
-                                                      style: const TextStyle(
-                                                        color: Color(
-                                                          0xFF6C63FF,
+                                                        ).withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              8,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: const Color(
+                                                            0xFF6C63FF,
+                                                          ).withOpacity(0.3),
+                                                          width: 1,
                                                         ),
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w500,
+                                                      ),
+                                                      child: Text(
+                                                        '#${tag.trim()}',
+                                                        style: const TextStyle(
+                                                          color: Color(
+                                                            0xFF6C63FF,
+                                                          ),
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
-                                                )
-                                                .toList(),
-                                      ),
+                                                  )
+                                                  .toList(),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),

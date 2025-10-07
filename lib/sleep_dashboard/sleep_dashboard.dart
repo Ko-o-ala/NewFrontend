@@ -34,6 +34,7 @@ class _SleepDashboardState extends State<SleepDashboard>
   }
 
   bool _fallbackFromTwoDaysAgo = false;
+  bool _isLoading = true;
 
   /// 시간 문자열을 DateTime으로 파싱 (수면차트와 동일한 로직)
   DateTime _parseTimeWithDate(String timeStr, DateTime date) {
@@ -239,7 +240,11 @@ class _SleepDashboardState extends State<SleepDashboard>
     super.initState();
     _loadUsername();
     _loadGoalText();
-    _fetchTodaySleep();
+    _fetchTodaySleep().then((_) {
+      setState(() {
+        _isLoading = false;
+      });
+    });
     _checkForFreshServerData();
     _checkProfileUpdate();
 
@@ -1064,8 +1069,13 @@ class _SleepDashboardState extends State<SleepDashboard>
                 ),
               ),
               const SizedBox(height: 20),
-              // 수면데이터가 없으면 Apple Watch 메시지 표시 (다이얼로그가 표시되지 않을 때만)
-              (deepMin == 0 && remMin == 0 && lightMin == 0 && awakeMin == 0)
+              // 로딩 중이면 로딩 표시, 수면데이터가 없으면 Apple Watch 메시지 표시
+              _isLoading
+                  ? _buildLoadingIndicator()
+                  : (deepMin == 0 &&
+                      remMin == 0 &&
+                      lightMin == 0 &&
+                      awakeMin == 0)
                   ? _buildEmptyHint()
                   : _buildSleepContent(),
               const SizedBox(height: 20),
@@ -1453,9 +1463,10 @@ class _SleepDashboardState extends State<SleepDashboard>
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.bedtime, color: Colors.white, size: 24),
                   const SizedBox(width: 12),
@@ -1472,6 +1483,7 @@ class _SleepDashboardState extends State<SleepDashboard>
               const SizedBox(height: 16),
               Text(
                 _getSleepComparisonText(),
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -1524,6 +1536,49 @@ class _SleepDashboardState extends State<SleepDashboard>
     );
   }
 
+  Widget _buildLoadingIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1D1E33), Color(0xFF2A2D3A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF6C63FF).withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6C63FF).withOpacity(0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6C63FF)),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            '수면 데이터를 불러오는 중...',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyHint() {
     return Container(
       padding: const EdgeInsets.all(32),
@@ -1547,6 +1602,7 @@ class _SleepDashboardState extends State<SleepDashboard>
         ],
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Apple Watch 아이콘
           Container(
